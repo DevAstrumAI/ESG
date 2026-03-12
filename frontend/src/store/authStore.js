@@ -1,0 +1,97 @@
+// src/store/authStore.js
+import { create } from "zustand";
+import { auth } from "../firebase/firebaseConfig";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
+import { authAPI } from "../services/api";
+import { persist } from "zustand/middleware";
+
+export const useAuthStore = create(
+  persist(
+    (set, get) => ({
+  // ─── State ───────────────────────────────────────────────────────────────
+  user: null,         // Firestore user profile
+  token: null,        // Firebase ID token
+  loggedIn: false,
+  loading: false,
+  error: null,
+
+  // ─── Register ────────────────────────────────────────────────────────────
+  register: async (email, password, displayName) => {
+    set({ loading: true, error: null });
+    try {
+      // 1. Call backend — creates Firebase Auth user + Firestore profile
+      await authAPI.register(email, password, displayName);
+
+      // 2. Sign in with Firebase SDK to get token
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const token = await userCredential.user.getIdToken();
+
+      // 3. Fetch full profile from backend
+      const { user } = await authAPI.me(token);
+
+      set({ user, token, loggedIn: true, loading: false });
+      return { success: true };
+    } catch (error) {
+      set({ error: error.message, loading: false });
+      return { success: false, error: error.message };
+    }
+  },
+
+  // ─── Login ───────────────────────────────────────────────────────────────
+  login: async (email, password) => {
+    set({ loading: true, error: null });
+    try {
+      // 1. Sign in with Firebase SDK
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const token = await userCredential.user.getIdToken();
+
+      // 2. Verify token with backend + get/create Firestore profile
+      const { user } = await authAPI.login(token);
+
+      set({ user, token, loggedIn: true, loading: false });
+      return { success: true, user };
+    } catch (error) {
+      set({ error: error.message, loading: false });
+      return { success: false, error: error.message };
+    }
+  },
+
+  // ─── Logout ──────────────────────────────────────────────────────────────
+  logout: async () => {
+    set({ loading: true });
+    try {
+      const { token } = get();
+      if (token) await authAPI.logout(token);
+      await signOut(auth);
+      set({ user: null, token: null, loggedIn: false, loading: false, error: null });
+    } catch (error) {
+      // Still clear state even if backend call fails
+      await signOut(auth);
+      set({ user: null, token: null, loggedIn: false, loading: false });
+    }
+  },
+
+  // ─── Refresh Token ───────────────────────────────────────────────────────
+  // Call this before any API request to ensure token is fresh
+  refreshToken: async () => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return null;
+      const token = await currentUser.getIdToken(true); // force refresh
+      set({ token });
+      return token;
+    } catch {
+      return null;
+    }
+  },
+
+  // ─── Clear Error ─────────────────────────────────────────────────────────
+  clearError: () => set({ error: null }),
+}),
+    { name: "auth-storage" }
+  )
+);

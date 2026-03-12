@@ -1,0 +1,15 @@
+# Backend environment variables
+backend/.env
+backend/__pycache__/
+backend/*.pyc
+backend/keys/*.json
+backend/venv/
+backend/**/__pycache__/
+# Frontend (already has its own .gitignore, but safe to add)
+frontend/node_modules
+frontend/build
+frontend/.env
+
+# OS files
+.DS_Store
+Thumbs.db

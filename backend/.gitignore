@@ -1,0 +1,55 @@
+# Virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+keys/*.json
+
+# Python
+*.pyc
+__pycache__/
+
+setup_firestore_schema.py
+test_firestore.py
+get_token.py
+delete_factors.py
+restructure.py
+test_firebase.py
+upload_emission_factors.py
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.pyc
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Firebase service account 
+serviceAccountKey.json
+firebase-adminsdk*.json
+*-firebase-adminsdk-*.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
