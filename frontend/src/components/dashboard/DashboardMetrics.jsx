@@ -1,5 +1,4 @@
 // src/components/dashboard/DashboardMetrics.jsx
-import React from "react";
 import Card from "../ui/Card";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiArrowUp, FiArrowDown } from "react-icons/fi";

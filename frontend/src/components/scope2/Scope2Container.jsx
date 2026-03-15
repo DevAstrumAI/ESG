@@ -1,9 +1,6 @@
-import { useState } from "react";
 import Scope2Wizard from "./Scope2Wizard";
 
 export default function Scope2Container() {
-  const [calculationMethod, setCalculationMethod] = useState("UK Government Factors");
-
   return (
     <div className="scope2-container">
       {/* Header */}
@@ -15,24 +12,6 @@ export default function Scope2Container() {
             <span className="status-dot"></span>
             Location-based & Market-based methods available
           </div>
-        </div>
-      </div>
-
-      {/* Method Selection Bar */}
-      <div className="method-bar">
-        <div className="method-selector">
-          <label htmlFor="calculation-method">Calculation Method:</label>
-          <select 
-            id="calculation-method"
-            value={calculationMethod}
-            onChange={(e) => setCalculationMethod(e.target.value)}
-            className="method-select"
-          >
-            <option>UK Government Factors</option>
-            <option>Location-based (Grid Avg)</option>
-            <option>Market-based (Supplier Specific)</option>
-            <option>AI Model (Beta)</option>
-          </select>
         </div>
       </div>
 
@@ -95,50 +74,6 @@ export default function Scope2Container() {
           50% { opacity: 0.3; }
         }
 
-        .method-bar {
-          background: white;
-          border-radius: 16px;
-          padding: 16px 24px;
-          margin-bottom: 24px;
-          border: 1px solid rgba(46, 125, 50, 0.1);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-        }
-
-        .method-selector {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          flex-wrap: wrap;
-        }
-
-        .method-selector label {
-          font-size: 14px;
-          font-weight: 600;
-          color: #374151;
-        }
-
-        .method-select {
-          padding: 10px 16px;
-          border: 1px solid rgba(46, 125, 50, 0.2);
-          border-radius: 30px;
-          font-size: 14px;
-          color: #1B5E20;
-          background: white;
-          cursor: pointer;
-          min-width: 200px;
-        }
-
-        .method-select:hover {
-          border-color: #2E7D32;
-          box-shadow: 0 2px 8px rgba(46, 125, 50, 0.1);
-        }
-
-        .method-select:focus {
-          border-color: #2E7D32;
-          box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.1);
-          outline: none;
-        }
-
         @media (max-width: 768px) {
           .scope2-container {
             padding: 16px;
@@ -146,19 +81,6 @@ export default function Scope2Container() {
 
           .calculator-header {
             padding: 24px;
-          }
-
-          .method-bar {
-            padding: 16px;
-          }
-
-          .method-selector {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-
-          .method-select {
-            width: 100%;
           }
         }
       `}</style>
