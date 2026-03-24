@@ -12,17 +12,28 @@ export default function Scope1Summary() {
   const scope1Results = useEmissionStore((s) => s.scope1Results);
   console.log("scope1Results:", scope1Results);
 
-// Use backend results if available, otherwise show 0
-const totals = scope1Results ? {
-  vehicles: scope1Results.mobile?.kgCO2e || 0,
-  stationary: scope1Results.stationary?.kgCO2e || 0,
-  refrigerants: scope1Results.refrigerants?.kgCO2e || 0,
-  fugitive: scope1Results.fugitive?.kgCO2e || 0,
-  co2e: scope1Results.total?.kgCO2e || 0,
-} : { vehicles: 0, stationary: 0, refrigerants: 0, fugitive: 0, co2e: 0 };
+  // Use backend results if available, otherwise show 0
+  const totals = scope1Results ? {
+    vehicles: scope1Results.mobile?.kgCO2e || 0,
+    stationary: scope1Results.stationary?.kgCO2e || 0,
+    refrigerants: scope1Results.refrigerants?.kgCO2e || 0,
+    fugitive: scope1Results.fugitive?.kgCO2e || 0,
+    co2e: scope1Results.total?.kgCO2e || 0,
+    biogenic: scope1Results.biogenic?.totalKgCO2e || 0, // Add biogenic total
+  } : { 
+    vehicles: 0, 
+    stationary: 0, 
+    refrigerants: 0, 
+    fugitive: 0, 
+    co2e: 0,
+    biogenic: 0 
+  };
 
   // Check if any data exists
   const hasData = vehicles.length > 0 || stationary.length > 0 || refrigerants.length > 0 || fugitive.length > 0;
+
+  // Check if there are biogenic entries
+  const hasBiogenic = totals.biogenic > 0;
 
   // Format large numbers with commas
   const formatNumber = (num) => {
@@ -32,7 +43,7 @@ const totals = scope1Results ? {
     });
   };
 
-  // Calculate percentages for each category
+  // Calculate percentages for each category (excluding biogenic)
   const total = totals.co2e ?? 0;
   const getPercentage = (value) => {
     if (total === 0) return 0;
@@ -45,7 +56,8 @@ const totals = scope1Results ? {
       vehicles: "🚗",
       stationary: "🏭",
       refrigerants: "❄️",
-      fugitive: "💨"
+      fugitive: "💨",
+      biogenic: "🌿"
     };
     return icons[category] || "📊";
   };
@@ -79,7 +91,6 @@ const totals = scope1Results ? {
             <p>Add entries in each category to see your Scope 1 totals</p>
           </div>
         ) : (
-          
           <>
           {hasData && !scope1Results && (
             <div style={{
@@ -103,6 +114,21 @@ const totals = scope1Results ? {
               </div>
             </div>
 
+            {/* Biogenic Banner (if present) */}
+            {hasBiogenic && (
+              <div className="biogenic-banner">
+                <div className="biogenic-icon">🌿</div>
+                <div className="biogenic-content">
+                  <div className="biogenic-label">Biogenic CO₂ (reported separately)</div>
+                  <div className="biogenic-value">{formatNumber(totals.biogenic)} kg</div>
+                  <div className="biogenic-equivalent">
+                    ≈ {(totals.biogenic / 1000).toFixed(2)} tonnes CO₂e
+                  </div>
+                </div>
+                <div className="biogenic-note">Per GHG Protocol, biogenic CO₂ from biomass combustion is reported separately and not included in Scope 1 totals.</div>
+              </div>
+            )}
+
             {/* Category Breakdown Grid */}
             <div className="breakdown-grid">
               {/* Vehicles */}
@@ -124,7 +150,7 @@ const totals = scope1Results ? {
                 </div>
               </div>
 
-              {/* Stationary */}
+              {/* Stationary - with biogenic indicator */}
               <div className="breakdown-item">
                 <div className="item-header">
                   <span className="item-icon">{getCategoryIcon('stationary')}</span>
@@ -134,6 +160,9 @@ const totals = scope1Results ? {
                 <div className="item-value">{formatNumber(totals.stationary)} kg</div>
                 <div className="item-stats">
                   <span className="stat">{stationary.length} sources</span>
+                  {scope1Results?.stationary?.entries?.some(e => e.isBiogenic) && (
+                    <span className="stat biogenic-badge">🌿 includes biogenic</span>
+                  )}
                 </div>
                 <div className="progress-bar">
                   <div 
@@ -206,6 +235,13 @@ const totals = scope1Results ? {
                 <span className="stat-number highlight">{(total / 1000).toFixed(2)}</span>
               </div>
             </div>
+
+            {/* Biogenic footnote */}
+            {hasBiogenic && (
+              <div className="biogenic-footnote">
+                <span>🌿 Biogenic CO₂ from biomass combustion is reported separately per GHG Protocol and not included in Scope 1 totals.</span>
+              </div>
+            )}
           </>
         )}
       </Card>
@@ -250,7 +286,7 @@ const totals = scope1Results ? {
 
         .header-title {
           flex: 1;
-          min-width: 0; /* Allows text truncation */
+          min-width: 0;
         }
 
         .header-title h3 {
@@ -334,6 +370,56 @@ const totals = scope1Results ? {
           border-top: 1px solid rgba(255, 255, 255, 0.2);
         }
 
+        /* Biogenic Banner */
+        .biogenic-banner {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin: 0 24px 24px;
+          padding: 20px;
+          background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+          border-radius: 16px;
+          border: 1px solid #81C784;
+          width: calc(100% - 48px);
+          box-sizing: border-box;
+        }
+
+        .biogenic-icon {
+          font-size: 32px;
+          flex-shrink: 0;
+        }
+
+        .biogenic-content {
+          flex: 1;
+        }
+
+        .biogenic-label {
+          font-size: 14px;
+          font-weight: 600;
+          color: #2E7D32;
+          margin-bottom: 4px;
+        }
+
+        .biogenic-value {
+          font-size: 24px;
+          font-weight: 700;
+          color: #1B5E20;
+          line-height: 1.2;
+        }
+
+        .biogenic-equivalent {
+          font-size: 13px;
+          color: #4B5563;
+        }
+
+        .biogenic-note {
+          max-width: 300px;
+          font-size: 12px;
+          color: #4B5563;
+          padding-left: 16px;
+          border-left: 1px solid #81C784;
+        }
+
         /* Breakdown Grid */
         .breakdown-grid {
           display: grid;
@@ -404,6 +490,9 @@ const totals = scope1Results ? {
 
         .item-stats {
           margin-bottom: 12px;
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
         }
 
         .stat {
@@ -413,6 +502,12 @@ const totals = scope1Results ? {
           padding: 4px 8px;
           border-radius: 12px;
           display: inline-block;
+        }
+
+        .biogenic-badge {
+          background: #E8F5E9;
+          color: #2E7D32;
+          border: 1px solid #81C784;
         }
 
         .progress-bar {
@@ -484,6 +579,18 @@ const totals = scope1Results ? {
           font-size: 28px;
         }
 
+        /* Biogenic Footnote */
+        .biogenic-footnote {
+          margin: 16px 24px 24px;
+          padding: 12px 16px;
+          background: #F3F4F6;
+          border-radius: 8px;
+          font-size: 12px;
+          color: #4B5563;
+          text-align: center;
+          border: 1px solid #E5E7EB;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
           .breakdown-grid {
@@ -499,6 +606,21 @@ const totals = scope1Results ? {
 
           .total-value {
             font-size: 32px;
+          }
+
+          .biogenic-banner {
+            flex-direction: column;
+            text-align: center;
+            margin: 0 16px 16px;
+            width: calc(100% - 32px);
+          }
+
+          .biogenic-note {
+            padding-left: 0;
+            padding-top: 12px;
+            border-left: none;
+            border-top: 1px solid #81C784;
+            max-width: 100%;
           }
 
           .summary-footer {
@@ -547,6 +669,10 @@ const totals = scope1Results ? {
 
           .stat-item {
             padding: 16px;
+          }
+
+          .biogenic-value {
+            font-size: 20px;
           }
         }
       `}</style>

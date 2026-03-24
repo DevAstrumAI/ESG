@@ -10,6 +10,7 @@ export default function ElectricityForm() {
     { label: "Market-based (Supplier Specific)", value: "market" },
   ];
 
+  const [certificateType, setCertificateType] = useState("");
   const [facilityName, setFacilityName] = useState("");
   const [consumption, setConsumption] = useState("");
   const [method, setMethod] = useState("location");
@@ -27,6 +28,8 @@ export default function ElectricityForm() {
       facilityName: facilityName || "Main Facility",
       consumption: Number(consumption),
       method,
+      certificateType: method === "market" ? certificateType : undefined,
+
     });
 
     setFacilityName("");
@@ -108,6 +111,24 @@ export default function ElectricityForm() {
               </svg>
             </div>
           </div>
+          
+          {method === "market" && (
+            <div className="input-group">
+              <label className="input-label">Certificate Type</label>
+              <div className="select-wrapper">
+                <select
+                  value={certificateType}
+                  onChange={(e) => setCertificateType(e.target.value)}
+                  className="fuel-select"
+                >
+                  <option value="rec_ppa">RECs / PPA</option>
+                  <option value="solar_ppa">Solar PPA</option>
+                  <option value="wind_ppa">Wind PPA</option>
+                  <option value="hydro_go">Hydro GO</option>
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="add-button-wrapper">

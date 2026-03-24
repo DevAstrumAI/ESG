@@ -84,7 +84,7 @@ export default function VehicleTable() {
   // Emissions preview
   const totalKm = vehicles.reduce((sum, v) => sum + v.km, 0);
   const totalLitres = vehicles.reduce((sum, v) => sum + v.litres, 0);
-  const estimatedCO2 = totalLitres * 2.31;
+  const estimatedCO2 = 0;
 
   // Get fuel badge color
   const getFuelBadgeClass = (fuel) => {
@@ -344,7 +344,7 @@ export default function VehicleTable() {
           </div>
         </div>
         <div className="footer-note">
-          <p>🌱 Based on UK Government conversion factors</p>
+          <p>🌱 Based on Region-specific emission factors</p>
         </div>
       </Card>
 

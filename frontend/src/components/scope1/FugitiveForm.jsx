@@ -155,7 +155,7 @@ export default function FugitiveForm() {
             <div className="preview-calculation">
               <span className="preview-label">Estimated CO₂e:</span>
               <span className="preview-value">
-                {(Number(amount) * 1.1).toFixed(2)} tCO₂e
+                0
               </span>
               <span className="preview-note">(using default factor 1.1)</span>
             </div>
@@ -191,8 +191,7 @@ export default function FugitiveForm() {
               </thead>
               <tbody>
                 {displayedEntries.map(f => {
-                  const co2e = (f.amount * 1.1).toFixed(2);
-                  
+                  const co2e = 0;
                   return (
                     <tr key={f.id} className="entry-row">
                       <td>
@@ -240,7 +239,7 @@ export default function FugitiveForm() {
           <div className="summary-item highlight">
             <span className="summary-label">Total CO₂e</span>
             <span className="summary-value emission">
-              {totalCO2e.toFixed(2)} tCO₂e
+              0 tCO₂e
             </span>
           </div>
         </div>

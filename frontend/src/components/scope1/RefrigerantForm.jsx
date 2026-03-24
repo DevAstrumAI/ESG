@@ -152,7 +152,7 @@ export default function RefrigerantForm() {
             <div className="preview-calculation">
               <span className="preview-label">Estimated CO₂e:</span>
               <span className="preview-value">
-                {(Number(quantity) * getSelectedGWP() / 1000).toFixed(3)} tCO₂e
+               0
               </span>
             </div>
           )}

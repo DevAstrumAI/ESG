@@ -118,6 +118,21 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Dual-Method Scope 2 Stats */}
+      {scope2Results?.locationBasedKgCO2e > 0 && (
+        <div className="dual-method-banner">
+          <div className="method-card location">
+            <span className="method-label">📍 Location-Based</span>
+            <span className="method-value">{(scope2Results.locationBasedKgCO2e / 1000).toFixed(2)} tCO₂e</span>
+          </div>
+          <div className="method-card market">
+            <span className="method-label">📈 Market-Based</span>
+            <span className="method-value">{(scope2Results.marketBasedKgCO2e / 1000).toFixed(2)} tCO₂e</span>
+          </div>
+        </div>
+      )}
+
+
       {/* Main Metrics Cards */}
       <DashboardMetrics />
 
@@ -411,6 +426,49 @@ export default function DashboardPage() {
           width: 1px;
           height: 40px;
           background: rgba(34, 197, 94, 0.2);
+        }
+
+
+        .dual-method-banner {
+          display: flex;
+          gap: 16px;
+          margin: 16px 0 24px;
+          padding: 16px;
+          background: white;
+          border-radius: 16px;
+          border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+
+        .method-card {
+          flex: 1;
+          padding: 16px;
+          border-radius: 12px;
+          text-align: center;
+        }
+
+        .method-card.location {
+          background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+          border: 1px solid #3B82F6;
+        }
+
+        .method-card.market {
+          background: linear-gradient(135deg, #F3E8FF 0%, #EDE9FE 100%);
+          border: 1px solid #8B5CF6;
+        }
+
+        .method-label {
+          display: block;
+          font-size: 13px;
+          font-weight: 600;
+          margin-bottom: 8px;
+          color: #374151;
+        }
+
+        .method-value {
+          display: block;
+          font-size: 24px;
+          font-weight: 700;
+          color: #1F2937;
         }
 
         .progress-section {

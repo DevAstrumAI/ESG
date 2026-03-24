@@ -7,20 +7,27 @@ export default function Scope2Summary() {
   const heating = useEmissionStore((s) => s.scope2Heating);
   const renewable = useEmissionStore((s) => s.scope2Renewable);
   const scope2Results = useEmissionStore((s) => s.scope2Results);
-const scope2Total = useEmissionStore((s) => s.scope2Total);
+  const scope2Total = useEmissionStore((s) => s.scope2Total);
 
-// Use backend results after submission, otherwise show live estimates from entries
-const totals = scope2Results ? {
-  electricity: scope2Results.electricity?.kgCO2e || 0,
-  heating: scope2Results.heating?.kgCO2e || 0,
-  renewable: scope2Results.renewables?.kgCO2e || 0,
-  co2e: scope2Results.total?.kgCO2e || 0,
-} : {
-  electricity: electricity.reduce((sum, e) => sum + Number(e.consumption || 0), 0),
-  heating: heating.reduce((sum, h) => sum + Number(h.consumption || 0), 0),
-  renewable: renewable.reduce((sum, r) => sum + Number(r.consumption || 0), 0),
-  co2e: scope2Total,
-};
+  // Use backend results after submission, otherwise show live estimates from entries
+  const totals = scope2Results ? {
+    electricity: scope2Results.electricity?.kgCO2e || 0,
+    heating: scope2Results.heating?.kgCO2e || 0,
+    renewable: scope2Results.renewables?.kgCO2e || 0,
+    // For backward compatibility
+    co2e: scope2Results.total?.kgCO2e || scope2Results.locationBasedKgCO2e || 0,
+    // New dual-method fields
+    locationBased: scope2Results.locationBasedKgCO2e || 0,
+    marketBased: scope2Results.marketBasedKgCO2e || 0,
+  } : {
+    electricity: electricity.reduce((sum, e) => sum + Number(e.consumption || 0), 0),
+    heating: heating.reduce((sum, h) => sum + Number(h.consumption || 0), 0),
+    renewable: renewable.reduce((sum, r) => sum + Number(r.consumption || 0), 0),
+    co2e: scope2Total,
+    locationBased: 0,
+    marketBased: 0,
+  };
+
   // Check if any data exists
   const hasData = electricity.length > 0 || heating.length > 0 || renewable.length > 0;
 
@@ -69,12 +76,23 @@ const totals = scope2Results ? {
           </div>
         ) : (
           <>
-            {/* Total Emissions Banner */}
-            <div className="total-banner">
-              <div className="total-label">Total CO₂e Emissions</div>
-              <div className="total-value">{formatNumber(total)} kg</div>
-              <div className="total-equivalent">
-                ≈ {(total / 1000).toFixed(2)} tonnes CO₂e
+            {/* Dual-Method Totals Banner */}
+            <div className="dual-method-banner">
+              <div className="method-card location">
+                <div className="method-label">📍 Location-Based</div>
+                <div className="method-value">{formatNumber(totals.locationBased)} kg</div>
+                <div className="method-equivalent">
+                  ≈ {(totals.locationBased / 1000).toFixed(2)} tCO₂e
+                </div>
+                <div className="method-note">Grid average emission factors</div>
+              </div>
+              <div className="method-card market">
+                <div className="method-label">📈 Market-Based</div>
+                <div className="method-value">{formatNumber(totals.marketBased)} kg</div>
+                <div className="method-equivalent">
+                  ≈ {(totals.marketBased / 1000).toFixed(2)} tCO₂e
+                </div>
+                <div className="method-note">Supplier-specific & RECs/PPAs</div>
               </div>
             </div>
 
@@ -91,6 +109,18 @@ const totals = scope2Results ? {
                 <div className="item-stats">
                   <span className="stat">{electricity.length} entries</span>
                 </div>
+                {scope2Results?.electricity && (
+                  <div className="method-breakdown">
+                    <div className="method-row">
+                      <span className="method-name">Location:</span>
+                      <span className="method-amount">{formatNumber(scope2Results.electricity.locationBasedKgCO2e || 0)} kg</span>
+                    </div>
+                    <div className="method-row">
+                      <span className="method-name">Market:</span>
+                      <span className="method-amount">{formatNumber(scope2Results.electricity.marketBasedKgCO2e || 0)} kg</span>
+                    </div>
+                  </div>
+                )}
                 <div className="progress-bar">
                   <div 
                     className="progress-fill electricity" 
@@ -119,7 +149,7 @@ const totals = scope2Results ? {
               </div>
 
               {/* Renewable */}
-              <div className="breakdown-item">
+              <div className="breakdown-item renewable-item">
                 <div className="item-header">
                   <span className="item-icon">{getCategoryIcon('renewable')}</span>
                   <span className="item-title">Renewable Generation</span>
@@ -157,19 +187,24 @@ const totals = scope2Results ? {
                 </span>
               </div>
               <div className="stat-item">
-                <span className="stat-label">Total tCO₂e</span>
-                <span className="stat-number highlight">{(total / 1000).toFixed(2)}</span>
+                <span className="stat-label">Reporting Method</span>
+                <span className="stat-number highlight">Dual</span>
               </div>
             </div>
 
-            {/* Renewable Offset Note (if applicable) */}
+            {/* Renewable Info Note */}
             {renewable.length > 0 && (
-              <div className="offset-note">
+              <div className="renewable-note">
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18Z" stroke="#2E7D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                   <path d="M10 14V10M10 6H10.01" stroke="#2E7D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                <span>Renewable generation is contributing to lower market-based emissions</span>
+                <span>
+                  <strong>Renewable generation:</strong> Reported separately per GHG Protocol — does not reduce Scope 2 totals.
+                  {scope2Results?.marketBasedKgCO2e < scope2Results?.locationBasedKgCO2e && (
+                    <span className="renewable-impact"> Renewables are lowering your market-based total.</span>
+                  )}
+                </span>
               </div>
             )}
           </>
@@ -193,7 +228,6 @@ const totals = scope2Results ? {
           box-sizing: border-box;
         }
 
-        /* Ensure all children respect boundaries */
         .summary-card * {
           box-sizing: border-box;
           max-width: 100%;
@@ -258,20 +292,33 @@ const totals = scope2Results ? {
           color: #6B7280;
         }
 
-        /* Total Banner */
-        .total-banner {
+        /* Dual-Method Banner */
+        .dual-method-banner {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
           margin: 24px;
-          padding: 24px;
-          background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
-          border-radius: 20px;
-          text-align: center;
-          color: white;
-          box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
           width: calc(100% - 48px);
-          box-sizing: border-box;
         }
 
-        .total-label {
+        .method-card {
+          padding: 20px;
+          border-radius: 16px;
+          text-align: center;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        .method-card.location {
+          background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+          color: white;
+        }
+
+        .method-card.market {
+          background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+          color: white;
+        }
+
+        .method-label {
           font-size: 14px;
           text-transform: uppercase;
           letter-spacing: 1px;
@@ -279,17 +326,22 @@ const totals = scope2Results ? {
           margin-bottom: 8px;
         }
 
-        .total-value {
-          font-size: 42px;
+        .method-value {
+          font-size: 32px;
           font-weight: 700;
           line-height: 1.2;
-          margin-bottom: 8px;
-          word-break: break-word;
+          margin-bottom: 4px;
         }
 
-        .total-equivalent {
-          font-size: 16px;
+        .method-equivalent {
+          font-size: 14px;
           opacity: 0.9;
+          margin-bottom: 8px;
+        }
+
+        .method-note {
+          font-size: 12px;
+          opacity: 0.8;
           padding-top: 8px;
           border-top: 1px solid rgba(255, 255, 255, 0.2);
         }
@@ -319,6 +371,10 @@ const totals = scope2Results ? {
           transform: translateY(-2px);
           box-shadow: 0 8px 16px rgba(37, 99, 235, 0.1);
           border-color: rgba(37, 99, 235, 0.3);
+        }
+
+        .renewable-item {
+          grid-column: span 2;
         }
 
         .item-header {
@@ -360,6 +416,32 @@ const totals = scope2Results ? {
           color: #1B5E20;
           margin-bottom: 8px;
           word-break: break-word;
+        }
+
+        .method-breakdown {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-bottom: 12px;
+          padding: 8px;
+          background: white;
+          border-radius: 8px;
+          border: 1px solid rgba(37, 99, 235, 0.1);
+        }
+
+        .method-row {
+          display: flex;
+          justify-content: space-between;
+          font-size: 12px;
+        }
+
+        .method-name {
+          color: #6B7280;
+        }
+
+        .method-amount {
+          font-weight: 600;
+          color: #1B5E20;
         }
 
         .item-stats {
@@ -440,10 +522,10 @@ const totals = scope2Results ? {
           font-size: 28px;
         }
 
-        /* Offset Note */
-        .offset-note {
+        /* Renewable Note */
+        .renewable-note {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           gap: 12px;
           margin: 16px 24px 24px;
           padding: 16px 20px;
@@ -452,17 +534,37 @@ const totals = scope2Results ? {
           border: 1px solid rgba(46, 125, 50, 0.2);
         }
 
-        .offset-note span {
+        .renewable-note svg {
+          flex-shrink: 0;
+        }
+
+        .renewable-note span {
           font-size: 14px;
           color: #1B5E20;
+          line-height: 1.5;
+        }
+
+        .renewable-impact {
+          color: #2563EB;
           font-weight: 500;
         }
 
         /* Responsive */
         @media (max-width: 768px) {
+          .dual-method-banner {
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin: 16px;
+            width: calc(100% - 32px);
+          }
+
           .breakdown-grid {
             grid-template-columns: 1fr;
             padding: 0 16px 16px;
+          }
+
+          .renewable-item {
+            grid-column: span 1;
           }
 
           .total-banner {
@@ -495,14 +597,8 @@ const totals = scope2Results ? {
             padding: 16px;
           }
 
-          .total-banner {
-            margin: 12px;
-            padding: 16px;
-            width: calc(100% - 24px);
-          }
-
-          .total-value {
-            font-size: 28px;
+          .method-value {
+            font-size: 24px;
           }
 
           .breakdown-grid {
@@ -518,9 +614,11 @@ const totals = scope2Results ? {
             padding: 16px;
           }
 
-          .offset-note {
+          .renewable-note {
             margin: 12px 16px 16px;
             padding: 12px;
+            flex-direction: column;
+            align-items: flex-start;
           }
         }
       `}</style>

@@ -231,7 +231,7 @@ export default function StationaryForm() {
           <div className="summary-item highlight">
             <span className="summary-label">Estimated CO₂e</span>
             <span className="summary-value emission">
-              {(totalConsumption * 2.31).toFixed(2)} tCO₂e
+              0 tCO₂e
             </span>
           </div>
         </div>
