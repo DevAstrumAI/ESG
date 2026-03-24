@@ -1,12 +1,17 @@
 from app.utils.firebase import get_db
-from typing import Optional
+
+# Fuel types that use distance-based calculation (kg CO₂e/km)
+DISTANCE_BASED_TYPES = {
+    "jet_aircraft_per_km", "cargo_ship_hfo", "marine_hfo", "diesel_train", "diesel_bus"
+}
+
+# Fuel types that are biogenic
+BIOGENIC_FUEL_TYPES = {
+    "biodiesel", "bioethanol", "biogas", "wood_pellets"
+}
 
 
 def get_emission_factors(region: str, country: str, city: str, scope: str) -> dict:
-    """
-    Fetch emission factors for a given city and scope from Firestore.
-    Returns a flat dict of {category: {factor_name: {value, unit, ...}}}
-    """
     db = get_db()
     try:
         factors_doc = (
@@ -23,37 +28,25 @@ def get_emission_factors(region: str, country: str, city: str, scope: str) -> di
             .get()
         )
         if factors_doc.exists:
-            data = factors_doc.to_dict()
-            print(f"🔍 Factors for {city}/{scope}:")
-            print(f"  Categories: {list(data.keys())}")
-            if "mobile" in data:
-                print(f"  Mobile keys: {list(data['mobile'].keys())}")
-            return data
+            return factors_doc.to_dict()
     except Exception as e:
-        print(f"❌ Error fetching factors: {e}")
-        return {}
+        print(f"Error fetching factors for {city}/{scope}: {e}")
+    return {}
 
 
 def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
     """
     Calculate Scope 1 emissions from raw input data.
-    
+
     Input data format:
     {
-        "mobile": [{"fuelType": "petrol_car", "distanceKm": 500}, ...],
+        "mobile": [
+            {"fuelType": "petrol_car", "litresConsumed": 200},        # road vehicles
+            {"fuelType": "jet_aircraft_per_km", "distanceKm": 5000},  # aviation/marine/rail
+        ],
         "stationary": [{"fuelType": "natural_gas", "consumption": 1000, "unit": "kWh"}, ...],
         "refrigerants": [{"refrigerantType": "r410a", "leakageKg": 2.5}, ...],
         "fugitive": [{"sourceType": "methane", "emissionKg": 1.0}, ...]
-    }
-    
-    Returns:
-    {
-        "mobile": {"totalKgCO2e": 87.5, "entries": [...]},
-        "stationary": {"totalKgCO2e": 202.0, "entries": [...]},
-        "refrigerants": {"totalKgCO2e": 5220.0, "entries": [...]},
-        "fugitive": {"totalKgCO2e": 28.0, "entries": [...]},
-        "totalKgCO2e": 5537.5,
-        "totalTonneCO2e": 5.5375
     }
     """
     factors = get_emission_factors(region, country, city, "scope1")
@@ -65,23 +58,29 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
     mobile_total = 0.0
     for entry in data.get("mobile", []):
         fuel_type = entry.get("fuelType", "")
-        distance_km = float(entry.get("distanceKm", 0))
-        print(f"🔍 Looking for mobile factors. Keys in factors['mobile']: {list(factors.get('mobile', {}).keys())}")
-        print(f"🔍 Looking for fuel_type: '{fuel_type}'")
-        
-
         factor_data = factors.get("mobile", {}).get(fuel_type, {})
-        print(f"🔍 Found factor_data: {factor_data}")
         factor_value = float(factor_data.get("value", 0))
-        kg_co2e = distance_km * factor_value
+        unit = factor_data.get("unit", "")
+
+        # Use distance for aviation/marine/rail, litres for road vehicles
+        if fuel_type in DISTANCE_BASED_TYPES:
+            quantity = float(entry.get("distanceKm", 0))
+        else:
+            quantity = float(entry.get("litresConsumed", 0))
+
+        kg_co2e = quantity * factor_value
         mobile_total += kg_co2e
         mobile_entries.append({
             **entry,
             "factorUsed": factor_value,
-            "unit": factor_data.get("unit", ""),
+            "unit": unit,
             "kgCO2e": round(kg_co2e, 4),
         })
-    results["mobile"] = {"entries": mobile_entries, "totalKgCO2e": round(mobile_total, 4)}
+
+    results["mobile"] = {
+        "entries": mobile_entries,
+        "totalKgCO2e": round(mobile_total, 4)
+    }
     grand_total += mobile_total
 
     # --- Stationary ---
@@ -99,8 +98,13 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
             "factorUsed": factor_value,
             "unit": factor_data.get("unit", ""),
             "kgCO2e": round(kg_co2e, 4),
+            "isBiogenic": fuel_type in BIOGENIC_FUEL_TYPES,
         })
-    results["stationary"] = {"entries": stationary_entries, "totalKgCO2e": round(stationary_total, 4)}
+
+    results["stationary"] = {
+        "entries": stationary_entries,
+        "totalKgCO2e": round(stationary_total, 4)
+    }
     grand_total += stationary_total
 
     # --- Refrigerants ---
@@ -109,12 +113,7 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
     for entry in data.get("refrigerants", []):
         refrigerant_type = entry.get("refrigerantType", "")
         leakage_kg = float(entry.get("leakageKg", 0))
-        print(f"🔍 Looking for refrigerant: '{refrigerant_type}'")
-        print(f"🔍 Fugitive keys in factors: {list(factors.get('fugitive', {}).keys())}")
-        
         factor_data = factors.get("fugitive", {}).get(refrigerant_type, {})
-        print(f"🔍 Found factor_data: {factor_data}")
-        
         factor_value = float(factor_data.get("value", 0))
         kg_co2e = leakage_kg * factor_value
         refrigerant_total += kg_co2e
@@ -125,7 +124,10 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
             "kgCO2e": round(kg_co2e, 4),
         })
 
-    results["refrigerants"] = {"entries": refrigerant_entries, "totalKgCO2e": round(refrigerant_total, 4)}
+    results["refrigerants"] = {
+        "entries": refrigerant_entries,
+        "totalKgCO2e": round(refrigerant_total, 4)
+    }
     grand_total += refrigerant_total
 
     # --- Fugitive ---
@@ -144,7 +146,11 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
             "unit": factor_data.get("unit", ""),
             "kgCO2e": round(kg_co2e, 4),
         })
-    results["fugitive"] = {"entries": fugitive_entries, "totalKgCO2e": round(fugitive_total, 4)}
+
+    results["fugitive"] = {
+        "entries": fugitive_entries,
+        "totalKgCO2e": round(fugitive_total, 4)
+    }
     grand_total += fugitive_total
 
     results["totalKgCO2e"] = round(grand_total, 4)
@@ -156,42 +162,68 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
 def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
     """
     Calculate Scope 2 emissions from raw input data.
+    Returns both location-based and market-based totals separately.
 
     Input data format:
     {
-        "electricity": [{"facilityName": "HQ", "consumptionKwh": 50000, "method": "location"}, ...],
+        "electricity": [{"facilityName": "HQ", "consumptionKwh": 50000, "method": "location", "certificateType": "rec_ppa"}, ...],
         "heating": [{"energyType": "steam_hot_water", "consumptionKwh": 1000}, ...],
         "renewables": [{"sourceType": "solar_ppa", "generationKwh": 5000}, ...]
     }
     """
-    print(f"🔍 Scope2 data received: {data}")  
     factors = get_emission_factors(region, country, city, "scope2")
     results = {}
-    grand_total = 0.0
+
+    location_grand_total = 0.0
+    market_grand_total = 0.0
 
     # --- Electricity ---
     electricity_entries = []
-    electricity_total = 0.0
+    electricity_location_total = 0.0
+    electricity_market_total = 0.0
+
     for entry in data.get("electricity", []):
         consumption_kwh = float(entry.get("consumptionKwh", 0))
-        # Use market-based if REC/PPA, otherwise location-based grid average
         method = entry.get("method", "location")
+
+        # Location-based always uses grid average
+        location_factor_data = factors.get("electricity", {}).get("grid_average", {})
+        location_factor_value = float(location_factor_data.get("value", 0))
+        location_kg_co2e = consumption_kwh * location_factor_value
+
+        # Market-based uses certificate type if provided, otherwise grid average
         if method == "market" and entry.get("certificateType"):
-            factor_key = entry.get("certificateType", "rec_ppa")
+            market_factor_key = entry.get("certificateType", "rec_ppa")
         else:
-            factor_key = "grid_average"  
-        factor_data = factors.get("electricity", {}).get(factor_key, {})
-        factor_value = float(factor_data.get("value", 0))
-        kg_co2e = consumption_kwh * factor_value
-        electricity_total += kg_co2e
+            market_factor_key = "grid_average"
+        market_factor_data = factors.get("electricity", {}).get(market_factor_key, {})
+        market_factor_value = float(market_factor_data.get("value", 0))
+        market_kg_co2e = consumption_kwh * market_factor_value
+
+        electricity_location_total += location_kg_co2e
+        electricity_market_total += market_kg_co2e
+
         electricity_entries.append({
             **entry,
-            "factorUsed": factor_value,
-            "unit": factor_data.get("unit", ""),
-            "kgCO2e": round(kg_co2e, 4),
+            "locationBased": {
+                "factorUsed": location_factor_value,
+                "unit": location_factor_data.get("unit", ""),
+                "kgCO2e": round(location_kg_co2e, 4),
+            },
+            "marketBased": {
+                "factorUsed": market_factor_value,
+                "unit": market_factor_data.get("unit", ""),
+                "kgCO2e": round(market_kg_co2e, 4),
+            },
         })
-    results["electricity"] = {"entries": electricity_entries, "totalKgCO2e": round(electricity_total, 4)}
-    grand_total += electricity_total
+
+    results["electricity"] = {
+        "entries": electricity_entries,
+        "locationBasedKgCO2e": round(electricity_location_total, 4),
+        "marketBasedKgCO2e": round(electricity_market_total, 4),
+    }
+    location_grand_total += electricity_location_total
+    market_grand_total += electricity_market_total
 
     # --- Heating ---
     heating_entries = []
@@ -199,8 +231,6 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
     for entry in data.get("heating", []):
         energy_type = entry.get("energyType", "")
         consumption_kwh = float(entry.get("consumptionKwh", 0))
-        print(f"🔍 Heating energy_type received: '{energy_type}'")
-        print(f"🔍 Heating keys in Firestore: {list(factors.get('heating', {}).keys())}")
         factor_data = factors.get("heating", {}).get(energy_type, {})
         factor_value = float(factor_data.get("value", 0))
         kg_co2e = consumption_kwh * factor_value
@@ -211,10 +241,16 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
             "unit": factor_data.get("unit", ""),
             "kgCO2e": round(kg_co2e, 4),
         })
-    results["heating"] = {"entries": heating_entries, "totalKgCO2e": round(heating_total, 4)}
-    grand_total += heating_total
 
-    # --- Renewables (reduce total) ---
+    results["heating"] = {
+        "entries": heating_entries,
+        "totalKgCO2e": round(heating_total, 4)
+    }
+    location_grand_total += heating_total
+    market_grand_total += heating_total
+
+    # --- Renewables ---
+    # Reported separately per GHG Protocol — does NOT reduce Scope 2 totals
     renewable_entries = []
     renewable_total = 0.0
     for entry in data.get("renewables", []):
@@ -230,10 +266,17 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
             "unit": factor_data.get("unit", ""),
             "kgCO2e": round(kg_co2e, 4),
         })
-    results["renewables"] = {"entries": renewable_entries, "totalKgCO2e": round(renewable_total, 4)}
-    grand_total += renewable_total
 
-    results["totalKgCO2e"] = round(grand_total, 4)
-    results["totalTonneCO2e"] = round(grand_total / 1000, 6)
+    results["renewables"] = {
+        "entries": renewable_entries,
+        "totalKgCO2e": round(renewable_total, 4),
+        "note": "Reported separately per GHG Protocol — does not reduce Scope 1 or 2 totals"
+    }
+    # renewables intentionally NOT added to grand totals
+
+    results["locationBasedKgCO2e"] = round(location_grand_total, 4)
+    results["marketBasedKgCO2e"] = round(market_grand_total, 4)
+    results["locationBasedTonneCO2e"] = round(location_grand_total / 1000, 6)
+    results["marketBasedTonneCO2e"] = round(market_grand_total / 1000, 6)
 
     return results
