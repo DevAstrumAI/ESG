@@ -18,6 +18,18 @@ delete_factors.py
 restructure.py
 test_firebase.py
 upload_emission_factors.py
+# Excel files with data
+*.xlsx
+*.xls
+
+# Firebase service account key
+keys/*.json
+!keys/README.md
+
+# Upload scripts (if you want to keep them local)
+upload_*.py
+check_*.py
+inspect_*.py
 
 # Python
 __pycache__/
