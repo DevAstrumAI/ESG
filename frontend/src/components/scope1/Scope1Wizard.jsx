@@ -1,3 +1,4 @@
+// src/components/scope1/Scope1Wizard.jsx
 import { useState } from "react";
 import { useEmissionStore } from "../../store/emissionStore";
 import Card from "../ui/Card";
@@ -19,15 +20,16 @@ function SubmitScope1Button() {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
 
   const handleSubmit = async () => {
-  const result = await submitScope1(token, year, month);
-  console.log("Submit result:", JSON.stringify(result));
-  if (result.success) {
-    setSubmitted(true);
-    setError(null);
-  } else {
-    setError(result.error || "Submission failed");
-  }
-};
+    // Remove the city parameter - it will be taken from company store
+    const result = await submitScope1(token, year, month);
+    console.log("Submit result:", JSON.stringify(result));
+    if (result.success) {
+      setSubmitted(true);
+      setError(null);
+    } else {
+      setError(result.error || "Submission failed");
+    }
+  };
 
   if (submitted) return (
     <PrimaryButton disabled className="nav-btn finish-btn">
@@ -38,12 +40,18 @@ function SubmitScope1Button() {
   return (
     <div style={{display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px"}}>
       <div style={{display: "flex", gap: "8px", alignItems: "center"}}>
-        <select value={year} onChange={(e) => setYear(Number(e.target.value))}
-          style={{padding: "8px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "14px"}}>
+        <select 
+          value={year} 
+          onChange={(e) => setYear(Number(e.target.value))}
+          style={{padding: "8px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "14px"}}
+        >
           {[2023, 2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <select value={month} onChange={(e) => setMonth(Number(e.target.value))}
-          style={{padding: "8px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "14px"}}>
+        <select 
+          value={month} 
+          onChange={(e) => setMonth(Number(e.target.value))}
+          style={{padding: "8px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "14px"}}
+        >
           {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
             .map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
         </select>
@@ -158,17 +166,16 @@ export default function Scope1Wizard() {
             ← Previous
           </SecondaryButton>
           
-        
-        {currentStep < totalSteps ? (
+          {currentStep < totalSteps ? (
             <PrimaryButton 
-                onClick={nextStep} 
-                className="nav-btn next-btn"
+              onClick={nextStep} 
+              className="nav-btn next-btn"
             >
-                Next →
+              Next →
             </PrimaryButton>
-            ) : (
-                <SubmitScope1Button />
-        )}
+          ) : (
+            <SubmitScope1Button />
+          )}
         </div>
       </Card>
 

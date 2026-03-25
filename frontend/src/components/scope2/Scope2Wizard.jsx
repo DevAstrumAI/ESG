@@ -18,6 +18,7 @@ function SubmitScope2Button({ onSubmitted }) {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
 
   const handleSubmit = async () => {
+    // Remove the city parameter - it will be taken from company store
     const result = await submitScope2(token, year, month);
     if (result.success) {
       setSubmitted(true);

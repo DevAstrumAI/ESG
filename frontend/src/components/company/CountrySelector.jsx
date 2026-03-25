@@ -3,12 +3,20 @@ import SelectDropdown from "../ui/SelectDropdown";
 import { FiMapPin } from "react-icons/fi";
 
 export default function CountrySelector({ data, updateField }) {
-  // Countries by region
+  // Countries by region - Updated with correct values
   const countriesByRegion = {
     "middle-east": [
       { label: "🇦🇪 United Arab Emirates", value: "uae" },
+      { label: "🇸🇦 Saudi Arabia", value: "saudi-arabia" },  // Changed from "saudi" to "saudi-arabia"
       { label: "🇶🇦 Qatar", value: "qatar" },
-      { label: "🇸🇦 Saudi Arabia", value: "saudi" },
+    ],
+    "asia-pacific": [  // Added Asia Pacific region
+      { label: "🇸🇬 Singapore", value: "singapore" },
+      { label: "🇲🇾 Malaysia", value: "malaysia" },
+      { label: "🇮🇩 Indonesia", value: "indonesia" },
+      { label: "🇹🇭 Thailand", value: "thailand" },
+      { label: "🇻🇳 Vietnam", value: "vietnam" },
+      { label: "🇵🇭 Philippines", value: "philippines" },
     ],
     "eu": [
       { label: "🇩🇪 Germany", value: "germany" },

@@ -21,7 +21,8 @@ export default function SetupSummary({ data, updateField }) {
   });
 
   const regions = [
-    { label: "🇦🇪 United Arab Emirates (UAE)", value: "uae" },
+    { label: "🌍 Middle East", value: "middle-east" },
+    { label: "🌏 Asia Pacific", value: "asia-pacific" },
     { label: "🇪🇺 Europe (EU)", value: "eu" },
     { label: "🇬🇧 United Kingdom (UK)", value: "uk" },
     { label: "🇺🇸 United States (US)", value: "us" },
@@ -101,18 +102,31 @@ export default function SetupSummary({ data, updateField }) {
     }).format(value);
   };
 
-  // helper function with other helper functions
-const getCountryLabel = (country) => {
-  const countries = {
-    uae: "UAE",
-    qatar: "Qatar",
-    saudi: "Saudi Arabia",
-    // Add more as needed
+  // Updated getCountryLabel function with all countries
+  const getCountryLabel = (country) => {
+    const countries = {
+      'uae': "UAE",
+      'qatar': "Qatar",
+      'saudi': "Saudi Arabia",
+      'saudi-arabia': "Saudi Arabia",  // Support both formats
+      'singapore': "Singapore",
+      'malaysia': "Malaysia",
+      'indonesia': "Indonesia",
+      'thailand': "Thailand",
+      'vietnam': "Vietnam",
+      'philippines': "Philippines",
+    };
+    return countries[country] || country;
   };
-  return countries[country] || country;
-};
 
-
+  // Helper to get display name for location (city and country)
+  const getLocationDisplay = (loc) => {
+    const countryName = getCountryLabel(loc.country);
+    if (countryName && countryName !== loc.country) {
+      return `${loc.city}, ${countryName}`;
+    }
+    return loc.city;
+  };
 
   return (
     <div className="summary-step">
@@ -384,8 +398,7 @@ const getCountryLabel = (country) => {
                   <div key={loc.id} className="facility-item">
                     <FiMapPin className="location-icon" />
                     <span>
-                      <strong>{loc.city}</strong>
-                      {loc.country && `, ${getCountryLabel(loc.country)}`}
+                      {getLocationDisplay(loc)}
                     </span>
                   </div>
                 ))

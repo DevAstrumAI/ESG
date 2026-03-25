@@ -44,16 +44,138 @@ export default function VehicleTable() {
     );
   }, [vehicles, searchTerm]);
 
+// Backend decides distance-vs-litres purely from the *mapped fuel type*.
+const DISTANCE_BASED_TYPES = new Set([
+  "jet_aircraft_per_km",
+  "cargo_ship_hfo",
+  "marine_hfo",
+  "diesel_train",
+  "diesel_bus",
+]);
+
+const mapFuelTypeFromUI = (fuel) => {
+  const normalized = (fuel || "").toLowerCase();
+  const map = {
+    "diesel": "diesel",
+    "petrol": "petrol",
+    "lpg": "lpg",
+    "biodiesel": "biodiesel",
+    "other": "natural_gas",
+  };
+  return map[normalized] || "natural_gas";
+};
+
+const mapVehicleFuelTypeFromUI = (vehicleType, fuelTypeUI) => {
+  const type = (vehicleType || "").toLowerCase();
+  const fuel = mapFuelTypeFromUI(fuelTypeUI);
+
+  if (type === "car" && fuel === "petrol") return "petrol_car";
+  if (type === "car" && fuel === "diesel") return "diesel_car";
+  if (type === "truck" && fuel === "diesel") return "diesel_truck";
+  if (type === "bus" && fuel === "diesel") return "diesel_bus";
+  if (type === "motorcycle" && fuel === "petrol") return "petrol_motorcycle";
+  if (type === "motorcycle" && fuel !== "petrol") return "motorcycle";
+  if (type === "forklift" && fuel === "lpg") return "lpg_forklift";
+  if (type === "motorboat") return "motorboat_gasoline";
+  if (type === "cargo van" && fuel === "diesel") return "diesel_van";
+  if (type === "airplane") return "jet_aircraft_per_km";
+  if (type === "ship") return "cargo_ship_hfo";
+
+  return fuel === "petrol" ? "petrol_car" : "diesel_car";
+};
+
+const mappedBackendFuelType = vehicleType && fuelType
+  ? mapVehicleFuelTypeFromUI(vehicleType, fuelType)
+  : "";
+
+const useDistance = DISTANCE_BASED_TYPES.has(mappedBackendFuelType);
+
   const handleAdd = () => {
-    if (!vehicleType || !fuelType || !km || !litres || !registration) return;
+    // #region agent log V1
+    fetch(
+      "http://127.0.0.1:7312/ingest/558453d5-0857-4b96-9467-7f67bad3b71f",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "841ec6",
+        },
+        body: JSON.stringify({
+          sessionId: "841ec6",
+          runId: "pre-fix",
+          hypothesisId: "V1",
+          location: "frontend/src/components/scope1/VehicleTable.jsx:handleAdd",
+          message: "Add Vehicle click: current form values + which field is visible",
+          data: {
+            vehicleType,
+            fuelType,
+            km,
+            litres,
+            registration,
+            useDistance,
+            missing: {
+              vehicleType: !vehicleType,
+              fuelType: !fuelType,
+              km: !km,
+              litres: !litres,
+              registration: !registration,
+            },
+          },
+          timestamp: Date.now(),
+        }),
+      }
+    ).catch(() => {});
+    // #endregion
+
+    // Validation must match the UI: if distance-based, we only require `km`;
+    // if fuel-based, we only require `litres`. (Do not require both.)
+    if (!vehicleType || !fuelType || !registration) return;
+    if (useDistance) {
+      if (km === "" || km === null || Number.isNaN(Number(km))) return;
+    } else {
+      if (litres === "" || litres === null || Number.isNaN(Number(litres))) return;
+    }
+
+    const kmNum = Number(km || 0);
+    const litresNum = Number(litres || 0);
     addVehicle({
       id: Date.now(),
       vehicleType,
       fuelType,
-      km: Number(km),
-      litres: Number(litres),
+      km: useDistance ? kmNum : 0,
+      litres: useDistance ? 0 : litresNum,
       registration
     });
+
+    // #region agent log V2
+    fetch(
+      "http://127.0.0.1:7312/ingest/558453d5-0857-4b96-9467-7f67bad3b71f",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "841ec6",
+        },
+        body: JSON.stringify({
+          sessionId: "841ec6",
+          runId: "pre-fix",
+          hypothesisId: "V2",
+          location: "frontend/src/components/scope1/VehicleTable.jsx:handleAdd",
+          message: "Add Vehicle passed validation and updated store",
+          data: {
+            vehicleType,
+            fuelType,
+            useDistance,
+            km: useDistance ? kmNum : 0,
+            litres: useDistance ? 0 : litresNum,
+            registration,
+          },
+          timestamp: Date.now(),
+        }),
+      }
+    ).catch(() => {});
+    // #endregion
+
     setVehicleType(""); setFuelType(""); setKm(""); setLitres(""); setRegistration("");
   };
 
@@ -137,58 +259,46 @@ export default function VehicleTable() {
         </div>
         <div className="add-vehicle-form">
           <div className="form-grid">
-            <select
-              value={vehicleType}
-              onChange={(e) => setVehicleType(e.target.value)}
-              className="form-select"
-            >
-              <option value="">Vehicle Type</option>
-              {vehicleOptions.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
+          <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)} className="form-select">
+            <option value="">Vehicle Type</option>
+            {vehicleOptions.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
 
-            <select
-              value={fuelType}
-              onChange={(e) => setFuelType(e.target.value)}
-              className="form-select"
-            >
-              <option value="">Fuel Type</option>
-              {fuelOptions.map(f => <option key={f} value={f}>{f}</option>)}
-            </select>
+          <select value={fuelType} onChange={(e) => setFuelType(e.target.value)} className="form-select">
+            <option value="">Fuel Type</option>
+            {fuelOptions.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
 
-            <div className="input-wrapper">
-              <FiHash className="input-icon" />
-              <input
-                type="text"
-                placeholder="Registration Number"
-                value={registration}
-                onChange={(e) => setRegistration(e.target.value)}
-                className="clean-input"
-              />
-            </div>
+          <div className="input-wrapper">
+            <FiHash className="input-icon" />
+            <input type="text" placeholder="Registration Number" value={registration} onChange={(e) => setRegistration(e.target.value)} className="clean-input" />
+          </div>
+        </div>
 
+          {useDistance ? (
             <div className="input-wrapper">
               <FiMapPin className="input-icon" />
               <input
-                type="number"
-                placeholder="Distance (km)"
-                value={km}
-                onChange={(e) => setKm(e.target.value)}
-                className="clean-input"
-              />
-            </div>
-
-            <div className="input-wrapper">
-              <FiDroplet className="input-icon" />
-              <input
-                type="number"
-                placeholder="Fuel (litres)"
-                value={litres}
-                onChange={(e) => setLitres(e.target.value)}
-                className="clean-input"
-              />
-            </div>
+              type="number"
+              placeholder="Distance (km)"
+              value={km}
+              onChange={(e) => setKm(e.target.value)}
+              className="clean-input"
+            />
           </div>
-          
+        ) : (
+          <div className="input-wrapper">
+            <FiDroplet className="input-icon" />
+            <input
+              type="number"
+              placeholder="Fuel (litres)"
+              value={litres}
+              onChange={(e) => setLitres(e.target.value)}
+              className="clean-input"
+            />
+          </div>
+        )}
+
           <PrimaryButton onClick={handleAdd} className="add-btn">
             <FiPlus size={20} /> Add Vehicle
           </PrimaryButton>

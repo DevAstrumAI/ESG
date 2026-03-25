@@ -8,12 +8,24 @@ import { FiMapPin, FiTrash2, FiPlus } from "react-icons/fi";
 export default function LocationManager({ data, updateField }) {
   const [selectedCity, setSelectedCity] = useState("");
 
-  // Cities by country
+  // Cities by country - Updated with correct country codes that match backend
   const citiesByCountry = {
-    uae: ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"],
-    qatar: ["Doha", "Al Wakrah", "Al Khor", "Al Rayyan"],
-    saudi: ["Riyadh", "Jeddah", "Dammam", "Khobar", "Medina", "Mecca"],
+  uae: ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"],
+  qatar: ["Doha", "Al Wakrah", "Al Khor", "Al Rayyan"],
+  "saudi-arabia": ["Riyadh", "Jeddah", "Dammam", "Khobar", "Medina", "Mecca"],  // Changed from "saudi" to "saudi-arabia"
+  singapore: ["Singapore"]  // Added Singapore
+};
+
+  // Map country codes to display names
+ const getCountryDisplayName = (countryCode) => {
+  const names = {
+    'uae': 'UAE',
+    'qatar': 'Qatar',
+    'saudi-arabia': 'Saudi Arabia',  // Changed from 'saudi' to 'saudi-arabia'
+    'singapore': 'Singapore'  // Added Singapore
   };
+  return names[countryCode] || countryCode;
+};
 
   const availableCities = citiesByCountry[data.country] || [];
 
@@ -99,8 +111,7 @@ export default function LocationManager({ data, updateField }) {
           <div className="country-info">
             <FiMapPin className="country-icon" />
             <span>
-              Adding locations for <strong>{data.country === 'uae' ? 'UAE' : 
-                data.country === 'qatar' ? 'Qatar' : 'Saudi Arabia'}</strong>
+              Adding locations for <strong>{getCountryDisplayName(data.country)}</strong>
             </span>
           </div>
 
@@ -155,22 +166,21 @@ export default function LocationManager({ data, updateField }) {
                   <tbody>
                     {data.locations.map((loc, index) => (
                       <tr key={loc.id} className={index % 2 === 0 ? 'even-row' : 'odd-row'}>
-                        <td>
+                        <td data-label="City Name">
                           <div className="city-cell">
                             <FiMapPin className="city-icon" />
                             <span className="city-name">{loc.city}</span>
                           </div>
                         </td>
-                        <td>
+                        <td data-label="Country">
                           <span className="country-badge">
-                            {loc.country === 'uae' ? 'UAE' : 
-                             loc.country === 'qatar' ? 'Qatar' : 'Saudi Arabia'}
+                            {getCountryDisplayName(loc.country)}
                           </span>
                         </td>
-                        <td>
+                        <td data-label="Status">
                           <span className="status-badge active">Active</span>
                         </td>
-                        <td>
+                        <td data-label="Actions">
                           <button
                             onClick={() => removeCity(loc.id)}
                             className="remove-btn"

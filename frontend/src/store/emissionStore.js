@@ -1,6 +1,7 @@
 // src/store/emissionStore.js
 import { create } from "zustand";
 import { emissionsAPI } from "../services/api";
+import { useCompanyStore } from "./companyStore";
 
 // Vehicle types that use distance-based calculation (must match backend)
 const DISTANCE_BASED_TYPES = new Set([
@@ -18,7 +19,7 @@ function mapFuelType(fuel) {
     "Heating oil (liters)": "heavy_fuel_oil",
     "Industrial coal (tons)": "coal",
     "LPG (liters)": "lpg",
-    "Petrol (liters)": "gasoline",
+    "Petrol (liters)": "petrol",
     "Wood pellets (tons)": "wood_pellets",
     "Kerosene (tons)": "kerosene",
     "Other": "natural_gas",
@@ -45,6 +46,13 @@ function mapVehicleFuelType(vehicleType, fuelType) {
   return fuel === "petrol" ? "petrol_car" : "diesel_car";
 }
 
+function shouldUseDistance(vehicleType, fuelType) {
+  const type = vehicleType.toLowerCase();
+  // Only these use distance — must match backend DISTANCE_BASED_TYPES exactly
+  const distanceBasedVehicles = ["airplane", "ship", "bus", "motorboat"];
+  return distanceBasedVehicles.includes(type);
+}
+
 function mapRefrigerantType(type) {
   const map = {
     "R-134a":    "r134a",
@@ -63,6 +71,19 @@ function mapRefrigerantType(type) {
     "N2O":       "n2o",
   };
   return map[type] || "methane";
+}
+
+function getRegionFromCountry(country) {
+  const middleEastCountries = [
+    'uae', 'saudi-arabia', 'qatar', 'kuwait', 'bahrain', 'oman', 'jordan', 'lebanon'
+  ];
+  const asiaPacificCountries = [
+    'singapore', 'malaysia', 'indonesia', 'thailand', 'vietnam', 'philippines'
+  ];
+  
+  if (middleEastCountries.includes(country)) return 'middle-east';
+  if (asiaPacificCountries.includes(country)) return 'asia-pacific';
+  return 'middle-east'; // default
 }
 
 export const useEmissionStore = create((set, get) => ({
@@ -261,22 +282,57 @@ export const useEmissionStore = create((set, get) => ({
     const year = get().selectedYear;
     try {
       const result = await emissionsAPI.getSummary(token, year);
+      const mappedScope1Results = {
+        mobile: { kgCO2e: result.scope1?.breakdown?.mobile || 0 },
+        stationary: { kgCO2e: result.scope1?.breakdown?.stationary || 0 },
+        refrigerants: { kgCO2e: result.scope1?.breakdown?.refrigerants || 0 },
+        fugitive: { kgCO2e: result.scope1?.breakdown?.fugitive || 0 },
+        total: { kgCO2e: result.scope1?.totalKgCO2e || 0 },
+      };
+
+      const mappedScope2Results = {
+        electricity: { kgCO2e: result.scope2?.breakdown?.electricity || 0 },
+        heating: { kgCO2e: result.scope2?.breakdown?.heating || 0 },
+        renewables: { kgCO2e: result.scope2?.breakdown?.renewables || 0 },
+        locationBasedKgCO2e: result.scope2?.locationBasedKgCO2e || 0,
+        marketBasedKgCO2e: result.scope2?.marketBasedKgCO2e || 0,
+        total: { kgCO2e: result.scope2?.locationBasedKgCO2e || 0 },
+      };
+
+      // #region agent log H2
+      fetch(
+        "http://127.0.0.1:7312/ingest/558453d5-0857-4b96-9467-7f67bad3b71f",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Debug-Session-Id": "841ec6",
+          },
+          body: JSON.stringify({
+            sessionId: "841ec6",
+            runId: "pre-fix",
+            hypothesisId: "H2",
+            location: "frontend/src/store/emissionStore.js:fetchSummary",
+            message: "Backend summary response + store mapping (scope2)",
+            data: {
+              summaryScope1Keys: Object.keys(result.scope1 || {}),
+              summaryScope1TotalKgCO2e: result.scope1?.totalKgCO2e,
+              summaryScope1Breakdown: result.scope1?.breakdown || null,
+              mappedScope1Results,
+              summaryScope2Keys: Object.keys(result.scope2 || {}),
+              summaryScope2Breakdown: result.scope2?.breakdown || null,
+              mappedScope2Results,
+            },
+            timestamp: Date.now(),
+          }),
+        }
+      ).catch(() => {});
+      // #endregion
+
       set({
-        scope1Results: {
-          mobile:      { kgCO2e: result.scope1?.breakdown?.mobile || 0 },
-          stationary:  { kgCO2e: result.scope1?.breakdown?.stationary || 0 },
-          refrigerants:{ kgCO2e: result.scope1?.breakdown?.refrigerants || 0 },
-          fugitive:    { kgCO2e: result.scope1?.breakdown?.fugitive || 0 },
-          total:       { kgCO2e: result.scope1?.totalKgCO2e || 0 },
-        },
-        scope2Results: {
-          electricity: { kgCO2e: result.scope2?.breakdown?.electricity || 0 },
-          heating:     { kgCO2e: result.scope2?.breakdown?.heating || 0 },
-          renewables:  { kgCO2e: result.scope2?.breakdown?.renewables || 0 },
-          locationBasedKgCO2e: result.scope2?.locationBasedKgCO2e || 0,
-          marketBasedKgCO2e:   result.scope2?.marketBasedKgCO2e || 0,
-          total:       { kgCO2e: result.scope2?.locationBasedKgCO2e || 0 },
-        },
+        scope1Results: mappedScope1Results,
+        scope2Results: mappedScope2Results,
+        selectedYear: year,
       });
       return { success: true };
     } catch (error) {
@@ -285,21 +341,51 @@ export const useEmissionStore = create((set, get) => ({
   },
 
   // ─── Submit Scope 1 ──────────────────────────────────────────────────────
-  submitScope1: async (token, year, month, city = "dubai") => {
+  submitScope1: async (token, year, month) => {
+    console.log("🔍=== SUBMIT SCOPE 1 DEBUG ===");
+    
+    // Get the current state
     const state = get();
+    console.log("📦 Current store state:", {
+      scope1Vehicles: state.scope1Vehicles,
+      scope1Stationary: state.scope1Stationary,
+      scope1Refrigerants: state.scope1Refrigerants,
+      scope1Fugitive: state.scope1Fugitive
+    });
+    
+    // Get company location from company store
+    const companyStore = useCompanyStore.getState();
+    console.log("1. Full company store:", companyStore);
+    console.log("2. Company object:", companyStore.company);
+    
+    // Get primary location or first location
+    const primaryLocation = companyStore.company?.locations?.find(loc => loc.isPrimary) || 
+                            companyStore.company?.locations?.[0];
+    console.log("3. Primary location:", primaryLocation);
+    
+    // Set default if no location exists
+    const country = primaryLocation?.country || 'uae';
+    const city = primaryLocation?.city?.toLowerCase() || 'dubai';
+    const region = getRegionFromCountry(country);
+    
+    console.log("4. Final location:", { region, country, city });
+
     const payload = {
       year,
       month,
-      region: "middle-east",
-      country: "uae",
-      city,
+      region: region,
+      country: country,
+      city: city,
       mobile: state.scope1Vehicles.map((v) => {
         const fuelType = mapVehicleFuelType(v.vehicleType, v.fuelType);
-        const isDistanceBased = DISTANCE_BASED_TYPES.has(fuelType);
+        // Backend decides distance vs litres purely from `fuelType` (DISTANCE_BASED_TYPES).
+        const useDistance = DISTANCE_BASED_TYPES.has(fuelType);
+        
+        console.log(`🚗 Vehicle: ${v.vehicleType}, fuel: ${v.fuelType} -> ${fuelType}, useDistance: ${useDistance}, km: ${v.km}, litres: ${v.litres}`);
+        
         return {
           fuelType,
-          // distance-based for aviation/marine/rail, litres for road vehicles
-          ...(isDistanceBased
+          ...(useDistance
             ? { distanceKm: Number(v.km || 0) }
             : { litresConsumed: Number(v.litres || 0) }
           ),
@@ -319,8 +405,36 @@ export const useEmissionStore = create((set, get) => ({
       })),
     };
 
+    console.log("📤 Final payload being sent:", JSON.stringify(payload, null, 2));
+
+    // #region agent log H12
+    fetch(
+      "http://127.0.0.1:7312/ingest/558453d5-0857-4b96-9467-7f67bad3b71f",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "841ec6",
+        },
+        body: JSON.stringify({
+          sessionId: "841ec6",
+          runId: "pre-fix",
+          hypothesisId: "H12",
+          location: "frontend/src/store/emissionStore.js:submitScope1",
+          message: "Scope1 payload mobile (field chosen + fuelType)",
+          data: {
+            payloadMobileCount: payload.mobile?.length || 0,
+            firstMobileEntry: payload.mobile?.[0] || null,
+          },
+          timestamp: Date.now(),
+        }),
+      }
+    ).catch(() => {});
+    // #endregion
+
     try {
       const result = await emissionsAPI.submitScope1(token, payload);
+      console.log("✅ Submit result:", result);
       set({
         scope1Results: {
           mobile:      { kgCO2e: result.results?.mobile?.totalKgCO2e || 0 },
@@ -333,19 +447,40 @@ export const useEmissionStore = create((set, get) => ({
       });
       return { success: true, results: result.results };
     } catch (error) {
+      console.error("❌ Submit error:", error);
       return { success: false, error: error.message };
     }
   },
 
   // ─── Submit Scope 2 ──────────────────────────────────────────────────────
-  submitScope2: async (token, year, month, city = "dubai") => {
+  submitScope2: async (token, year, month) => {
+    console.log("🔍=== SUBMIT SCOPE 2 DEBUG ===");
+    
     const state = get();
+    
+    // Get company location from company store
+    const companyStore = useCompanyStore.getState();
+    console.log("1. Full company store:", companyStore);
+    console.log("2. Company object:", companyStore.company);
+    
+    // Get primary location or first location
+    const primaryLocation = companyStore.company?.locations?.find(loc => loc.isPrimary) || 
+                            companyStore.company?.locations?.[0];
+    console.log("3. Primary location:", primaryLocation);
+    
+    // Set default if no location exists
+    const country = primaryLocation?.country || 'uae';
+    const city = primaryLocation?.city?.toLowerCase() || 'dubai';
+    const region = getRegionFromCountry(country);
+    
+    console.log("4. Final location:", { region, country, city });
+    
     const payload = {
       year,
       month,
-      region: "middle-east",
-      country: "uae",
-      city,
+      region: region,
+      country: country,
+      city: city,
       electricity: state.scope2Electricity.map((e) => ({
         facilityName: e.facilityName || "Main Facility",
         consumptionKwh: Number(e.consumption || e.kwh || 0),
@@ -362,8 +497,11 @@ export const useEmissionStore = create((set, get) => ({
       })),
     };
 
+    console.log("📤 Final payload being sent:", JSON.stringify(payload, null, 2));
+
     try {
       const result = await emissionsAPI.submitScope2(token, payload);
+      console.log("✅ Submit result:", result);
       set({
         scope2Results: {
           electricity: { kgCO2e: result.results?.electricity?.locationBasedKgCO2e || 0 },
@@ -374,13 +512,13 @@ export const useEmissionStore = create((set, get) => ({
           },
           locationBasedKgCO2e: result.results?.locationBasedKgCO2e || 0,
           marketBasedKgCO2e:   result.results?.marketBasedKgCO2e || 0,
-          // Use location-based as primary total per GHG Protocol
           total: { kgCO2e: result.results?.locationBasedKgCO2e || 0 },
         },
         selectedYear: year,
       });
       return { success: true, results: result.results };
     } catch (error) {
+      console.error("❌ Submit error:", error);
       return { success: false, error: error.message };
     }
   },

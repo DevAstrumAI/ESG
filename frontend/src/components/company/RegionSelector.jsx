@@ -3,15 +3,13 @@ import SelectDropdown from "../ui/SelectDropdown";
 import { FiGlobe } from "react-icons/fi";
 
 export default function RegionSelector({ data, updateField }) {
-  const regions = [
-    { label: "🌍 Middle East", value: "middle-east", flag: "🌍" },
-    { label: "🇪🇺 Europe (EU)", value: "eu", flag: "🇪🇺" },
-    { label: "🇬🇧 United Kingdom (UK)", value: "uk", flag: "🇬🇧" },
-    { label: "🇺🇸 United States (US)", value: "us", flag: "🇺🇸" },
-    { label: "🇮🇳 India", value: "in", flag: "🇮🇳" },
-    { label: "🇨🇳 China", value: "cn", flag: "🇨🇳" },
-    { label: "🌍 Other", value: "other", flag: "🌍" },
-  ];
+  // In RegionSelector.jsx, add Asia Pacific if not already there:
+const regions = [
+  { label: "🌍 Middle East", value: "middle-east", flag: "🌍" },
+  { label: "🌏 Asia Pacific", value: "asia-pacific", flag: "🌏" },  // Add this
+  { label: "🇪🇺 Europe (EU)", value: "eu", flag: "🇪🇺" },
+  // ... other regions
+];
 
   return (
     <div className="form-step">
