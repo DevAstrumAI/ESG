@@ -72,7 +72,7 @@ function Sidebar({ collapsed, onCollapse }) {
         position: "relative",
       }}
     >
-      {/* Logo Area - Lumyna Brand */}
+      {/* Logo Area - Lumyina Brand */}
       <div style={{
         display: "flex",
         alignItems: "center",
@@ -102,7 +102,7 @@ function Sidebar({ collapsed, onCollapse }) {
               color: "white",
               letterSpacing: "0.5px",
             }}>
-              Lumyna
+              Lumyina
             </span>
           </>
         ) : (

@@ -19,7 +19,7 @@ export default function TermsOfServicePage() {
       id: "acceptance",
       icon: <FiCheckCircle />,
       title: "Acceptance of Terms",
-      content: "By accessing or using Lumyna's ESG Calculator platform, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our services."
+      content: "By accessing or using Lumyina's ESG Calculator platform, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our services."
     },
     {
       id: "eligibility",
@@ -65,7 +65,7 @@ export default function TermsOfServicePage() {
             <div className="brand-section">
               <div className="logo-wrapper">
                 <BiLeaf className="logo-icon" />
-                <span className="logo-text">Lumyna</span>
+                <span className="logo-text">Lumyina</span>
               </div>
             </div>
             <h1>Terms of Service</h1>
@@ -79,7 +79,7 @@ export default function TermsOfServicePage() {
           {/* Introduction */}
           <div className="intro-section">
             <p>
-              Welcome to Lumyna. These Terms of Service govern your use of our ESG Calculator platform. 
+              Welcome to Lumyina. These Terms of Service govern your use of our ESG Calculator platform. 
               By using our services, you agree to these terms. Please read them carefully.
             </p>
           </div>
@@ -99,7 +99,7 @@ export default function TermsOfServicePage() {
           <div className="liability-section">
             <h3>Limitation of Liability</h3>
             <p>
-              To the maximum extent permitted by law, Lumyna shall not be liable for any indirect, incidental, 
+              To the maximum extent permitted by law, Lumyina shall not be liable for any indirect, incidental, 
               special, consequential, or punitive damages, or any loss of profits or revenues, whether incurred 
               directly or indirectly, or any loss of data, use, goodwill, or other intangible losses, resulting 
               from your use of our services.
@@ -133,14 +133,14 @@ export default function TermsOfServicePage() {
               If you have any questions about these Terms of Service, please contact us at:
             </p>
             <div className="contact-info">
-              <a href="mailto:legal@lumyna.com">legal@lumyna.com</a>
+              <a href="mailto:legal@lumyina.com">legal@lumyina.com</a>
             </div>
           </div>
 
           {/* Footer */}
           <div className="footer">
             <p>
-              By using Lumyna, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service.
+              By using Lumyina, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service.
             </p>
             <div className="footer-links">
               <Link to="/privacy">Privacy Policy</Link>

@@ -64,7 +64,7 @@ export default function PrivacyPolicyPage() {
             <div className="brand-section">
               <div className="logo-wrapper">
                 <BiLeaf className="logo-icon" />
-                <span className="logo-text">Lumyna</span>
+                <span className="logo-text">Lumyina</span>
               </div>
             </div>
             <h1>Privacy Policy</h1>
@@ -77,7 +77,7 @@ export default function PrivacyPolicyPage() {
           {/* Introduction */}
           <div className="intro-section">
             <p>
-              At Lumyna, we take your privacy seriously. This Privacy Policy explains how we collect, 
+              At Lumyina, we take your privacy seriously. This Privacy Policy explains how we collect, 
               use, disclose, and safeguard your information when you use our ESG Calculator platform. 
               Please read this privacy policy carefully. If you do not agree with the terms of this 
               privacy policy, please do not access the platform.
@@ -103,14 +103,14 @@ export default function PrivacyPolicyPage() {
               please contact us at:
             </p>
             <div className="contact-info">
-              <a href="mailto:privacy@lumyna.com">privacy@lumyna.com</a>
+              <a href="mailto:privacy@lumyina.com">privacy@lumyina.com</a>
             </div>
           </div>
 
           {/* Footer */}
           <div className="footer">
             <p>
-              By using Lumyna, you acknowledge that you have read and understood this Privacy Policy.
+              By using Lumyina, you acknowledge that you have read and understood this Privacy Policy.
             </p>
             <div className="footer-links">
               <Link to="/terms">Terms of Service</Link>

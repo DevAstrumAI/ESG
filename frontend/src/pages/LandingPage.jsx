@@ -66,7 +66,7 @@ export default function LandingPage() {
         <nav className="navbar">
           <div className="nav-brand">
             <BiLeaf className="brand-icon" />
-            <span>Lumyna</span>
+            <span>Lumyina</span>
           </div>
           <div className="nav-buttons">
             <button onClick={() => navigate("/login")} className="login-btn">
@@ -85,14 +85,14 @@ export default function LandingPage() {
             <span>ESG Intelligence Platform</span>
           </div>
 
-          <h1 className="hero-title">Lumyna</h1>
+          <h1 className="hero-title">Lumyina</h1>
 
           <p className="hero-description">
             Track Your Carbon Footprint with Precision
           </p>
 
           <p className="hero-sub">
-            Lumyna helps sustainability managers across UAE, Singapore, and Saudi
+            Lumyina helps sustainability managers across UAE, Singapore, and Saudi
             Arabia measure, monitor, and reduce their organization's emissions
             with our comprehensive ESG calculator.
           </p>
@@ -150,7 +150,7 @@ export default function LandingPage() {
           <div className="footer-content">
             <div className="footer-brand">
               <BiLeaf className="footer-icon" />
-              <span>Lumyna</span>
+              <span>Lumyina</span>
             </div>
             <div className="footer-links">
               <Link to="/privacy">Privacy Policy</Link>
@@ -159,7 +159,7 @@ export default function LandingPage() {
               <Link to="/contact">Contact Us</Link>
             </div>
             <div className="footer-copyright">
-              © {new Date().getFullYear()} Lumyna. All rights reserved.
+              © {new Date().getFullYear()} Lumyina. All rights reserved.
             </div>
           </div>
         </footer>

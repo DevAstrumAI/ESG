@@ -40,7 +40,7 @@ export default function SignupPage() {
         <div className="brand-section">
           <div className="logo-wrapper">
             <BiLeaf className="logo-icon" />
-            <span className="logo-text">Lumyna</span>
+            <span className="logo-text">Lumyina</span>
           </div>
           <h2 className="welcome-text">Create your account</h2>
         </div>

@@ -45,7 +45,7 @@ export default function LoginPage() {
         <div className="brand-section">
           <div className="logo-wrapper">
             <BiLeaf className="logo-icon" />
-            <span className="logo-text">Lumyna</span>
+            <span className="logo-text">Lumyina</span>
           </div>
           <h2 className="welcome-text">Welcome back</h2>
         </div>
