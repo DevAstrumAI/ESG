@@ -3,8 +3,12 @@ import React, { useEffect } from "react";
 import Scope2Container from "../components/scope2/Scope2Container";
 import { useCompanyStore } from "../store/companyStore";
 import { useAuthStore } from "../store/authStore";
+import { useNavigate } from "react-router-dom";
+import PrimaryButton from "../components/ui/PrimaryButton";
+import { FiZap } from "react-icons/fi";
 
 export default function Scope2Page() {
+  const navigate = useNavigate();
   const { company, fetchCompany, loading, error } = useCompanyStore();
   const token = useAuthStore((state) => state.token);
 
@@ -12,8 +16,12 @@ export default function Scope2Page() {
     if (token && !company && !loading) {
       fetchCompany(token);
     }
-  }, [token, company, loading, fetchCompany]); // Fixed dependencies
+  }, [token, company, loading, fetchCompany]);
 
+  // Check if company exists and has basic info
+  const hasCompanyData = company && company.basicInfo?.name;
+
+  // Show loading state
   if (loading) {
     return (
       <div className="loading-container">
@@ -35,13 +43,16 @@ export default function Scope2Page() {
             border-radius: 50%;
             animation: spin 1s linear infinite;
           }
-          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
           p { margin-top: 16px; color: #6B7280; }
         `}</style>
       </div>
     );
   }
 
+  // Show error state
   if (error) {
     return (
       <div className="error-container">
@@ -62,6 +73,77 @@ export default function Scope2Page() {
       </div>
     );
   }
+
+  // Show setup message if company data is missing
+  if (!hasCompanyData) {
+    return (
+      <div className="setup-message-container">
+        <div className="setup-card">
+          <div className="setup-icon">
+            <FiZap size={48} />
+          </div>
+          <h2>Complete Company Setup First</h2>
+          <p>
+            Before you can start tracking emissions, please set up your company profile.
+            This includes your company name, location, industry, and other details needed for accurate calculations.
+          </p>
+          <PrimaryButton onClick={() => navigate("/setup")} className="setup-btn">
+            Go to Company Setup
+          </PrimaryButton>
+        </div>
+        <style jsx>{`
+          .setup-message-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 70vh;
+            padding: 24px;
+          }
+          .setup-card {
+            background: white;
+            border-radius: 16px;
+            padding: 48px;
+            text-align: center;
+            max-width: 500px;
+            border: 1px solid #E5E7EB;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          }
+          .setup-icon {
+            width: 80px;
+            height: 80px;
+            background: #F8FAF8;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            color: #2E7D64;
+            border: 1px solid #E5E7EB;
+          }
+          .setup-card h2 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1B4D3E;
+            margin-bottom: 16px;
+          }
+          .setup-card p {
+            color: #4A5568;
+            line-height: 1.6;
+            margin-bottom: 32px;
+            font-size: 15px;
+          }
+          .setup-btn {
+            background: #2E7D64 !important;
+            padding: 12px 28px !important;
+            font-size: 16px !important;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  console.log("🏢 Company loaded in Scope2Page:", company);
+  console.log("📍 Primary location:", company?.locations?.[0]);
 
   return (
     <div className="scope2-page">
