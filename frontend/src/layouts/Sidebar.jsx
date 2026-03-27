@@ -1,3 +1,4 @@
+// src/components/layout/Sidebar.jsx
 import { Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { 
@@ -33,11 +34,11 @@ function Sidebar({ collapsed, onCollapse }) {
   const displayEmail = user?.email || "";
 
   const navItems = [
-    { label: "Dashboard", path: "/dashboard", icon: <FiHome size={20} />, color: "#22C55E" },
-    { label: "Company Setup", path: "/setup", icon: <FiBriefcase size={20} />, color: "#2E7D32" },
-    { label: "Scope 1", path: "/scope1", icon: <FiTruck size={20} />, color: "#388E3C" },
-    { label: "Scope 2", path: "/scope2", icon: <FiZap size={20} />, color: "#43A047" },
-    { label: "Reports", path: "/reports", icon: <FiFileText size={20} />, color: "#4CAF50" },
+    { label: "Dashboard", path: "/dashboard", icon: <FiHome size={20} />, color: "#2E7D64" },
+    { label: "Company Setup", path: "/setup", icon: <FiBriefcase size={20} />, color: "#2E7D64" },
+    { label: "Scope 1", path: "/scope1", icon: <FiTruck size={20} />, color: "#2E7D64" },
+    { label: "Scope 2", path: "/scope2", icon: <FiZap size={20} />, color: "#2E7D64" },
+    { label: "Reports", path: "/reports", icon: <FiFileText size={20} />, color: "#2E7D64" },
   ];
 
   const bottomItems = [
@@ -60,19 +61,18 @@ function Sidebar({ collapsed, onCollapse }) {
       style={{
         width: "100%",
         height: "100vh",
-        background: "linear-gradient(180deg, #F0FDF4 0%, #DCFCE7 100%)",
-        padding: collapsed ? "20px 8px" : "20px 12px",
+        background: "#1B4D3E",
+        padding: collapsed ? "20px 8px" : "20px 16px",
         boxSizing: "border-box",
         transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
         display: "flex",
         flexDirection: "column",
-        borderRight: "1px solid rgba(34, 197, 94, 0.15)",
-        boxShadow: "4px 0 20px rgba(34, 197, 94, 0.1)",
+        borderRight: "1px solid #2E7D64",
         overflow: "visible",
         position: "relative",
       }}
     >
-      {/* Logo Area */}
+      {/* Logo Area - Lumyna Brand */}
       <div style={{
         display: "flex",
         alignItems: "center",
@@ -84,7 +84,7 @@ function Sidebar({ collapsed, onCollapse }) {
             <div style={{
               width: "40px",
               height: "40px",
-              background: "linear-gradient(135deg, #22C55E 0%, #15803D 100%)",
+              background: "#2E7D64",
               borderRadius: "10px",
               display: "flex",
               alignItems: "center",
@@ -96,15 +96,20 @@ function Sidebar({ collapsed, onCollapse }) {
             }}>
               <BiLeaf size={20} />
             </div>
-            <span style={{ fontWeight: 700, fontSize: "18px", color: "#14532D" }}>
-              ESG-Calculator
+            <span style={{ 
+              fontWeight: 700, 
+              fontSize: "20px", 
+              color: "white",
+              letterSpacing: "0.5px",
+            }}>
+              Lumyna
             </span>
           </>
         ) : (
           <div style={{
             width: "44px",
             height: "44px",
-            background: "linear-gradient(135deg, #22C55E 0%, #15803D 100%)",
+            background: "#2E7D64",
             borderRadius: "12px",
             display: "flex",
             alignItems: "center",
@@ -127,27 +132,27 @@ function Sidebar({ collapsed, onCollapse }) {
           width: "28px",
           height: "28px",
           background: "white",
-          border: "2px solid #22C55E",
+          border: "2px solid #2E7D64",
           borderRadius: "50%",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#22C55E",
+          color: "#2E7D64",
           fontSize: "16px",
-          boxShadow: "0 4px 8px rgba(34, 197, 94, 0.3)",
+          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
           transition: "all 0.2s ease",
           zIndex: 1100,
           padding: 0,
           outline: "none",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = "#22C55E";
+          e.currentTarget.style.background = "#2E7D64";
           e.currentTarget.style.color = "white";
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = "white";
-          e.currentTarget.style.color = "#22C55E";
+          e.currentTarget.style.color = "#2E7D64";
         }}
       >
         {collapsed ? <FiChevronRight size={18} /> : <FiChevronLeft size={18} />}
@@ -178,15 +183,15 @@ function Sidebar({ collapsed, onCollapse }) {
                     width: "100%",
                     padding: collapsed ? "12px 0" : "10px 12px",
                     background: isActive(item.path)
-                      ? `linear-gradient(135deg, ${item.color} 0%, ${item.color}CC 100%)`
+                      ? "#2E7D64"
                       : hoveredItem === item.path
-                      ? "rgba(34, 197, 94, 0.1)"
+                      ? "rgba(46, 125, 100, 0.2)"
                       : "transparent",
                     color: isActive(item.path) 
                       ? "white" 
                       : hoveredItem === item.path
-                      ? item.color
-                      : "#4B5563",
+                      ? "#FFFFFF"
+                      : "#E5E7EB",
                     border: "none",
                     borderRadius: "8px",
                     cursor: "pointer",
@@ -200,18 +205,7 @@ function Sidebar({ collapsed, onCollapse }) {
                     position: "relative",
                   }}
                 >
-                  {isActive(item.path) && (
-                    <div style={{
-                      position: "absolute",
-                      left: "0",
-                      top: "4px",
-                      bottom: "4px",
-                      width: "3px",
-                      background: "white",
-                      borderRadius: "0 4px 4px 0",
-                    }} />
-                  )}
-                  <span style={{ color: isActive(item.path) ? "white" : item.color }}>
+                  <span style={{ color: isActive(item.path) ? "white" : "#E5E7EB" }}>
                     {item.icon}
                   </span>
                   {!collapsed && <span>{item.label}</span>}
@@ -224,7 +218,7 @@ function Sidebar({ collapsed, onCollapse }) {
 
       {/* Bottom Section */}
       <div style={{ 
-        borderTop: "1px solid rgba(34, 197, 94, 0.2)",
+        borderTop: "1px solid rgba(255, 255, 255, 0.1)",
         paddingTop: "16px",
       }}>
         <ul style={{ padding: 0, margin: 0, listStyle: "none", marginBottom: "12px" }}>
@@ -238,11 +232,11 @@ function Sidebar({ collapsed, onCollapse }) {
                     width: "100%",
                     padding: collapsed ? "10px 0" : "8px 12px",
                     background: isActive(item.path)
-                      ? "rgba(34, 197, 94, 0.1)"
+                      ? "rgba(46, 125, 100, 0.2)"
                       : hoveredItem === item.path
-                      ? "rgba(34, 197, 94, 0.05)"
+                      ? "rgba(46, 125, 100, 0.15)"
                       : "transparent",
-                    color: isActive(item.path) ? "#15803D" : "#6B7280",
+                    color: isActive(item.path) ? "white" : "#9CA3AF",
                     border: "none",
                     borderRadius: "8px",
                     cursor: "pointer",
@@ -270,8 +264,8 @@ function Sidebar({ collapsed, onCollapse }) {
               style={{
                 width: "100%",
                 padding: collapsed ? "10px 0" : "8px 12px",
-                background: hoveredItem === "logout" ? "rgba(239, 68, 68, 0.1)" : "transparent",
-                color: hoveredItem === "logout" ? "#DC2626" : "#6B7280",
+                background: hoveredItem === "logout" ? "rgba(239, 68, 68, 0.15)" : "transparent",
+                color: hoveredItem === "logout" ? "#F87171" : "#9CA3AF",
                 border: "none",
                 borderRadius: "8px",
                 cursor: "pointer",
@@ -296,14 +290,15 @@ function Sidebar({ collapsed, onCollapse }) {
             alignItems: "center",
             gap: "10px",
             padding: "12px 8px",
-            borderTop: "1px solid rgba(34, 197, 94, 0.2)",
-            backgroundColor: "rgba(255,255,255,0.5)",
+            marginTop: "12px",
+            borderTop: "1px solid rgba(255,255,255,0.1)",
+            backgroundColor: "rgba(255,255,255,0.05)",
             borderRadius: "8px",
           }}>
             <div style={{
               width: "36px",
               height: "36px",
-              background: "linear-gradient(135deg, #22C55E 0%, #15803D 100%)",
+              background: "#2E7D64",
               borderRadius: "8px",
               display: "flex",
               alignItems: "center",
@@ -319,7 +314,7 @@ function Sidebar({ collapsed, onCollapse }) {
               <div style={{ 
                 fontWeight: 500, 
                 fontSize: "13px", 
-                color: "#14532D",
+                color: "white",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -328,7 +323,7 @@ function Sidebar({ collapsed, onCollapse }) {
               </div>
               <div style={{ 
                 fontSize: "11px", 
-                color: "#6B7280",
+                color: "#A7F3D0",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -339,6 +334,31 @@ function Sidebar({ collapsed, onCollapse }) {
           </div>
         )}
       </div>
+
+      {/* Collapsed view user indicator */}
+      {collapsed && (
+        <div style={{
+          display: "flex",
+          justifyContent: "center",
+          marginTop: "auto",
+          paddingTop: "16px",
+        }}>
+          <div style={{
+            width: "32px",
+            height: "32px",
+            background: "#2E7D64",
+            borderRadius: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "white",
+            fontWeight: 600,
+            fontSize: "12px",
+          }}>
+            {getInitials()}
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

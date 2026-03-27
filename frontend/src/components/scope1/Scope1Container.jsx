@@ -1,22 +1,22 @@
-import { useState } from "react";
+// src/components/scope1/Scope1Container.jsx
+import React from "react";
 import Scope1Wizard from "./Scope1Wizard";
 
 export default function Scope1Container() {
   return (
     <div className="scope1-container">
-      {/* Header */}
       <div className="calculator-header">
-        <div className="header-content">
+        <div className="header-left">
           <h1>Scope 1 Emissions</h1>
-          <p>Direct emissions from owned or controlled sources</p>
+          <p>Direct GHG emissions from owned or controlled sources</p>
           <div className="model-status">
             <span className="status-dot"></span>
             Real-time calculation
           </div>
         </div>
+        <div className="ghg-protocol-badge">GHG Protocol</div>
       </div>
 
-      {/* Wizard */}
       <Scope1Wizard />
 
       <style jsx>{`
@@ -29,25 +29,28 @@ export default function Scope1Container() {
         }
 
         .calculator-header {
-          background: linear-gradient(135deg, #f0f9f0 0%, #e6f3e6 100%);
-          border-radius: 24px;
-          padding: 32px;
+          background: #F8FAF8;
+          border-radius: 12px;
+          padding: 28px 32px;
           margin-bottom: 24px;
-          border: 1px solid rgba(46, 125, 50, 0.2);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          border: 1px solid #E5E7EB;
+          border-left: 4px solid #2E7D64;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
         }
 
-        .header-content h1 {
-          margin: 0 0 12px 0;
+        .header-left h1 {
+          margin: 0 0 8px 0;
           font-size: 28px;
           font-weight: 700;
-          color: #1B5E20;
+          color: #1B4D3E;
         }
 
-        .header-content p {
+        .header-left p {
           margin: 0 0 16px 0;
-          font-size: 16px;
-          color: #4B5563;
+          font-size: 15px;
+          color: #4A5568;
         }
 
         .model-status {
@@ -58,14 +61,14 @@ export default function Scope1Container() {
           background: white;
           border-radius: 30px;
           font-size: 13px;
-          color: #2E7D32;
-          border: 1px solid rgba(46, 125, 50, 0.2);
+          color: #2E7D64;
+          border: 1px solid #E5E7EB;
         }
 
         .status-dot {
           width: 8px;
           height: 8px;
-          background: #2E7D32;
+          background: #2E7D64;
           border-radius: 50%;
           animation: pulse 1.5s infinite;
         }
@@ -75,14 +78,25 @@ export default function Scope1Container() {
           50% { opacity: 0.3; }
         }
 
-        @media (max-width: 768px) {
-          .scope1-container {
-            padding: 16px;
-          }
+        .ghg-protocol-badge {
+          padding: 8px 16px;
+          background: white;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 500;
+          color: #1B4D3E;
+          white-space: nowrap;
+        }
 
+        @media (max-width: 768px) {
+          .scope1-container { padding: 16px; }
           .calculator-header {
-            padding: 24px;
+            padding: 20px;
+            flex-direction: column;
+            gap: 16px;
           }
+          .header-left h1 { font-size: 22px; }
         }
       `}</style>
     </div>

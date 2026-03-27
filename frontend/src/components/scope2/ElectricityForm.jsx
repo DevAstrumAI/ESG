@@ -1,248 +1,364 @@
+// src/components/scope2/ElectricityForm.jsx
 import React, { useState } from "react";
-import PrimaryButton from "../ui/PrimaryButton";
-import SecondaryButton from "../ui/SecondaryButton";
-import EmptyState from "../ui/EmptyState";
 import { useEmissionStore } from "../../store/emissionStore";
+import { FiTrash2, FiSend, FiZap, FiDroplet } from "react-icons/fi";
+import { useAuthStore } from "../../store/authStore";
 
-export default function ElectricityForm() {
-  const methods = [
-    { label: "Location-based (Grid Average)", value: "location" },
-    { label: "Market-based (Supplier Specific)", value: "market" },
-  ];
+const CERTIFICATE_TYPES = [
+  { label: "Grid Average (Location-based)", key: "grid_average" },
+  { label: "Solar PPA (Market-based)", key: "solar_ppa" },
+  { label: "Wind PPA (Market-based)", key: "wind_ppa" },
+  { label: "Hydro GO (Market-based)", key: "hydro_go" },
+  { label: "REC / I-REC (Market-based)", key: "rec_ppa" },
+];
 
-  const [certificateType, setCertificateType] = useState("");
-  const [facilityName, setFacilityName] = useState("");
-  const [consumption, setConsumption] = useState("");
-  const [method, setMethod] = useState("location");
-  const [search, setSearch] = useState("");
+const MONTHS = [
+  "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06",
+  "2026-07","2026-08","2026-09","2026-10","2026-11","2026-12",
+  "2025-01","2025-02","2025-03","2025-04","2025-05","2025-06",
+  "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
+];
 
-  const electricityEntries = useEmissionStore((s) => s.scope2Electricity);
+const currentMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+};
+
+export default function ElectricityForm({ onSubmitSuccess }) {
+  const electricity = useEmissionStore((s) => s.scope2Electricity || []);
   const addElectricity = useEmissionStore((s) => s.addScope2Electricity);
   const deleteElectricity = useEmissionStore((s) => s.deleteScope2Electricity);
+  const submitScope2 = useEmissionStore((s) => s.submitScope2);
+  const token = useAuthStore((s) => s.token);
 
-  const handleAddElectricity = () => {
+  const [consumption, setConsumption] = useState("");
+  const [certificateKey, setCertificateKey] = useState("grid_average");
+  const [month, setMonth] = useState(currentMonth());
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+
+  const selectedCertificate = CERTIFICATE_TYPES.find((c) => c.key === certificateKey);
+
+  const handleAddRow = () => {
     if (!consumption || Number(consumption) <= 0) return;
-
     addElectricity({
       id: Date.now(),
-      facilityName: facilityName || "Main Facility",
       consumption: Number(consumption),
-      method,
-      certificateType: method === "market" ? certificateType : undefined,
-
+      certificateType: certificateKey,
+      certificateLabel: selectedCertificate?.label,
+      month,
     });
-
-    setFacilityName("");
     setConsumption("");
-    setMethod("location");
+    setMonth(currentMonth());
   };
 
-  const filteredEntries = electricityEntries.filter(
-    (e) =>
-      (e.facilityName || "").toLowerCase().includes(search.toLowerCase()) ||
-      (e.method || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const handleCalculateSubmit = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    const monthStr = electricity[0]?.month || currentMonth();
+    const [yr, mo] = monthStr.split("-").map(Number);
+    const result = await submitScope2(token, yr, mo);
+    setSubmitting(false);
+    if (result.success) {
+      setSubmitted(true);
+      if (onSubmitSuccess) onSubmitSuccess();
+    } else {
+      setSubmitError(result.error || "Submission failed");
+    }
+  };
 
   return (
-    <div className="electricity-form">
-      <div className="form-header">
-        <h2>Purchased Electricity</h2>
-        <p className="header-description">
-          Record your purchased electricity consumption per facility
+    <div className="el-wrap">
+      <div className="el-desc-header">
+        <FiZap className="el-header-icon" />
+        <p className="el-desc">
+          Enter <strong>purchased electricity consumption</strong>. For market-based reporting, select the certificate type if applicable.
         </p>
       </div>
 
-      <div className="search-wrapper">
-        <svg className="search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <path d="M9 17C13.4183 17 17 13.4183 17 9C17 4.58172 13.4183 1 9 1C4.58172 1 1 4.58172 1 9C1 13.4183 4.58172 17 9 17Z" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M19 19L15 15" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        <input
-          type="text"
-          placeholder="Search by facility or method..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="search-input"
-        />
-      </div>
+      <div className="el-table-wrap">
+        <table className="el-table">
+          <thead>
+            <tr>
+              <th>Consumption (kWh)</th>
+              <th>Certificate Type</th>
+              <th>Month</th>
+              <th></th>
+              </tr>
+            </thead>
+          <tbody>
+            {electricity.length === 0 && (
+              <tr>
+                <td colSpan={4} className="el-empty">
+                  No entries yet. Add a row below.
+                </td>
+              </tr>
+            )}
+            {electricity.map((e) => (
+              <tr key={e.id}>
+                <td>
+                  <span className="el-qty">{e.consumption?.toLocaleString()}</span>
+                  <span className="el-unit"> kWh</span>
+                </td>
+                <td>
+                  <span className="el-badge">
+                    {e.certificateLabel || (e.certificateType === "grid_average" ? "Grid Average" : "Renewable Certificate")}
+                  </span>
+                </td>
+                <td>{e.month || "—"}</td>
+                <td>
+                  <button
+                    className="el-delete"
+                    onClick={() => deleteElectricity(e.id)}
+                    title="Remove"
+                  >
+                    <FiTrash2 size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
 
-      <div className="input-section">
-        <div className="input-grid">
-          <div className="input-group">
-            <label className="input-label">Facility Name</label>
-            <input
-              type="text"
-              value={facilityName}
-              onChange={(e) => setFacilityName(e.target.value)}
-              placeholder="e.g. HQ Office"
-              className="text-input"
-            />
-          </div>
-
-          <div className="input-group">
-            <label className="input-label">Consumption (kWh)</label>
-            <div className="input-wrapper">
-              <input
-                type="number"
-                min="0"
-                value={consumption}
-                onChange={(e) => setConsumption(e.target.value)}
-                placeholder="e.g. 5000"
-                className="text-input"
-              />
-              <span className="input-suffix">kWh</span>
-            </div>
-          </div>
-
-          <div className="input-group">
-            <label className="input-label">Accounting Method</label>
-            <div className="select-wrapper">
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                className="fuel-select"
-              >
-                {methods.map((m) => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </select>
-              <svg className="select-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M4 6L8 10L12 6" stroke="#6B7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-          </div>
-          
-          {method === "market" && (
-            <div className="input-group">
-              <label className="input-label">Certificate Type</label>
-              <div className="select-wrapper">
+            <tr className="el-add-row">
+              <td>
+                <div className="el-qty-input">
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={consumption}
+                    onChange={(e) => setConsumption(e.target.value)}
+                    className="el-input"
+                    min="0"
+                  />
+                  <span className="el-unit-tag">kWh</span>
+                </div>
+              </td>
+              <td>
                 <select
-                  value={certificateType}
-                  onChange={(e) => setCertificateType(e.target.value)}
-                  className="fuel-select"
+                  value={certificateKey}
+                  onChange={(e) => setCertificateKey(e.target.value)}
+                  className="el-select"
                 >
-                  <option value="rec_ppa">RECs / PPA</option>
-                  <option value="solar_ppa">Solar PPA</option>
-                  <option value="wind_ppa">Wind PPA</option>
-                  <option value="hydro_go">Hydro GO</option>
+                  {CERTIFICATE_TYPES.map((c) => (
+                    <option key={c.key} value={c.key}>{c.label}</option>
+                  ))}
                 </select>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="add-button-wrapper">
-          <PrimaryButton onClick={handleAddElectricity} className="add-button">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M10 4V16M4 10H16" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Add Electricity Entry
-          </PrimaryButton>
-        </div>
+              </td>
+              <td>
+                <select
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                  className="el-select"
+                >
+                  {MONTHS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <div className="table-section">
-        <div className="table-header">
-          <h3>Electricity Entries</h3>
-          <span className="entry-count">{filteredEntries.length} entries</span>
+      <div className="el-footer">
+        <button className="el-add-btn" onClick={handleAddRow}>
+          + Add Row
+        </button>
+        <div className="el-footer-right">
+          {submitError && <span className="el-error">{submitError}</span>}
+          <button
+            className={`el-submit-btn ${submitted ? "submitted" : ""}`}
+            onClick={handleCalculateSubmit}
+            disabled={submitting || submitted || electricity.length === 0}
+          >
+            {submitted ? "✅ Submitted!" : submitting ? "Calculating..." : (
+              <><FiSend size={14} /> Calculate & Submit</>
+            )}
+          </button>
         </div>
-
-        {filteredEntries.length === 0 ? (
-          <EmptyState message="No electricity entries added yet." />
-        ) : (
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Facility</th>
-                  <th>Consumption</th>
-                  <th>Method</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEntries.map((e) => (
-                  <tr key={e.id}>
-                    <td>
-                      <span className="provider-badge">{e.facilityName}</span>
-                    </td>
-                    <td>
-                      <span className="consumption-value">{Number(e.consumption).toLocaleString()}</span>
-                      <span className="consumption-unit"> kWh</span>
-                    </td>
-                    <td>
-                      <span className="method-badge">
-                        {e.method === "market" ? "Market-based" : "Location-based"}
-                      </span>
-                    </td>
-                    <td>
-                      <SecondaryButton
-                        onClick={() => deleteElectricity(e.id)}
-                        className="remove-button"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                          <path d="M2 4H14M12 4V13C12 14 11 15 10 15H6C5 15 4 14 4 13V4M5.5 2.5V2C5.5 1 6.5 0 7.5 0H8.5C9.5 0 10.5 1 10.5 2V2.5" stroke="#DC2626" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          <path d="M6.5 7V11M9.5 7V11" stroke="#DC2626" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        Remove
-                      </SecondaryButton>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
       <style jsx>{`
-        .electricity-form { width: 100%; }
-        .form-header { margin-bottom: 24px; }
-        .form-header h2 { margin: 0 0 8px 0; font-size: 20px; font-weight: 700; color: #1B5E20; }
-        .header-description { margin: 0; font-size: 14px; color: #6B7280; }
-        .search-wrapper { position: relative; margin-bottom: 24px; }
-        .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; }
-        .search-input { width: 100%; padding: 12px 16px 12px 44px; font-size: 14px; border: 1px solid #E5E7EB; border-radius: 30px; background: white; transition: all 0.2s ease; outline: none; }
-        .search-input:focus { border-color: #2E7D32; box-shadow: 0 0 0 3px rgba(46,125,50,0.1); }
-        .search-input::placeholder { color: #9CA3AF; }
-        .input-section { background: #F9FAFB; border-radius: 16px; padding: 24px; margin-bottom: 32px; border: 1px solid rgba(46,125,50,0.1); }
-        .input-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
-        .input-group { display: flex; flex-direction: column; gap: 8px; }
-        .input-label { font-size: 13px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.3px; }
-        .input-wrapper { position: relative; width: 100%; }
-        .text-input { width: 100%; padding: 12px 16px; font-size: 14px; border: 1px solid #E5E7EB; border-radius: 12px; background: white; transition: all 0.2s ease; outline: none; box-sizing: border-box; }
-        .text-input:focus { border-color: #2E7D32; box-shadow: 0 0 0 3px rgba(46,125,50,0.1); }
-        .text-input::placeholder { color: #9CA3AF; }
-        .input-suffix { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: #6B7280; font-size: 14px; font-weight: 500; }
-        .select-wrapper { position: relative; width: 100%; }
-        .fuel-select { width: 100%; padding: 12px 40px 12px 16px; font-size: 14px; border: 1px solid #E5E7EB; border-radius: 12px; background: white; cursor: pointer; outline: none; transition: all 0.2s ease; appearance: none; -webkit-appearance: none; }
-        .fuel-select:hover { border-color: #2E7D32; }
-        .fuel-select:focus { border-color: #2E7D32; box-shadow: 0 0 0 3px rgba(46,125,50,0.1); }
-        .select-arrow { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); pointer-events: none; }
-        .add-button-wrapper { display: flex; justify-content: flex-end; border-top: 1px solid #E5E7EB; padding-top: 24px; }
-        .add-button { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; font-size: 14px; font-weight: 600; }
-        .table-section { background: white; border-radius: 16px; border: 1px solid rgba(46,125,50,0.1); overflow: hidden; }
-        .table-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; background: #F9FAFB; border-bottom: 1px solid rgba(46,125,50,0.1); }
-        .table-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: #1B5E20; }
-        .entry-count { font-size: 13px; color: #6B7280; background: white; padding: 4px 12px; border-radius: 30px; border: 1px solid rgba(46,125,50,0.1); }
-        .table-wrapper { overflow-x: auto; }
-        .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        .data-table th { text-align: left; padding: 16px 24px; background: white; color: #374151; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 2px solid rgba(46,125,50,0.1); }
-        .data-table td { padding: 16px 24px; color: #1F2937; border-bottom: 1px solid #F3F4F6; }
-        .data-table tr:last-child td { border-bottom: none; }
-        .data-table tr:hover td { background: #F9FAFB; }
-        .provider-badge { background: rgba(46,125,50,0.1); color: #1B5E20; padding: 4px 12px; border-radius: 30px; font-size: 13px; font-weight: 500; }
-        .method-badge { background: #EFF6FF; color: #1D4ED8; padding: 4px 12px; border-radius: 30px; font-size: 13px; font-weight: 500; }
-        .consumption-value { font-weight: 600; color: #1B5E20; }
-        .consumption-unit { color: #6B7280; font-size: 13px; }
-        .remove-button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 13px; color: #DC2626; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 30px; transition: all 0.2s ease; }
-        .remove-button:hover { background: #FEE2E2; border-color: #F87171; }
-        @media (max-width: 768px) {
-          .input-grid { grid-template-columns: 1fr; gap: 16px; }
-          .add-button-wrapper { justify-content: center; }
-          .add-button { width: 100%; justify-content: center; }
-          .table-header { flex-direction: column; gap: 12px; align-items: flex-start; }
-          .data-table th, .data-table td { padding: 12px 16px; }
+        .el-wrap { width: 100%; }
+
+        .el-desc-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 20px;
+        }
+
+        .el-header-icon {
+          font-size: 20px;
+          color: #2E7D64;
+        }
+
+        .el-desc {
+          font-size: 13px;
+          color: #6B7280;
+          margin: 0;
+        }
+        .el-desc strong { color: #1B4D3E; }
+
+        .el-table-wrap {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          overflow: hidden;
+        }
+
+        .el-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 14px;
+        }
+
+        .el-table thead tr { background: #F9FAFB; }
+
+        .el-table th {
+          text-align: left;
+          padding: 11px 14px;
+          font-size: 12px;
+          font-weight: 600;
+          color: #6B7280;
+          border-bottom: 1px solid #E5E7EB;
+        }
+
+        .el-table td {
+          padding: 11px 14px;
+          color: #111827;
+          border-bottom: 1px solid #F3F4F6;
+          vertical-align: middle;
+        }
+
+        .el-table tbody tr:last-child td { border-bottom: none; }
+
+        .el-empty {
+          text-align: center;
+          color: #9CA3AF;
+          font-size: 13px;
+          padding: 28px 0 !important;
+        }
+
+        .el-qty { font-weight: 500; }
+        .el-unit { font-size: 12px; color: #6B7280; }
+
+        .el-badge {
+          display: inline-block;
+          padding: 2px 8px;
+          background: #F3F4F6;
+          border-radius: 20px;
+          font-size: 12px;
+          color: #374151;
+        }
+
+        .el-delete {
+          background: none;
+          border: none;
+          color: #9CA3AF;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+        }
+        .el-delete:hover { color: #DC2626; background: #FEF2F2; }
+
+        .el-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
+
+        .el-select {
+          width: 100%;
+          padding: 7px 10px;
+          border: 1px solid #E5E7EB;
+          border-radius: 7px;
+          font-size: 13px;
+          background: white;
+          color: #374151;
+          outline: none;
+        }
+        .el-select:focus { border-color: #2E7D64; }
+
+        .el-qty-input {
+          display: flex;
+          align-items: center;
+          border: 1px solid #E5E7EB;
+          border-radius: 7px;
+          background: white;
+          overflow: hidden;
+        }
+        .el-qty-input:focus-within { border-color: #2E7D64; }
+
+        .el-input {
+          flex: 1;
+          border: none;
+          outline: none;
+          padding: 7px 10px;
+          font-size: 13px;
+          background: transparent;
+          min-width: 60px;
+        }
+
+        .el-unit-tag {
+          padding: 0 10px;
+          font-size: 12px;
+          color: #6B7280;
+          background: #F3F4F6;
+          border-left: 1px solid #E5E7EB;
+          display: flex;
+          align-items: center;
+          min-height: 33px;
+          white-space: nowrap;
+        }
+
+        .el-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 0 0 0;
+          margin-top: 16px;
+        }
+
+        .el-footer-right {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .el-add-btn {
+          background: none;
+          border: none;
+          font-size: 14px;
+          font-weight: 500;
+          color: #2E7D64;
+          cursor: pointer;
+          padding: 8px 0;
+        }
+        .el-add-btn:hover { text-decoration: underline; }
+
+        .el-error { font-size: 13px; color: #DC2626; }
+
+        .el-submit-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 20px;
+          background: #1B4D3E;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .el-submit-btn:hover:not(:disabled) { background: #2E7D64; }
+        .el-submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .el-submit-btn.submitted { background: #059669; }
+
+        @media (max-width: 640px) {
+          .el-table th:nth-child(2),
+          .el-table td:nth-child(2) { display: none; }
         }
       `}</style>
     </div>

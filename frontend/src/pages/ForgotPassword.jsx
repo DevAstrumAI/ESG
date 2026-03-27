@@ -80,7 +80,7 @@ export default function ForgotPassword() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, #14532D, #166534);
+          background: #F8FAF8;
           padding: 20px;
           position: relative;
         }
@@ -88,7 +88,7 @@ export default function ForgotPassword() {
         .leaf-bg {
           position: absolute;
           font-size: 15rem;
-          color: rgba(255,255,255,0.05);
+          color: #E5E7EB;
           transform: rotate(-15deg);
           bottom: -50px;
           left: -50px;
@@ -97,31 +97,34 @@ export default function ForgotPassword() {
         .forgot-card {
           background: white;
           padding: 40px;
-          border-radius: 24px;
+          border-radius: 12px;
           width: 100%;
           max-width: 400px;
-          box-shadow: 0 20px 40px rgba(0,40,0,0.2);
-          border: 1px solid rgba(34,197,94,0.2);
+          border: 1px solid #E5E7EB;
         }
 
         .back-link {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          color: #15803D;
+          color: #2E7D64;
           text-decoration: none;
           font-size: 14px;
           margin-bottom: 30px;
         }
 
+        .back-link:hover {
+          color: #1B4D3E;
+        }
+
         h2 {
-          color: #14532D;
+          color: #1B4D3E;
           font-size: 28px;
           margin: 0 0 8px;
         }
 
         .subtitle {
-          color: #4B5563;
+          color: #4A5568;
           font-size: 14px;
           margin-bottom: 30px;
         }
@@ -130,25 +133,25 @@ export default function ForgotPassword() {
           display: flex;
           align-items: center;
           gap: 12px;
-          border: 2px solid #E5E7EB;
-          border-radius: 12px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
           padding: 0 16px;
           margin-bottom: 16px;
           transition: border-color 0.2s ease;
         }
 
         .input-group:focus-within {
-          border-color: #22C55E;
+          border-color: #2E7D64;
         }
 
         .input-icon {
-          color: #22C55E;
+          color: #2E7D64;
           font-size: 18px;
         }
 
         .input-group input {
           flex: 1;
-          padding: 16px 0;
+          padding: 14px 0;
           border: none;
           outline: none;
           font-size: 15px;
@@ -166,7 +169,7 @@ export default function ForgotPassword() {
 
         .reset-btn {
           width: 100% !important;
-          background: linear-gradient(135deg, #15803D, #22C55E) !important;
+          background: #2E7D64 !important;
         }
 
         .reset-btn:disabled {
@@ -198,9 +201,13 @@ export default function ForgotPassword() {
         .back-to-login {
           display: inline-block;
           margin-top: 20px;
-          color: #15803D;
+          color: #2E7D64;
           text-decoration: none;
           font-weight: 500;
+        }
+
+        .back-to-login:hover {
+          color: #1B4D3E;
         }
       `}</style>
     </div>

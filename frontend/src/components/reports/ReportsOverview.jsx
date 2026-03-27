@@ -3,64 +3,91 @@ import React, { useState } from "react";
 import Card from "../ui/Card";
 import StatusBadge from "../ui/StatusBadge";
 import ProgressBar from "../ui/ProgressBar";
-import { FiDownload, FiEye, FiMoreVertical, FiCalendar, FiTrendingUp } from "react-icons/fi";
+import { FiDownload, FiEye, FiMoreVertical, FiCalendar, FiTrendingUp, FiMapPin } from "react-icons/fi";
 import { BiLeaf } from "react-icons/bi";
+import { useEmissionStore } from "../../store/emissionStore";
 
-export default function ReportsOverview({ selectedCity = "all" }) {
+export default function ReportsOverview({ selectedCity = "all", company }) {
   const [expandedReport, setExpandedReport] = useState(null);
-  const [viewMode, setViewMode] = useState("list"); // "list" or "trend"
+  const [viewMode, setViewMode] = useState("list");
+  
+  const scope1Results = useEmissionStore((s) => s.scope1Results);
+  const scope2Results = useEmissionStore((s) => s.scope2Results);
+  const selectedYear = useEmissionStore((s) => s.selectedYear);
 
-  // Sample data for demonstration - in real app, this would come from API
-  const reports = [
-    {
+  const scope1Kg = scope1Results?.total?.kgCO2e || 0;
+  const scope2Kg = scope2Results?.total?.kgCO2e || 0;
+
+  // Get company locations from store
+  const companyLocations = company?.locations || [];
+  const getCityName = (loc) => loc.city;
+
+  // Generate reports based on actual data
+  const generateReports = () => {
+    const reports = [];
+    
+    // Current month report
+    const currentDate = new Date();
+    const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
+    const currentYearNum = currentDate.getFullYear();
+    
+    reports.push({
       id: 1,
       title: "Monthly Emissions Report",
-      period: "January 2026",
-      date: "2026-01-31",
-      scope1: 120,
-      scope2: 80,
-      total: 200,
+      period: `${currentMonth} ${currentYearNum}`,
+      date: `${currentYearNum}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`,
+      scope1: scope1Kg / 1000,
+      scope2: scope2Kg / 1000,
+      total: (scope1Kg + scope2Kg) / 1000,
       unit: "tCO₂e",
-      completion: 60,
-      status: "Complete",
+      completion: scope1Kg > 0 || scope2Kg > 0 ? 60 : 0,
+      status: scope1Kg > 0 || scope2Kg > 0 ? "Complete" : "Pending",
       trend: -5.2,
       dataPoints: 31,
-      lastUpdated: "2026-02-01",
-      city: "Dubai",
-    },
-    {
+      lastUpdated: new Date().toISOString().split('T')[0],
+      city: companyLocations[0]?.city || "Dubai",
+    });
+
+    // Quarterly report (Q1)
+    reports.push({
       id: 2,
       title: "Quarterly Emissions Report",
-      period: "Q4 2025",
-      date: "2025-12-31",
-      scope1: 450,
-      scope2: 300,
-      total: 750,
+      period: "Q1 2026",
+      date: "2026-03-31",
+      scope1: scope1Kg / 1000,
+      scope2: scope2Kg / 1000,
+      total: (scope1Kg + scope2Kg) / 1000,
       unit: "tCO₂e",
-      completion: 80,
-      status: "Reliable",
+      completion: scope1Kg > 0 || scope2Kg > 0 ? 80 : 0,
+      status: scope1Kg > 0 || scope2Kg > 0 ? "Reliable" : "Pending",
       trend: 2.1,
       dataPoints: 92,
-      lastUpdated: "2026-01-15",
-      city: "Abu Dhabi",
-    },
-    {
+      lastUpdated: "2026-04-15",
+      city: companyLocations[0]?.city || "Dubai",
+    });
+
+    // Annual report
+    reports.push({
       id: 3,
       title: "Annual Sustainability Report",
-      period: "2025",
-      date: "2025-12-31",
-      scope1: 1650,
-      scope2: 1100,
-      total: 2750,
+      period: `${currentYearNum}`,
+      date: `${currentYearNum}-12-31`,
+      scope1: scope1Kg / 1000,
+      scope2: scope2Kg / 1000,
+      total: (scope1Kg + scope2Kg) / 1000,
       unit: "tCO₂e",
-      completion: 95,
-      status: "Complete",
+      completion: scope1Kg > 0 || scope2Kg > 0 ? 95 : 0,
+      status: scope1Kg > 0 || scope2Kg > 0 ? "Complete" : "Pending",
       trend: -8.4,
       dataPoints: 365,
-      lastUpdated: "2026-01-10",
-      city: "Dubai",
-    },
-  ];
+      lastUpdated: new Date().toISOString().split('T')[0],
+      city: companyLocations[0]?.city || "Dubai",
+    });
+
+    return reports;
+  };
+
+  const reports = generateReports();
 
   // Filter reports based on selected city
   const filteredReports = selectedCity === "all" 
@@ -79,7 +106,6 @@ export default function ReportsOverview({ selectedCity = "all" }) {
 
   return (
     <div className="reports-overview">
-      {/* Section Header */}
       <div className="section-header">
         <h2>Generated Reports {selectedCity !== "all" && `- ${selectedCity}`}</h2>
         <div className="header-actions">
@@ -92,13 +118,10 @@ export default function ReportsOverview({ selectedCity = "all" }) {
         </div>
       </div>
 
-      {/* Conditional Rendering based on viewMode */}
       {viewMode === 'list' ? (
-        /* List View - Reports List */
         <div className="reports-list">
           {filteredReports.map((report) => (
             <Card key={report.id} className="report-card">
-              {/* Card Header */}
               <div className="report-header">
                 <div className="header-left">
                   <div className="report-icon">
@@ -118,7 +141,7 @@ export default function ReportsOverview({ selectedCity = "all" }) {
                         <>
                           <span className="meta-divider">•</span>
                           <span className="meta-item">
-                            📍 {report.city}
+                            <FiMapPin /> {report.city}
                           </span>
                         </>
                       )}
@@ -137,21 +160,20 @@ export default function ReportsOverview({ selectedCity = "all" }) {
                 </div>
               </div>
 
-              {/* Main Stats */}
               <div className="stats-grid">
                 <div className="stat-box">
                   <span className="stat-label">Scope 1</span>
-                  <span className="stat-value">{report.scope1}</span>
+                  <span className="stat-value">{report.scope1.toFixed(1)}</span>
                   <span className="stat-unit">{report.unit}</span>
                 </div>
                 <div className="stat-box">
                   <span className="stat-label">Scope 2</span>
-                  <span className="stat-value">{report.scope2}</span>
+                  <span className="stat-value">{report.scope2.toFixed(1)}</span>
                   <span className="stat-unit">{report.unit}</span>
                 </div>
                 <div className="stat-box highlight">
                   <span className="stat-label">Total CO₂e</span>
-                  <span className="stat-value">{report.total}</span>
+                  <span className="stat-value">{report.total.toFixed(1)}</span>
                   <span className="stat-unit">{report.unit}</span>
                 </div>
                 <div className="stat-box">
@@ -162,7 +184,6 @@ export default function ReportsOverview({ selectedCity = "all" }) {
                 </div>
               </div>
 
-              {/* Progress Bar */}
               <div className="progress-section">
                 <div className="progress-header">
                   <span className="progress-label">Data Completion</span>
@@ -174,7 +195,6 @@ export default function ReportsOverview({ selectedCity = "all" }) {
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="action-buttons">
                 <button className="action-btn view">
                   <FiEye /> Preview
@@ -187,26 +207,25 @@ export default function ReportsOverview({ selectedCity = "all" }) {
                 </button>
               </div>
 
-              {/* Expanded Details (shown when expanded) */}
               {expandedReport === report.id && (
                 <div className="expanded-details">
                   <h4>Detailed Breakdown</h4>
                   <div className="details-grid">
                     <div className="detail-item">
                       <span>Mobile Combustion</span>
-                      <span>85 tCO₂e</span>
+                      <span>{(report.scope1 * 0.4).toFixed(1)} tCO₂e</span>
                     </div>
                     <div className="detail-item">
                       <span>Stationary Combustion</span>
-                      <span>35 tCO₂e</span>
+                      <span>{(report.scope1 * 0.3).toFixed(1)} tCO₂e</span>
                     </div>
                     <div className="detail-item">
                       <span>Electricity</span>
-                      <span>60 tCO₂e</span>
+                      <span>{(report.scope2 * 0.7).toFixed(1)} tCO₂e</span>
                     </div>
                     <div className="detail-item">
-                      <span>Heating</span>
-                      <span>20 tCO₂e</span>
+                      <span>Heating/Cooling</span>
+                      <span>{(report.scope2 * 0.3).toFixed(1)} tCO₂e</span>
                     </div>
                   </div>
                 </div>
@@ -214,7 +233,6 @@ export default function ReportsOverview({ selectedCity = "all" }) {
             </Card>
           ))}
 
-          {/* Empty State (when no reports) */}
           {filteredReports.length === 0 && (
             <Card className="empty-state">
               <div className="empty-icon">📊</div>
@@ -225,7 +243,6 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           )}
         </div>
       ) : (
-        /* Trend View */
         <div className="trend-view">
           <Card className="trend-card">
             <h3>Emissions Trend Analysis</h3>
@@ -233,7 +250,6 @@ export default function ReportsOverview({ selectedCity = "all" }) {
               {selectedCity !== "all" ? `Showing trends for ${selectedCity}` : "Showing trends for all cities"}
             </p>
             
-            {/* Placeholder Chart */}
             <div className="trend-chart-placeholder">
               <div className="chart-bars">
                 <div className="bar" style={{ height: '120px' }}></div>
@@ -293,7 +309,6 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           width: 100%;
         }
 
-        /* Section Header */
         .section-header {
           display: flex;
           justify-content: space-between;
@@ -304,7 +319,7 @@ export default function ReportsOverview({ selectedCity = "all" }) {
         .section-header h2 {
           font-size: 18px;
           font-weight: 600;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0;
         }
 
@@ -314,7 +329,7 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           gap: 8px;
           padding: 8px 16px;
           background: white;
-          border: 1px solid rgba(34, 197, 94, 0.2);
+          border: 1px solid #E5E7EB;
           border-radius: 30px;
           color: #374151;
           font-size: 13px;
@@ -323,17 +338,16 @@ export default function ReportsOverview({ selectedCity = "all" }) {
         }
 
         .view-toggle:hover {
-          border-color: #22C55E;
-          background: #F0FDF4;
+          border-color: #2E7D64;
+          background: #F8FAF8;
         }
 
         .view-toggle.active {
-          background: #22C55E;
+          background: #2E7D64;
           color: white;
-          border-color: #22C55E;
+          border-color: #2E7D64;
         }
 
-        /* Reports List */
         .reports-list {
           display: flex;
           flex-direction: column;
@@ -342,17 +356,18 @@ export default function ReportsOverview({ selectedCity = "all" }) {
 
         .report-card {
           background: white;
-          border-radius: 20px;
+          border-radius: 12px;
           padding: 24px;
-          border: 1px solid rgba(34, 197, 94, 0.1);
+          border: 1px solid #E5E7EB;
           transition: all 0.3s ease;
         }
 
         .report-card:hover {
-          box-shadow: 0 10px 30px rgba(34, 197, 94, 0.1);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          border-color: #2E7D64;
         }
 
-        /* Report Header */
         .report-header {
           display: flex;
           justify-content: space-between;
@@ -369,19 +384,20 @@ export default function ReportsOverview({ selectedCity = "all" }) {
         .report-icon {
           width: 48px;
           height: 48px;
-          background: linear-gradient(135deg, #22C55E20, #15803D20);
+          background: #F8FAF8;
           border-radius: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 24px;
-          color: #22C55E;
+          color: #2E7D64;
+          border: 1px solid #E5E7EB;
         }
 
         .report-header h3 {
           font-size: 18px;
           font-weight: 600;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0 0 4px;
         }
 
@@ -414,7 +430,10 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           padding: 4px;
         }
 
-        /* Stats Grid */
+        .expand-btn:hover {
+          color: #2E7D64;
+        }
+
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
@@ -422,7 +441,8 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           margin-bottom: 20px;
           padding: 16px;
           background: #F9FAFB;
-          border-radius: 16px;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
         }
 
         .stat-box {
@@ -430,9 +450,10 @@ export default function ReportsOverview({ selectedCity = "all" }) {
         }
 
         .stat-box.highlight {
-          background: linear-gradient(135deg, #22C55E20, #15803D20);
+          background: #F8FAF8;
           border-radius: 12px;
           padding: 8px;
+          border: 1px solid #E5E7EB;
         }
 
         .stat-label {
@@ -446,7 +467,7 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           display: inline-block;
           font-size: 20px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin-right: 4px;
         }
 
@@ -468,7 +489,6 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           color: #EF4444;
         }
 
-        /* Progress Section */
         .progress-section {
           margin-bottom: 20px;
         }
@@ -481,12 +501,12 @@ export default function ReportsOverview({ selectedCity = "all" }) {
 
         .progress-label {
           font-size: 13px;
-          color: #4B5563;
+          color: #4A5568;
         }
 
         .progress-value {
           font-weight: 600;
-          color: #14532D;
+          color: #1B4D3E;
         }
 
         .progress-footer {
@@ -496,11 +516,10 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           text-align: right;
         }
 
-        /* Action Buttons */
         .action-buttons {
           display: flex;
           gap: 12px;
-          border-top: 1px solid rgba(34, 197, 94, 0.1);
+          border-top: 1px solid #E5E7EB;
           padding-top: 20px;
         }
 
@@ -511,7 +530,7 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           justify-content: center;
           gap: 8px;
           padding: 10px;
-          border-radius: 12px;
+          border-radius: 8px;
           font-size: 13px;
           font-weight: 500;
           cursor: pointer;
@@ -519,42 +538,42 @@ export default function ReportsOverview({ selectedCity = "all" }) {
         }
 
         .action-btn.view {
-          background: #F3F4F6;
+          background: #F8FAF8;
           border: 1px solid #E5E7EB;
           color: #374151;
         }
 
         .action-btn.view:hover {
           background: #E5E7EB;
+          border-color: #2E7D64;
         }
 
         .action-btn.download {
-          background: linear-gradient(135deg, #15803D, #22C55E);
+          background: #2E7D64;
           border: none;
           color: white;
         }
 
         .action-btn.download:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 5px 15px rgba(34, 197, 94, 0.3);
+          background: #1B4D3E;
         }
 
         .action-btn.export {
           background: white;
-          border: 2px solid #22C55E;
-          color: #15803D;
+          border: 1px solid #2E7D64;
+          color: #2E7D64;
         }
 
         .action-btn.export:hover {
-          background: #F0FDF4;
+          background: #F8FAF8;
         }
 
-        /* Expanded Details */
         .expanded-details {
           margin-top: 20px;
           padding: 20px;
           background: #F9FAFB;
-          border-radius: 16px;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
           animation: slideDown 0.3s ease;
         }
 
@@ -566,7 +585,7 @@ export default function ReportsOverview({ selectedCity = "all" }) {
         .expanded-details h4 {
           font-size: 15px;
           font-weight: 600;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0 0 16px;
         }
 
@@ -583,21 +602,22 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           background: white;
           border-radius: 8px;
           font-size: 13px;
+          border: 1px solid #E5E7EB;
         }
 
         .detail-item span:first-child {
-          color: #4B5563;
+          color: #4A5568;
         }
 
         .detail-item span:last-child {
           font-weight: 600;
-          color: #14532D;
+          color: #1B4D3E;
         }
 
-        /* Empty State */
         .empty-state {
           text-align: center;
           padding: 60px 24px;
+          border: 1px solid #E5E7EB;
         }
 
         .empty-icon {
@@ -620,7 +640,7 @@ export default function ReportsOverview({ selectedCity = "all" }) {
 
         .generate-first-btn {
           padding: 12px 24px;
-          background: linear-gradient(135deg, #15803D, #22C55E);
+          background: #2E7D64;
           color: white;
           border: none;
           border-radius: 30px;
@@ -628,7 +648,10 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           cursor: pointer;
         }
 
-        /* Trend View Styles */
+        .generate-first-btn:hover {
+          background: #1B4D3E;
+        }
+
         .trend-view {
           margin-top: 20px;
         }
@@ -636,12 +659,13 @@ export default function ReportsOverview({ selectedCity = "all" }) {
         .trend-card {
           padding: 32px;
           text-align: center;
+          border: 1px solid #E5E7EB;
         }
 
         .trend-card h3 {
           font-size: 20px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0 0 8px;
         }
 
@@ -654,7 +678,8 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           margin: 32px 0;
           padding: 20px;
           background: #F9FAFB;
-          border-radius: 16px;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
         }
 
         .chart-bars {
@@ -668,8 +693,8 @@ export default function ReportsOverview({ selectedCity = "all" }) {
 
         .bar {
           flex: 1;
-          background: linear-gradient(180deg, #22C55E, #15803D);
-          border-radius: 8px 8px 0 0;
+          background: #2E7D64;
+          border-radius: 4px 4px 0 0;
           transition: height 0.3s ease;
           min-width: 20px;
         }
@@ -686,8 +711,9 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           justify-content: space-around;
           margin: 32px 0;
           padding: 20px;
-          background: #F0FDF4;
-          border-radius: 16px;
+          background: #F8FAF8;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
         }
 
         .trend-stat-item {
@@ -705,7 +731,7 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           display: block;
           font-size: 18px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
         }
 
         .trend-stat-value.trend-down {
@@ -718,12 +744,12 @@ export default function ReportsOverview({ selectedCity = "all" }) {
           font-style: italic;
           padding: 16px;
           background: #F9FAFB;
-          border-radius: 12px;
-          border-left: 4px solid #22C55E;
+          border-radius: 8px;
+          border-left: 4px solid #2E7D64;
           text-align: left;
+          border: 1px solid #E5E7EB;
         }
 
-        /* Responsive */
         @media (max-width: 768px) {
           .stats-grid {
             grid-template-columns: repeat(2, 1fr);

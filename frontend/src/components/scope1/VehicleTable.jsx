@@ -1,50 +1,9 @@
-import React, { useState, useMemo } from "react";
-import Card from "../ui/Card";
-import PrimaryButton from "../ui/PrimaryButton";
-import SecondaryButton from "../ui/SecondaryButton";
-import InputField from "../ui/InputField";
-import EmptyState from "../ui/EmptyState";
+// src/components/scope1/VehicleTable.jsx
+import React, { useState } from "react";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiSearch, FiPlus, FiTrash2, FiHash, FiMapPin, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiSend, FiTruck, FiDroplet, FiMapPin, FiSearch } from "react-icons/fi";
+import { useAuthStore } from "../../store/authStore";
 
-export default function VehicleTable() {
-  const vehicles = useEmissionStore((s) => s.scope1Vehicles);
-  const addVehicle = useEmissionStore((s) => s.addScope1Vehicle);
-  const updateVehicle = useEmissionStore((s) => s.updateScope1Vehicle);
-  const deleteVehicle = useEmissionStore((s) => s.deleteScope1Vehicle);
-
-  // Form state
-  const [vehicleType, setVehicleType] = useState("");
-  const [fuelType, setFuelType] = useState("");
-  const [km, setKm] = useState("");
-  const [litres, setLitres] = useState("");
-  const [registration, setRegistration] = useState("");
-  const [editId, setEditId] = useState(null);
-  const [editVehicleType, setEditVehicleType] = useState("");
-  const [editFuelType, setEditFuelType] = useState("");
-  const [editKm, setEditKm] = useState("");
-  const [editLitres, setEditLitres] = useState("");
-  const [editRegistration, setEditRegistration] = useState("");
-
-  // Search bar
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const vehicleOptions = [
-    "Car", "Truck", "Bus", "Ship", "Airplane",
-    "Cargo van", "Motorboat", "Motorcycle", "Forklift", "Lift", "Other"
-  ];
-  const fuelOptions = ["Diesel", "Petrol", "LPG", "Biodiesel", "Other"];
-
-  const displayedVehicles = useMemo(() => {
-    if (!searchTerm) return vehicles;
-    return vehicles.filter(v =>
-      v.vehicleType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.fuelType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.registration.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [vehicles, searchTerm]);
-
-// Backend decides distance-vs-litres purely from the *mapped fuel type*.
 const DISTANCE_BASED_TYPES = new Set([
   "jet_aircraft_per_km",
   "cargo_ship_hfo",
@@ -53,893 +12,395 @@ const DISTANCE_BASED_TYPES = new Set([
   "diesel_bus",
 ]);
 
-const mapFuelTypeFromUI = (fuel) => {
-  const normalized = (fuel || "").toLowerCase();
-  const map = {
-    "diesel": "diesel",
-    "petrol": "petrol",
-    "lpg": "lpg",
-    "biodiesel": "biodiesel",
-    "other": "natural_gas",
-  };
-  return map[normalized] || "natural_gas";
-};
-
-const mapVehicleFuelTypeFromUI = (vehicleType, fuelTypeUI) => {
+function mapVehicleFuelType(vehicleType, fuelTypeUI) {
   const type = (vehicleType || "").toLowerCase();
-  const fuel = mapFuelTypeFromUI(fuelTypeUI);
+  const fuel = (fuelTypeUI || "").toLowerCase();
 
-  if (type === "car" && fuel === "petrol") return "petrol_car";
-  if (type === "car" && fuel === "diesel") return "diesel_car";
-  if (type === "truck" && fuel === "diesel") return "diesel_truck";
-  if (type === "bus" && fuel === "diesel") return "diesel_bus";
-  if (type === "motorcycle" && fuel === "petrol") return "petrol_motorcycle";
-  if (type === "motorcycle" && fuel !== "petrol") return "motorcycle";
-  if (type === "forklift" && fuel === "lpg") return "lpg_forklift";
-  if (type === "motorboat") return "motorboat_gasoline";
-  if (type === "cargo van" && fuel === "diesel") return "diesel_van";
-  if (type === "airplane") return "jet_aircraft_per_km";
-  if (type === "ship") return "cargo_ship_hfo";
+  if (type === "car"        && fuel === "petrol")  return "petrol_car";
+  if (type === "car"        && fuel === "diesel")  return "diesel_car";
+  if (type === "truck"      && fuel === "diesel")  return "diesel_truck";
+  if (type === "bus"        && fuel === "diesel")  return "diesel_bus";
+  if (type === "motorcycle" && fuel === "petrol")  return "petrol_motorcycle";
+  if (type === "motorcycle")                        return "motorcycle";
+  if (type === "motorboat")                         return "motorboat_gasoline";
+  if (type === "cargo van"  && fuel === "diesel")  return "diesel_van";
+  if (type === "airplane")                          return "jet_aircraft_per_km";
+  if (type === "ship")                              return "cargo_ship_hfo";
+  if (type === "train"      && fuel === "diesel")  return "diesel_train";
 
   return fuel === "petrol" ? "petrol_car" : "diesel_car";
+}
+
+const VEHICLE_OPTIONS = [
+  "Car", "Truck", "Bus", "Ship", "Airplane",
+  "Train", "Cargo van", "Motorboat", "Motorcycle", "Other",
+];
+const FUEL_OPTIONS = ["Petrol", "Diesel", "LPG", "Biodiesel", "Other"];
+
+const MONTHS = [
+  "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06",
+  "2026-07","2026-08","2026-09","2026-10","2026-11","2026-12",
+  "2025-01","2025-02","2025-03","2025-04","2025-05","2025-06",
+  "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
+];
+
+const currentMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-const mappedBackendFuelType = vehicleType && fuelType
-  ? mapVehicleFuelTypeFromUI(vehicleType, fuelType)
-  : "";
+export default function VehicleTable({ onSubmitSuccess }) {
+  const vehicles      = useEmissionStore((s) => s.scope1Vehicles);
+  const addVehicle    = useEmissionStore((s) => s.addScope1Vehicle);
+  const deleteVehicle = useEmissionStore((s) => s.deleteScope1Vehicle);
+  const submitScope1  = useEmissionStore((s) => s.submitScope1);
+  const token = useAuthStore((s) => s.token);
 
-const useDistance = DISTANCE_BASED_TYPES.has(mappedBackendFuelType);
+  const [vehicleType, setVehicleType] = useState("");
+  const [fuelType, setFuelType]       = useState("");
+  const [quantity, setQuantity]       = useState("");
+  const [month, setMonth]             = useState(currentMonth());
 
-  const handleAdd = () => {
-    // #region agent log V1
-    fetch(
-      "http://127.0.0.1:7312/ingest/558453d5-0857-4b96-9467-7f67bad3b71f",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "841ec6",
-        },
-        body: JSON.stringify({
-          sessionId: "841ec6",
-          runId: "pre-fix",
-          hypothesisId: "V1",
-          location: "frontend/src/components/scope1/VehicleTable.jsx:handleAdd",
-          message: "Add Vehicle click: current form values + which field is visible",
-          data: {
-            vehicleType,
-            fuelType,
-            km,
-            litres,
-            registration,
-            useDistance,
-            missing: {
-              vehicleType: !vehicleType,
-              fuelType: !fuelType,
-              km: !km,
-              litres: !litres,
-              registration: !registration,
-            },
-          },
-          timestamp: Date.now(),
-        }),
-      }
-    ).catch(() => {});
-    // #endregion
+  const [submitting, setSubmitting]   = useState(false);
+  const [submitted, setSubmitted]     = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
-    // Validation must match the UI: if distance-based, we only require `km`;
-    // if fuel-based, we only require `litres`. (Do not require both.)
-    if (!vehicleType || !fuelType || !registration) return;
-    if (useDistance) {
-      if (km === "" || km === null || Number.isNaN(Number(km))) return;
-    } else {
-      if (litres === "" || litres === null || Number.isNaN(Number(litres))) return;
-    }
+  const mappedFuelType = vehicleType && fuelType
+    ? mapVehicleFuelType(vehicleType, fuelType)
+    : "";
+  const useDistance = DISTANCE_BASED_TYPES.has(mappedFuelType);
 
-    const kmNum = Number(km || 0);
-    const litresNum = Number(litres || 0);
+  const handleAddRow = () => {
+    if (!vehicleType || !fuelType || quantity === "") return;
     addVehicle({
       id: Date.now(),
       vehicleType,
       fuelType,
-      km: useDistance ? kmNum : 0,
-      litres: useDistance ? 0 : litresNum,
-      registration
+      km:     useDistance ? Number(quantity) : 0,
+      litres: useDistance ? 0 : Number(quantity),
+      month,
     });
-
-    // #region agent log V2
-    fetch(
-      "http://127.0.0.1:7312/ingest/558453d5-0857-4b96-9467-7f67bad3b71f",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "841ec6",
-        },
-        body: JSON.stringify({
-          sessionId: "841ec6",
-          runId: "pre-fix",
-          hypothesisId: "V2",
-          location: "frontend/src/components/scope1/VehicleTable.jsx:handleAdd",
-          message: "Add Vehicle passed validation and updated store",
-          data: {
-            vehicleType,
-            fuelType,
-            useDistance,
-            km: useDistance ? kmNum : 0,
-            litres: useDistance ? 0 : litresNum,
-            registration,
-          },
-          timestamp: Date.now(),
-        }),
-      }
-    ).catch(() => {});
-    // #endregion
-
-    setVehicleType(""); setFuelType(""); setKm(""); setLitres(""); setRegistration("");
+    setVehicleType("");
+    setFuelType("");
+    setQuantity("");
+    setMonth(currentMonth());
   };
 
-  const startEdit = (v) => {
-    setEditId(v.id);
-    setEditVehicleType(v.vehicleType);
-    setEditFuelType(v.fuelType);
-    setEditKm(v.km);
-    setEditLitres(v.litres);
-    setEditRegistration(v.registration);
-  };
-
-  const handleUpdate = () => {
-    if (!editVehicleType || !editFuelType || !editKm || !editLitres || !editRegistration) return;
-    updateVehicle({
-      id: editId,
-      vehicleType: editVehicleType,
-      fuelType: editFuelType,
-      km: Number(editKm),
-      litres: Number(editLitres),
-      registration: editRegistration
-    });
-    setEditId(null); setEditVehicleType(""); setEditFuelType(""); setEditKm(""); setEditLitres(""); setEditRegistration("");
-  };
-
-  const handleDelete = (id) => deleteVehicle(id);
-
-  // Emissions preview
-  const totalKm = vehicles.reduce((sum, v) => sum + v.km, 0);
-  const totalLitres = vehicles.reduce((sum, v) => sum + v.litres, 0);
-  const estimatedCO2 = 0;
-
-  // Get fuel badge color
-  const getFuelBadgeClass = (fuel) => {
-    const fuelMap = {
-      'Diesel': 'bg-amber-50 text-amber-700 border-amber-200',
-      'Petrol': 'bg-blue-50 text-blue-700 border-blue-200',
-      'LPG': 'bg-purple-50 text-purple-700 border-purple-200',
-      'Biodiesel': 'bg-green-50 text-green-700 border-green-200',
-      'Other': 'bg-gray-50 text-gray-700 border-gray-200'
-    };
-    return fuelMap[fuel] || 'bg-gray-50 text-gray-700 border-gray-200';
+  const handleCalculateSubmit = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    const monthStr = vehicles[0]?.month || currentMonth();
+    const [yr, mo] = monthStr.split("-").map(Number);
+    const result = await submitScope1(token, yr, mo);
+    setSubmitting(false);
+    if (result.success) {
+      setSubmitted(true);
+      if (onSubmitSuccess) onSubmitSuccess();
+    } else {
+      setSubmitError(result.error || "Submission failed");
+    }
   };
 
   return (
-    <div className="vehicle-table-container">
-      {/* Header with description */}
-      <div className="section-description">
-        <div className="description-icon">🚗</div>
-        <div className="description-content">
-          <h3>Mobile Combustion Sources</h3>
-          <p>
-            Provide fuel consumption for <span className="highlight">mobile vehicles</span> owned by your company. 
-            Only company-owned vehicles should be reported here.
-          </p>
-        </div>
+    <div className="vt-wrap">
+      <div className="vt-desc-header">
+        <FiTruck className="vt-header-icon" />
+        <p className="vt-desc">
+          Road vehicles use <strong>litres consumed</strong>. Aviation, marine, and rail use <strong>distance (km)</strong>.
+        </p>
       </div>
 
-      {/* Search and Filter Bar */}
-      <div className="search-filter-bar">
-        <div className="search-box">
-          <FiSearch className="search-icon" size={20} />
-          <input
-            type="text"
-            placeholder="Search vehicles, fuel type or registration..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="search-input"
-          />
-        </div>
-        <div  style = {{margin: "30px"}}className="filter-badge">
-          {vehicles.length} {vehicles.length === 1 ? 'vehicle' : 'vehicles'}
-        </div>
-      </div>
-
-      {/* Add Vehicle Form Card */}
-      <Card className="add-vehicle-card">
-        <div className="card-header-compact">
-          <h4>Add New Vehicle</h4>
-          <p>Enter vehicle details below</p>
-        </div>
-        <div className="add-vehicle-form">
-          <div className="form-grid">
-          <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)} className="form-select">
-            <option value="">Vehicle Type</option>
-            {vehicleOptions.map(v => <option key={v} value={v}>{v}</option>)}
-          </select>
-
-          <select value={fuelType} onChange={(e) => setFuelType(e.target.value)} className="form-select">
-            <option value="">Fuel Type</option>
-            {fuelOptions.map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
-
-          <div className="input-wrapper">
-            <FiHash className="input-icon" />
-            <input type="text" placeholder="Registration Number" value={registration} onChange={(e) => setRegistration(e.target.value)} className="clean-input" />
-          </div>
-        </div>
-
-          {useDistance ? (
-            <div className="input-wrapper">
-              <FiMapPin className="input-icon" />
-              <input
-              type="number"
-              placeholder="Distance (km)"
-              value={km}
-              onChange={(e) => setKm(e.target.value)}
-              className="clean-input"
-            />
-          </div>
-        ) : (
-          <div className="input-wrapper">
-            <FiDroplet className="input-icon" />
-            <input
-              type="number"
-              placeholder="Fuel (litres)"
-              value={litres}
-              onChange={(e) => setLitres(e.target.value)}
-              className="clean-input"
-            />
-          </div>
-        )}
-
-          <PrimaryButton onClick={handleAdd} className="add-btn">
-            <FiPlus size={20} /> Add Vehicle
-          </PrimaryButton>
-        </div>
-      </Card>
-
-      {/* Vehicles Table */}
-      {displayedVehicles.length === 0 ? (
-        <EmptyState 
-          message="No vehicles found" 
-          icon="🚗"
-          className="empty-state-custom"
-        />
-      ) : (
-        <Card className="table-card">
-          <div className="table-wrapper">
-            <table className="vehicles-table">
-              <thead>
-                <tr>
-                  <th>Vehicle Type</th>
-                  <th>Fuel Type</th>
-                  <th>Registration</th>
-                  <th>Distance (km)</th>
-                  <th>Fuel (litres)</th>
-                  <th>Actions</th>
+      <div className="vt-table-wrap">
+        <table className="vt-table">
+          <thead>
+            <tr>
+              <th>Vehicle Type</th>
+              <th>Fuel Type</th>
+              <th>Quantity</th>
+              <th>Month</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {vehicles.length === 0 && (
+              <tr>
+                <td colSpan={5} className="vt-empty">
+                  No entries yet. Add a row below.
+                </td>
+              </tr>
+            )}
+            {vehicles.map((v) => {
+              const ft = mapVehicleFuelType(v.vehicleType, v.fuelType);
+              const isDistRow = DISTANCE_BASED_TYPES.has(ft);
+              const qty  = isDistRow ? v.km : v.litres;
+              const unit = isDistRow ? "km" : "L";
+              return (
+                <tr key={v.id}>
+                  <td>{v.vehicleType}</td>
+                  <td>{v.fuelType}</td>
+                  <td>
+                    <span className="vt-qty">{qty}</span>
+                    <span className="vt-unit"> {unit}</span>
+                  </td>
+                  <td>{v.month || "—"}</td>
+                  <td>
+                    <button
+                      className="vt-delete"
+                      onClick={() => deleteVehicle(v.id)}
+                      title="Remove"
+                    >
+                      <FiTrash2 size={14} />
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {displayedVehicles.map(v => (
-                  <tr key={v.id} className="vehicle-row">
-                    <td>
-                      {editId === v.id ? (
-                        <select 
-                          value={editVehicleType} 
-                          onChange={e => setEditVehicleType(e.target.value)} 
-                          className="edit-select"
-                        >
-                          {vehicleOptions.map(vt => <option key={vt} value={vt}>{vt}</option>)}
-                        </select>
-                      ) : (
-                        <span className="vehicle-badge">{v.vehicleType}</span>
-                      )}
-                    </td>
-                    <td>
-                      {editId === v.id ? (
-                        <select 
-                          value={editFuelType} 
-                          onChange={e => setEditFuelType(e.target.value)} 
-                          className="edit-select"
-                        >
-                          {fuelOptions.map(ft => <option key={ft} value={ft}>{ft}</option>)}
-                        </select>
-                      ) : (
-                        <span className={`fuel-badge ${getFuelBadgeClass(v.fuelType)}`}>
-                          {v.fuelType}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      {editId === v.id ? (
-                        <div className="edit-input-wrapper">
-                          <FiHash className="edit-input-icon" />
-                          <input 
-                            type="text"
-                            value={editRegistration} 
-                            onChange={e => setEditRegistration(e.target.value)} 
-                            className="edit-input-field"
-                          />
-                        </div>
-                      ) : (
-                        <span className="registration-text">{v.registration}</span>
-                      )}
-                    </td>
-                    <td className="number-cell">
-                      {editId === v.id ? (
-                        <div className="edit-input-wrapper">
-                          <FiMapPin className="edit-input-icon" />
-                          <input 
-                            type="number" 
-                            value={editKm} 
-                            onChange={e => setEditKm(e.target.value)} 
-                            className="edit-input-field"
-                          />
-                        </div>
-                      ) : (
-                        v.km.toLocaleString()
-                      )}
-                    </td>
-                    <td className="number-cell">
-                      {editId === v.id ? (
-                        <div className="edit-input-wrapper">
-                          <FiDroplet className="edit-input-icon" />
-                          <input 
-                            type="number" 
-                            value={editLitres} 
-                            onChange={e => setEditLitres(e.target.value)} 
-                            className="edit-input-field"
-                          />
-                        </div>
-                      ) : (
-                        v.litres.toLocaleString()
-                      )}
-                    </td>
-                    <td className="actions-cell">
-                      {editId === v.id ? (
-                        <div className="edit-actions">
-                          <PrimaryButton onClick={handleUpdate} className="save-btn">
-                            Save
-                          </PrimaryButton>
-                          <SecondaryButton onClick={() => setEditId(null)} className="cancel-btn">
-                            Cancel
-                          </SecondaryButton>
-                        </div>
-                      ) : (
-                        <>
-                          <SecondaryButton onClick={() => startEdit(v)} className="edit-btn">
-                            Edit
-                          </SecondaryButton>
-                          <button 
-                            onClick={() => handleDelete(v.id)} 
-                            className="delete-btn"
-                            title="Delete"
-                          >
-                            <FiTrash2 size={16} />
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+              );
+            })}
 
-      {/* Emissions Summary Footer */}
-      <Card className="summary-footer">
-        <div className="summary-grid">
-          <div className="summary-item">
-            <span className="summary-label">Total Distance</span>
-            <span className="summary-value">{totalKm.toLocaleString()} km</span>
-          </div>
-          <div className="summary-item">
-            <span className="summary-label">Total Fuel</span>
-            <span className="summary-value">{totalLitres.toLocaleString()} L</span>
-          </div>
-          <div className="summary-item highlight">
-            <span className="summary-label">Estimated CO₂e</span>
-            <span className="summary-value emission">
-              {estimatedCO2.toFixed(2)} tCO₂e
-            </span>
-          </div>
+            <tr className="vt-add-row">
+              <td>
+                <select
+                  value={vehicleType}
+                  onChange={(e) => setVehicleType(e.target.value)}
+                  className="vt-select"
+                >
+                  <option value="">Vehicle Type</option>
+                  {VEHICLE_OPTIONS.map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </td>
+              <td>
+                <select
+                  value={fuelType}
+                  onChange={(e) => setFuelType(e.target.value)}
+                  className="vt-select"
+                >
+                  <option value="">Fuel Type</option>
+                  {FUEL_OPTIONS.map((f) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              </td>
+              <td>
+                <div className="vt-qty-input">
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    className="vt-input"
+                    min="0"
+                  />
+                  <span className="vt-unit-tag">
+                    {mappedFuelType ? (useDistance ? "km" : "L") : "—"}
+                  </span>
+                </div>
+              </td>
+              <td>
+                <select
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                  className="vt-select"
+                >
+                  {MONTHS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="vt-footer">
+        <button className="vt-add-btn" onClick={handleAddRow}>
+          + Add Row
+        </button>
+        <div className="vt-footer-right">
+          {submitError && <span className="vt-error">{submitError}</span>}
+          <button
+            className={`vt-submit-btn ${submitted ? "submitted" : ""}`}
+            onClick={handleCalculateSubmit}
+            disabled={submitting || submitted || vehicles.length === 0}
+          >
+            {submitted ? "✅ Submitted!" : submitting ? "Calculating..." : (
+              <><FiSend size={14} /> Calculate & Submit</>
+            )}
+          </button>
         </div>
-        <div className="footer-note">
-          <p>🌱 Based on Region-specific emission factors</p>
-        </div>
-      </Card>
+      </div>
 
       <style jsx>{`
-        .vehicle-table-container {
-          width: 100%;
-          max-width: 1400px;
-          margin: 0 auto;
-          padding: 20px;
-        }
+        .vt-wrap { width: 100%; }
 
-        /* Section Description */
-        .section-description {
+        .vt-desc-header {
           display: flex;
-          align-items: flex-start;
-          gap: 16px;
-          margin-bottom: 24px;
-          padding: 20px 24px;
-          background: linear-gradient(135deg, #f0f9f0 0%, #e6f3e6 100%);
-          border-radius: 20px;
-          border-left: 6px solid #2E7D32;
-          box-shadow: 0 4px 12px rgba(46, 125, 50, 0.1);
-        }
-
-        .description-icon {
-          font-size: 32px;
-          line-height: 1;
-        }
-
-        .description-content h3 {
-          margin: 0 0 8px 0;
-          font-size: 20px;
-          font-weight: 700;
-          color: #1B5E20;
-        }
-
-        .description-content p {
-          margin: 0;
-          color: #374151;
-          font-size: 15px;
-          line-height: 1.6;
-        }
-
-        .highlight {
-          background: rgba(46, 125, 50, 0.1);
-          padding: 2px 8px;
-          border-radius: 20px;
-          font-weight: 600;
-          color: #2E7D32;
-        }
-
-        /* Search Bar - Reference Style */
-        .search-filter-bar {
-          display: flex;
-          justify-content: space-between;
           align-items: center;
+          gap: 8px;
           margin-bottom: 20px;
-          gap: 16px;
         }
 
-        .search-box {
-          flex: 1;
+        .vt-header-icon {
+          font-size: 20px;
+          color: #2E7D64;
+        }
+
+        .vt-desc {
+          font-size: 13px;
+          color: #6B7280;
+          margin: 0;
+        }
+        .vt-desc strong { color: #1B4D3E; }
+
+        .vt-table-wrap {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          overflow: hidden;
+        }
+
+        .vt-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 14px;
+        }
+
+        .vt-table thead tr { background: #F9FAFB; }
+
+        .vt-table th {
+          text-align: left;
+          padding: 11px 14px;
+          font-size: 12px;
+          font-weight: 600;
+          color: #6B7280;
+          border-bottom: 1px solid #E5E7EB;
+        }
+
+        .vt-table td {
+          padding: 11px 14px;
+          color: #111827;
+          border-bottom: 1px solid #F3F4F6;
+          vertical-align: middle;
+        }
+
+        .vt-table tbody tr:last-child td { border-bottom: none; }
+
+        .vt-empty {
+          text-align: center;
+          color: #9CA3AF;
+          font-size: 13px;
+          padding: 28px 0 !important;
+        }
+
+        .vt-qty { font-weight: 500; }
+        .vt-unit { font-size: 12px; color: #6B7280; }
+
+        .vt-delete {
+          background: none;
+          border: none;
+          color: #9CA3AF;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 12px 20px;
+        }
+        .vt-delete:hover { color: #DC2626; background: #FEF2F2; }
+
+        .vt-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
+
+        .vt-select {
+          width: 100%;
+          padding: 7px 10px;
+          border: 1px solid #E5E7EB;
+          border-radius: 7px;
+          font-size: 13px;
           background: white;
-          border-radius: 60px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-          border: 1px solid #e5e7eb;
-          transition: all 0.2s ease;
+          color: #374151;
+          outline: none;
         }
+        .vt-select:focus { border-color: #2E7D64; }
 
-        .search-box:focus-within {
-          border-color: #2E7D32;
-          box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.15);
+        .vt-qty-input {
+          display: flex;
+          align-items: center;
+          border: 1px solid #E5E7EB;
+          border-radius: 7px;
+          background: white;
+          overflow: hidden;
         }
+        .vt-qty-input:focus-within { border-color: #2E7D64; }
 
-        .search-icon {
-          flex-shrink: 0;
-          color: #9CA3AF;
-        }
-
-        .search-input {
+        .vt-input {
           flex: 1;
           border: none;
           outline: none;
-          font-size: 15px;
+          padding: 7px 10px;
+          font-size: 13px;
           background: transparent;
+          min-width: 60px;
         }
 
-        .filter-badge {
-          padding: 8px 20px;
-          background: #2E7D32;
-          color: white;
-          border-radius: 30px;
-          font-size: 14px;
-          font-weight: 500;
+        .vt-unit-tag {
+          padding: 0 10px;
+          font-size: 12px;
+          color: #6B7280;
+          background: #F3F4F6;
+          border-left: 1px solid #E5E7EB;
+          display: flex;
+          align-items: center;
+          min-height: 33px;
           white-space: nowrap;
         }
 
-        /* Add Vehicle Card */
-        .add-vehicle-card {
-          margin-bottom: 24px;
-          border: 1px solid rgba(46, 125, 50, 0.2);
-          border-radius: 20px;
-          overflow: hidden;
+        .vt-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 0 0 0;
+          margin-top: 16px;
         }
 
-        .card-header-compact {
-          padding: 16px 20px;
-          background: #f8faf8;
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        .card-header-compact h4 {
-          margin: 0 0 4px 0;
-          font-size: 16px;
-          font-weight: 600;
-          color: #2E7D32;
-        }
-
-        .card-header-compact p {
-          margin: 0;
-          font-size: 13px;
-          color: #6B7280;
-        }
-
-        .add-vehicle-form {
-          padding: 24px;
-        }
-
-        .form-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 16px;
-          margin-bottom: 20px;
-        }
-
-        .form-select {
-          width: 100%;
-          padding: 12px 16px;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          font-size: 14px;
-          background: white;
-          transition: all 0.2s ease;
-          outline: none;
-          color: #1F2937;
-        }
-
-        .form-select:focus {
-          border-color: #2E7D32;
-          box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.15);
-        }
-
-        /* Clean Input Style (Matching Search Bar) */
-        .input-wrapper {
+        .vt-footer-right {
           display: flex;
           align-items: center;
-          gap: 10px;
-          padding: 12px 16px;
-          background: white;
-          border-radius: 12px;
-          border: 1px solid #e5e7eb;
-          transition: all 0.2s ease;
+          gap: 12px;
         }
 
-        .input-wrapper:focus-within {
-          border-color: #2E7D32;
-          box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.15);
-        }
-
-        .input-icon {
-          color: #9CA3AF;
-          font-size: 16px;
-        }
-
-        .clean-input {
-          flex: 1;
+        .vt-add-btn {
+          background: none;
           border: none;
-          outline: none;
           font-size: 14px;
-          background: transparent;
-          color: #1F2937;
-        }
-
-        .clean-input::placeholder {
-          color: #9CA3AF;
-        }
-
-        .clean-input[type="number"] {
-          -moz-appearance: textfield;
-        }
-
-        .clean-input[type="number"]::-webkit-outer-spin-button,
-        .clean-input[type="number"]::-webkit-inner-spin-button {
-          -webkit-appearance: none;
-          margin: 0;
-        }
-
-        /* Edit Mode Inputs */
-        .edit-input-wrapper {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          background: white;
-          border-radius: 10px;
-          border: 1px solid #e5e7eb;
-          transition: all 0.2s ease;
-          width: 140px;
-        }
-
-        .edit-input-wrapper:focus-within {
-          border-color: #2E7D32;
-          box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.15);
-        }
-
-        .edit-input-icon {
-          color: #9CA3AF;
-          font-size: 14px;
-        }
-
-        .edit-input-field {
-          flex: 1;
-          border: none;
-          outline: none;
-          font-size: 13px;
-          background: transparent;
-          color: #1F2937;
-          width: 100px;
-        }
-
-        .add-btn {
-          width: 100%;
-          padding: 14px !important;
-          font-size: 16px !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          gap: 8px !important;
-          border-radius: 12px !important;
-        }
-
-        /* Table Card */
-        .table-card {
-          margin-bottom: 24px;
-          overflow: hidden;
-          border: 1px solid rgba(46, 125, 50, 0.2);
-          border-radius: 20px;
-        }
-
-        .table-wrapper {
-          overflow-x: auto;
-          max-width: 100%;
-        }
-
-        .vehicles-table {
-          width: 100%;
-          border-collapse: separate;
-          border-spacing: 0 8px;
-          padding: 8px;
-        }
-
-        .vehicles-table th {
-          text-align: left;
-          padding: 16px 20px;
-          background: #f8faf8;
-          font-size: 13px;
-          font-weight: 600;
-          color: #4B5563;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-
-        .vehicles-table td {
-          padding: 16px 20px;
-          background: white;
-          border-bottom: 1px solid #f0f0f0;
-        }
-
-        .vehicle-row {
-          transition: all 0.2s ease;
-        }
-
-        .vehicle-row:hover {
-          background: #f8faf8;
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        }
-
-        .vehicle-badge {
-          display: inline-block;
-          padding: 4px 12px;
-          background: #f0f9f0;
-          color: #2E7D32;
-          border-radius: 30px;
-          font-size: 13px;
           font-weight: 500;
-        }
-
-        .fuel-badge {
-          display: inline-block;
-          padding: 4px 12px;
-          border-radius: 30px;
-          font-size: 13px;
-          font-weight: 500;
-          border: 1px solid;
-        }
-
-        .registration-text {
-          font-family: monospace;
-          font-weight: 500;
-          color: #4B5563;
-        }
-
-        .number-cell {
-          font-family: 'Inter', monospace;
-          font-weight: 500;
-          color: #1F2937;
-        }
-
-        .actions-cell {
-          display: flex;
-          gap: 8px;
-          align-items: center;
-          flex-wrap: wrap;
-        }
-
-        .edit-actions {
-          display: flex;
-          gap: 8px;
-          width: 100%;
-        }
-
-        .edit-select {
-          padding: 8px 12px;
-          border: 1px solid #e5e7eb;
-          border-radius: 10px;
-          width: 140px;
-          font-size: 13px;
-          background: white;
-        }
-
-        .edit-btn, .save-btn, .cancel-btn {
-          padding: 6px 16px !important;
-          font-size: 13px !important;
-          border-radius: 30px !important;
-        }
-
-        .delete-btn {
-          padding: 8px;
-          background: white;
-          border: 1px solid #fee2e2;
-          border-radius: 8px;
-          color: #ef4444;
+          color: #2E7D64;
           cursor: pointer;
-          transition: all 0.2s ease;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 34px;
-          height: 34px;
+          padding: 8px 0;
         }
+        .vt-add-btn:hover { text-decoration: underline; }
 
-        .delete-btn:hover {
-          background: #fee2e2;
-          transform: scale(1.1);
-        }
+        .vt-error { font-size: 13px; color: #DC2626; }
 
-        /* Summary Footer */
-        .summary-footer {
-          margin-top: 24px;
-          padding: 0;
-          overflow: hidden;
-          border: 1px solid rgba(46, 125, 50, 0.2);
-          border-radius: 20px;
-        }
-
-        .summary-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 1px;
-          background: #e5e7eb;
-        }
-
-        .summary-item {
-          background: white;
-          padding: 24px;
-          text-align: center;
-        }
-
-        .summary-item.highlight {
-          background: linear-gradient(135deg, #f0f9f0 0%, #e6f3e6 100%);
-        }
-
-        .summary-label {
-          display: block;
-          font-size: 14px;
-          color: #6B7280;
-          margin-bottom: 8px;
-        }
-
-        .summary-value {
-          display: block;
-          font-size: 28px;
-          font-weight: 700;
-          color: #1B5E20;
-        }
-
-        .summary-value.emission {
-          color: #2E7D32;
-          font-size: 32px;
-        }
-
-        .footer-note {
-          padding: 16px 24px;
-          background: #f8faf8;
-          border-top: 1px solid #e5e7eb;
-          font-size: 13px;
-          color: #6B7280;
-        }
-
-        .footer-note p {
-          margin: 0;
+        .vt-submit-btn {
           display: flex;
           align-items: center;
           gap: 8px;
+          padding: 10px 20px;
+          background: #1B4D3E;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.15s;
         }
+        .vt-submit-btn:hover:not(:disabled) { background: #2E7D64; }
+        .vt-submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .vt-submit-btn.submitted { background: #059669; }
 
-        /* Empty State */
-        .empty-state-custom {
-          padding: 48px;
-          background: white;
-          border-radius: 24px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-          border: 1px dashed #2E7D32;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-          .vehicle-table-container {
-            padding: 12px;
-          }
-
-          .section-description {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-
-          .form-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .summary-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .summary-value {
-            font-size: 24px;
-          }
-
-          .summary-value.emission {
-            font-size: 28px;
-          }
-
-          .actions-cell {
-            flex-wrap: wrap;
-          }
-
-          .edit-actions {
-            flex-direction: column;
-          }
-        }
-
-        @media (max-width: 480px) {
-          .search-filter-bar {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .filter-badge {
-            align-self: flex-start;
-          }
+        @media (max-width: 640px) {
+          .vt-table th:nth-child(4),
+          .vt-table td:nth-child(4) { display: none; }
         }
       `}</style>
     </div>

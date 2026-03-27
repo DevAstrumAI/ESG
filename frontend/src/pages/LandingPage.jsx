@@ -1,258 +1,269 @@
 // src/pages/LandingPage.jsx
-import { useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useEffect, useState, useRef } from "react";
 import PrimaryButton from "../components/ui/PrimaryButton";
-import SecondaryButton from "../components/ui/SecondaryButton";
-import { 
-  FiWind, 
-  FiSun, 
-  FiCloud, 
-  FiTrendingUp, 
-  FiCheckCircle,
-  FiArrowRight,
-  FiGlobe,
-  FiDroplet,
-  FiActivity,
-  FiBarChart2
-} from "react-icons/fi";
-import { BiLeaf, BiRecycle } from "react-icons/bi";
-import { GiEarthAmerica, GiSolarPower, GiWindTurbine, GiForest, GiPlantSeed } from "react-icons/gi";
-import { MdOutlineEnergySavingsLeaf, MdEco } from "react-icons/md";
-import { RiLeafLine, RiRecycleLine, RiTreeLine } from "react-icons/ri";
+import { FiArrowRight, FiGlobe, FiCheckCircle } from "react-icons/fi";
+import { BiLeaf } from "react-icons/bi";
+import { GiPlantSeed } from "react-icons/gi";
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [isVisible, setIsVisible] = useState(false);
-  const heroRef = useRef(null);
+  const [heroVisible, setHeroVisible]       = useState(false);
+  const [featuresVisible, setFeaturesVisible] = useState(false);
+  const [footerVisible, setFooterVisible]   = useState(false);
+  const featuresRef = useRef(null);
+  const footerRef   = useRef(null);
 
   useEffect(() => {
-    setIsVisible(true);
-    
-    const handleMouseMove = (e) => {
-      if (heroRef.current) {
-        const rect = heroRef.current.getBoundingClientRect();
-        setMousePosition({
-          x: ((e.clientX - rect.left) / rect.width - 0.5) * 20,
-          y: ((e.clientY - rect.top) / rect.height - 0.5) * 20,
-        });
-      }
-    };
+    // Hero animates immediately on mount
+    const heroTimer = setTimeout(() => setHeroVisible(true), 50);
 
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
+    // Use IntersectionObserver for features and footer
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            if (entry.target === featuresRef.current) setFeaturesVisible(true);
+            if (entry.target === footerRef.current)   setFooterVisible(true);
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+
+    if (featuresRef.current) observer.observe(featuresRef.current);
+    if (footerRef.current)   observer.observe(footerRef.current);
+
+    return () => {
+      clearTimeout(heroTimer);
+      observer.disconnect();
+    };
   }, []);
 
   const features = [
-    { icon: <GiPlantSeed className="feature-icon" />, title: "Track Emissions", description: "Monitor your carbon footprint in real-time" },
-    { icon: <GiWindTurbine className="feature-icon" />, title: "Renewable Energy", description: "Optimize your clean energy usage" },
-    { icon: <FiBarChart2 className="feature-icon" />, title: "Progress Reports", description: "Visualize your sustainability journey" },
-    { icon: <GiEarthAmerica className="feature-icon" />, title: "Global Standards", description: "Align with international ESG frameworks" },
-  ];
-
-  const stats = [
-    { value: "10k+", label: "Companies", icon: <FiGlobe /> },
-    { value: "2M t", label: "CO₂ Reduced", icon: <MdEco /> },
-    { value: "98%", label: "Satisfaction", icon: <FiCheckCircle /> },
+    {
+      icon: <GiPlantSeed className="feature-icon" />,
+      title: "Comprehensive Tracking",
+      description: "Track Scope 1 and Scope 2 emissions with region-specific factors",
+    },
+    {
+      icon: <FiGlobe className="feature-icon" />,
+      title: "Regional Compliance",
+      description: "Built for UAE, Singapore, and Saudi Arabia regulations",
+    },
+    {
+      icon: <FiCheckCircle className="feature-icon" />,
+      title: "Secure & Reliable",
+      description: "Your data is encrypted and securely stored",
+    },
   ];
 
   return (
-    <div className="landing-container">
-      {/* Floating Background Elements */}
-      <div className="floating-bg">
-        <div className="floating-leaf leaf-1"><RiLeafLine /></div>
-        <div className="floating-leaf leaf-2"><BiLeaf /></div>
-        <div className="floating-leaf leaf-3"><RiTreeLine /></div>
-        <div className="floating-cloud cloud-1"><FiCloud /></div>
-        <div className="floating-cloud cloud-2"><FiCloud /></div>
-        <div className="floating-sun"><FiSun /></div>
-      </div>
+    <div className="landing-wrapper">
+      <div className="landing-container">
 
-      {/* Hero Section */}
-      <div 
-        ref={heroRef}
-        className={`hero-section ${isVisible ? 'visible' : ''}`}
-        style={{
-          transform: `perspective(1000px) rotateX(${mousePosition.y * 0.5}deg) rotateY(${mousePosition.x * 0.5}deg)`,
-        }}
-      >
-        <div className="hero-badge">
-          <span className="badge-dot"></span>
-          <span>AI-Powered Sustainability Platform</span>
-        </div>
-
-        <h1 className="hero-title">
-          Welcome to 
-          <span className="gradient-text"> ESG Calculator</span>
-        </h1>
-
-        <p className="hero-description">
-          Track, manage, and reduce your company's emissions efficiently. 
-          Join thousands of businesses leading the transition to a sustainable future.
-        </p>
-
-        <div className="cta-container">
-          <PrimaryButton 
-            onClick={() => navigate("/signup")}
-            className="cta-primary"
-          >
-            <span>Get Started Free</span>
-            <FiArrowRight className="cta-icon" />
-          </PrimaryButton>
-
-          <SecondaryButton 
-            onClick={() => navigate("/login")}
-            className="cta-secondary"
-          >
-            <span>Log In</span>
-          </SecondaryButton>
-        </div>
-
-        <div className="trust-badge">
-          <div className="avatar-group">
-            <div className="avatar">JD</div>
-            <div className="avatar">MK</div>
-            <div className="avatar">SL</div>
-            <div className="avatar">+2k</div>
+        {/* Navbar */}
+        <nav className="navbar">
+          <div className="nav-brand">
+            <BiLeaf className="brand-icon" />
+            <span>Lumyna</span>
           </div>
-          <p>Trusted by 2,000+ companies worldwide</p>
-        </div>
-      </div>
-
-      {/* Stats Section */}
-      <div className="stats-section">
-        {stats.map((stat, index) => (
-          <div key={index} className="stat-card">
-            <div className="stat-icon">{stat.icon}</div>
-            <div>
-              <div className="stat-value">{stat.value}</div>
-              <div className="stat-label">{stat.label}</div>
-            </div>
+          <div className="nav-buttons">
+            <button onClick={() => navigate("/login")} className="login-btn">
+              Log In
+            </button>
+            <PrimaryButton onClick={() => navigate("/signup")} className="signup-btn">
+              Sign Up
+            </PrimaryButton>
           </div>
-        ))}
-      </div>
+        </nav>
 
-      {/* Features Grid */}
-      <div className="features-section">
-        <h2 className="section-title">
-          Everything you need to manage <span className="gradient-text">sustainability</span>
-        </h2>
-        <p className="section-subtitle">
-          Comprehensive tools to measure, report, and reduce your environmental impact
-        </p>
+        {/* Hero */}
+        <div className={`hero-section ${heroVisible ? "visible" : ""}`}>
+          <div className="hero-badge">
+            <span className="badge-dot" />
+            <span>ESG Intelligence Platform</span>
+          </div>
 
-        <div className="features-grid">
-          {features.map((feature, index) => (
-            <div key={index} className="feature-card">
-              <div className="feature-icon-wrapper">
-                {feature.icon}
+          <h1 className="hero-title">Lumyna</h1>
+
+          <p className="hero-description">
+            Track Your Carbon Footprint with Precision
+          </p>
+
+          <p className="hero-sub">
+            Lumyna helps sustainability managers across UAE, Singapore, and Saudi
+            Arabia measure, monitor, and reduce their organization's emissions
+            with our comprehensive ESG calculator.
+          </p>
+
+          <div className="cta-container">
+            <PrimaryButton
+              onClick={() => navigate("/signup")}
+              className="cta-primary"
+            >
+              Get Started
+              <FiArrowRight className="cta-icon" />
+            </PrimaryButton>
+          </div>
+
+          {/* Animated stat strip */}
+          <div className="stat-strip">
+            {[
+              { value: "3", label: "Regions" },
+              { value: "GHG", label: "Protocol Compliant" },
+              { value: "Scope 1+2", label: "Coverage" },
+            ].map((stat, i) => (
+              <div key={i} className="stat-item">
+                <span className="stat-value">{stat.value}</span>
+                <span className="stat-label">{stat.label}</span>
               </div>
-              <h3>{feature.title}</h3>
-              <p>{feature.description}</p>
-              <div className="feature-hover-effect"></div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* CTA Banner */}
-      <div className="cta-banner">
-        <div className="cta-content">
-          <h2>Ready to start your sustainability journey?</h2>
-          <p>Join thousands of companies already using ESG Calculator</p>
-          <PrimaryButton 
-            onClick={() => navigate("/signup")}
-            className="banner-cta"
-          >
-            Create Free Account
-            <FiArrowRight className="cta-icon" />
-          </PrimaryButton>
+        {/* Features */}
+        <div
+          ref={featuresRef}
+          className={`features-section ${featuresVisible ? "visible" : ""}`}
+        >
+          <div className="features-grid">
+            {features.map((feature, index) => (
+              <div
+                key={index}
+                className="feature-card"
+                style={{ transitionDelay: `${index * 0.1}s` }}
+              >
+                <div className="feature-icon-wrapper">{feature.icon}</div>
+                <h3>{feature.title}</h3>
+                <p>{feature.description}</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="cta-decoration">
-          <GiForest className="decoration-icon" />
-          <MdOutlineEnergySavingsLeaf className="decoration-icon" />
-          <GiSolarPower className="decoration-icon" />
-        </div>
+
+        {/* Footer */}
+        <footer
+          ref={footerRef}
+          className={`landing-footer ${footerVisible ? "visible" : ""}`}
+        >
+          <div className="footer-content">
+            <div className="footer-brand">
+              <BiLeaf className="footer-icon" />
+              <span>Lumyna</span>
+            </div>
+            <div className="footer-links">
+              <Link to="/privacy">Privacy Policy</Link>
+              <Link to="/terms">Terms of Service</Link>
+              <Link to="/help">Help Center</Link>
+              <Link to="/contact">Contact Us</Link>
+            </div>
+            <div className="footer-copyright">
+              © {new Date().getFullYear()} Lumyna. All rights reserved.
+            </div>
+          </div>
+        </footer>
+
       </div>
 
       <style jsx>{`
-        .landing-container {
+        /* ── Scroll fix ── */
+        .landing-wrapper {
+          width: 100%;
           min-height: 100vh;
-          background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 50%, #BBF7D0 100%);
-          position: relative;
-          overflow-x: hidden;
-          padding: 40px 20px;
+          overflow-y: auto;
+          background: white;
         }
 
-        /* Floating Background Elements */
-        .floating-bg {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        .floating-leaf {
-          position: absolute;
-          color: rgba(34, 197, 94, 0.1);
-          font-size: 4rem;
-          animation: float 20s infinite linear;
-        }
-
-        .floating-cloud {
-          position: absolute;
-          color: rgba(255, 255, 255, 0.3);
-          font-size: 5rem;
-          animation: float 30s infinite linear;
-        }
-
-        .floating-sun {
-          position: absolute;
-          top: 100px;
-          right: 100px;
-          color: rgba(250, 204, 21, 0.15);
-          font-size: 6rem;
-          animation: rotate 60s infinite linear;
-        }
-
-        .leaf-1 { top: 10%; left: 5%; animation-delay: 0s; }
-        .leaf-2 { bottom: 20%; right: 8%; animation-delay: -5s; }
-        .leaf-3 { top: 40%; right: 15%; animation-delay: -10s; }
-        .cloud-1 { top: 20%; right: 20%; animation-delay: -2s; }
-        .cloud-2 { bottom: 30%; left: 10%; animation-delay: -15s; }
-
-        @keyframes float {
-          0% { transform: translateY(0px) rotate(0deg); }
-          50% { transform: translateY(-20px) rotate(5deg); }
-          100% { transform: translateY(0px) rotate(0deg); }
-        }
-
-        @keyframes rotate {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-
-        /* Hero Section */
-        .hero-section {
-          position: relative;
-          z-index: 1;
-          max-width: 900px;
+        .landing-container {
+          max-width: 1200px;
           margin: 0 auto;
-          padding: 60px 20px;
-          text-align: center;
-          opacity: 0;
-          transform: translateY(30px);
-          transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-          background: rgba(255, 255, 255, 0.1);
-          backdrop-filter: blur(10px);
-          border-radius: 40px;
-          border: 1px solid rgba(34, 197, 94, 0.2);
-          box-shadow: 0 20px 40px rgba(0, 100, 0, 0.1);
+          padding: 0 24px 0;
         }
 
+        /* ── Keyframes ── */
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(24px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeDown {
+          from { opacity: 0; transform: translateY(-16px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.5; transform: scale(1.15); }
+        }
+
+        @keyframes shimmer {
+          0%   { background-position: -200% center; }
+          100% { background-position: 200% center; }
+        }
+
+        /* ── Navbar ── */
+        .navbar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 20px 0;
+          border-bottom: 1px solid #E5E7EB;
+          animation: fadeDown 0.4s ease forwards;
+        }
+
+        .nav-brand {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 22px;
+          font-weight: 700;
+          color: #1B4D3E;
+        }
+
+        .brand-icon {
+          font-size: 26px;
+          color: #2E7D64;
+        }
+
+        .nav-buttons {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+        }
+
+        .login-btn {
+          padding: 8px 20px;
+          background: transparent;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          color: #4A5568;
+          cursor: pointer;
+          transition: border-color 0.2s, color 0.2s;
+        }
+        .login-btn:hover { border-color: #2E7D64; color: #2E7D64; }
+
+        .signup-btn {
+          padding: 8px 20px !important;
+          background: #2E7D64 !important;
+          font-size: 14px !important;
+        }
+
+        /* ── Hero ── */
+        .hero-section {
+          text-align: center;
+          padding: 80px 20px 60px;
+          opacity: 0;
+          transform: translateY(20px);
+          transition: opacity 0.6s ease, transform 0.6s ease;
+        }
         .hero-section.visible {
           opacity: 1;
           transform: translateY(0);
@@ -262,394 +273,264 @@ export default function LandingPage() {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          background: rgba(34, 197, 94, 0.1);
-          padding: 8px 16px;
+          background: #F8FAF8;
+          padding: 6px 14px;
           border-radius: 30px;
-          margin-bottom: 24px;
-          border: 1px solid rgba(34, 197, 94, 0.3);
-          backdrop-filter: blur(5px);
+          margin-bottom: 32px;
+          border: 1px solid #E5E7EB;
+          animation: scaleIn 0.4s ease 0.2s both;
         }
 
         .badge-dot {
           width: 8px;
           height: 8px;
-          background: #22C55E;
+          background: #2E7D64;
           border-radius: 50%;
           animation: pulse 2s infinite;
         }
 
-        @keyframes pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.2); }
-        }
-
-        .hero-title {
-          font-size: clamp(2.5rem, 8vw, 4.5rem);
-          font-weight: 800;
-          line-height: 1.1;
-          margin-bottom: 24px;
-          color: #14532D;
-        }
-
-        .gradient-text {
-          background: linear-gradient(135deg, #15803D 0%, #22C55E 50%, #4ADE80 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          display: inline-block;
-        }
-
-        .hero-description {
-          font-size: 1.125rem;
-          color: #166534;
-          max-width: 600px;
-          margin: 0 auto 32px;
-          line-height: 1.6;
-        }
-
-        .cta-container {
-          display: flex;
-          gap: 16px;
-          justify-content: center;
-          flex-wrap: wrap;
-          margin-bottom: 40px;
-        }
-
-        .cta-primary {
-          padding: 16px 32px !important;
-          font-size: 1.1rem !important;
-          background: linear-gradient(135deg, #15803D 0%, #22C55E 100%) !important;
-          border: none !important;
-          box-shadow: 0 10px 20px rgba(34, 197, 94, 0.3) !important;
-          transition: all 0.3s ease !important;
-        }
-
-        .cta-primary:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 15px 30px rgba(34, 197, 94, 0.4) !important;
-        }
-
-        .cta-secondary {
-          padding: 16px 32px !important;
-          font-size: 1.1rem !important;
-          background: white !important;
-          color: #15803D !important;
-          border: 2px solid #22C55E !important;
-        }
-
-        .cta-secondary:hover {
-          background: #F0FDF4 !important;
-        }
-
-        .cta-icon {
-          transition: transform 0.3s ease;
-        }
-
-        .cta-primary:hover .cta-icon {
-          transform: translateX(5px);
-        }
-
-        /* Trust Badge */
-        .trust-badge {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 20px;
-          flex-wrap: wrap;
-        }
-
-        .avatar-group {
-          display: flex;
-          align-items: center;
-        }
-
-        .avatar {
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #22C55E, #15803D);
-          border: 2px solid white;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-weight: 600;
-          font-size: 12px;
-          margin-left: -8px;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-
-        .avatar:first-child {
-          margin-left: 0;
-        }
-
-        .trust-badge p {
-          color: #166534;
-          font-size: 14px;
+        .hero-badge span {
+          font-size: 13px;
+          color: #1B4D3E;
           font-weight: 500;
         }
 
-        /* Stats Section */
-        .stats-section {
+        .hero-title {
+          font-size: 64px;
+          font-weight: 700;
+          color: #1B4D3E;
+          margin: 0 0 16px;
+          animation: fadeUp 0.5s ease 0.1s both;
+          /* Subtle shimmer on the title text */
+          background: linear-gradient(
+            90deg,
+            #1B4D3E 0%,
+            #2E7D64 40%,
+            #1B4D3E 60%,
+            #1B4D3E 100%
+          );
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          animation: fadeUp 0.5s ease 0.1s both, shimmer 4s linear 1s infinite;
+        }
+
+        .hero-description {
+          font-size: 26px;
+          font-weight: 600;
+          color: #1B4D3E;
+          margin-bottom: 20px;
+          animation: fadeUp 0.5s ease 0.2s both;
+        }
+
+        .hero-sub {
+          font-size: 16px;
+          color: #4A5568;
+          max-width: 580px;
+          margin: 0 auto 36px;
+          line-height: 1.7;
+          animation: fadeUp 0.5s ease 0.3s both;
+        }
+
+        .cta-container {
+          animation: fadeUp 0.5s ease 0.4s both;
+        }
+
+        .cta-primary {
+          padding: 14px 36px !important;
+          font-size: 16px !important;
+          background: #2E7D64 !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          transition: background 0.2s, transform 0.1s !important;
+        }
+        .cta-primary:hover { background: #1B4D3E !important; }
+        .cta-primary:active { transform: scale(0.98) !important; }
+
+        .cta-icon {
+          transition: transform 0.2s ease;
+        }
+        .cta-primary:hover .cta-icon {
+          transform: translateX(4px);
+        }
+
+        /* ── Stat strip ── */
+        .stat-strip {
           display: flex;
           justify-content: center;
-          gap: 30px;
-          flex-wrap: wrap;
-          max-width: 800px;
-          margin: 60px auto;
-          position: relative;
-          z-index: 1;
+          gap: 48px;
+          margin-top: 56px;
+          padding-top: 32px;
+          border-top: 1px solid #E5E7EB;
+          animation: fadeUp 0.5s ease 0.55s both;
         }
 
-        .stat-card {
-          background: white;
-          padding: 24px 32px;
-          border-radius: 20px;
+        .stat-item {
           display: flex;
+          flex-direction: column;
           align-items: center;
-          gap: 16px;
-          box-shadow: 0 10px 30px rgba(0, 50, 0, 0.1);
-          border: 1px solid rgba(34, 197, 94, 0.2);
-          transition: all 0.3s ease;
-          backdrop-filter: blur(10px);
-        }
-
-        .stat-card:hover {
-          transform: translateY(-5px);
-          box-shadow: 0 20px 40px rgba(34, 197, 94, 0.2);
-        }
-
-        .stat-icon {
-          font-size: 2rem;
-          color: #22C55E;
+          gap: 4px;
         }
 
         .stat-value {
-          font-size: 1.8rem;
+          font-size: 22px;
           font-weight: 700;
-          color: #14532D;
-          line-height: 1.2;
+          color: #1B4D3E;
         }
 
         .stat-label {
-          font-size: 0.9rem;
-          color: #166534;
-          opacity: 0.8;
+          font-size: 12px;
+          color: #6B7280;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
         }
 
-        /* Features Section */
+        /* ── Features ── */
         .features-section {
-          max-width: 1200px;
-          margin: 80px auto;
-          position: relative;
-          z-index: 1;
+          padding: 60px 0;
+          opacity: 0;
+          transform: translateY(24px);
+          transition: opacity 0.6s ease, transform 0.6s ease;
         }
-
-        .section-title {
-          font-size: clamp(2rem, 5vw, 3rem);
-          font-weight: 700;
-          text-align: center;
-          color: #14532D;
-          margin-bottom: 16px;
-        }
-
-        .section-subtitle {
-          font-size: 1.1rem;
-          color: #166534;
-          text-align: center;
-          max-width: 600px;
-          margin: 0 auto 48px;
+        .features-section.visible {
+          opacity: 1;
+          transform: translateY(0);
         }
 
         .features-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 30px;
-          padding: 20px;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 24px;
         }
 
         .feature-card {
-          background: rgba(255, 255, 255, 0.9);
-          backdrop-filter: blur(10px);
+          background: white;
           padding: 32px 24px;
-          border-radius: 24px;
+          border-radius: 12px;
           text-align: center;
-          border: 1px solid rgba(34, 197, 94, 0.2);
-          transition: all 0.3s ease;
-          position: relative;
-          overflow: hidden;
+          border: 1px solid #E5E7EB;
+          opacity: 0;
+          transform: translateY(20px);
+          transition: opacity 0.5s ease, transform 0.5s ease, border-color 0.2s;
+        }
+
+        .features-section.visible .feature-card {
+          opacity: 1;
+          transform: translateY(0);
         }
 
         .feature-card:hover {
-          transform: translateY(-10px);
-          box-shadow: 0 20px 40px rgba(34, 197, 94, 0.2);
+          border-color: #2E7D64;
+          transform: translateY(-4px);
         }
 
         .feature-icon-wrapper {
-          width: 70px;
-          height: 70px;
-          background: linear-gradient(135deg, #22C55E20, #15803D20);
-          border-radius: 50%;
+          width: 60px;
+          height: 60px;
+          background: #F8FAF8;
+          border-radius: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
           margin: 0 auto 20px;
-          transition: all 0.3s ease;
+          border: 1px solid #E5E7EB;
+          transition: background 0.2s, border-color 0.2s;
         }
 
         .feature-card:hover .feature-icon-wrapper {
-          transform: scale(1.1);
-          background: linear-gradient(135deg, #22C55E, #15803D);
+          background: #EDF7F2;
+          border-color: #2E7D64;
         }
 
         .feature-icon {
-          font-size: 2rem;
-          color: #22C55E;
-          transition: all 0.3s ease;
-        }
-
-        .feature-card:hover .feature-icon {
-          color: white;
+          font-size: 26px;
+          color: #2E7D64;
         }
 
         .feature-card h3 {
-          font-size: 1.3rem;
+          font-size: 17px;
           font-weight: 600;
-          color: #14532D;
-          margin-bottom: 12px;
+          color: #1B4D3E;
+          margin: 0 0 10px;
         }
 
         .feature-card p {
-          color: #166534;
+          color: #4A5568;
           line-height: 1.6;
-          font-size: 0.95rem;
+          font-size: 14px;
+          margin: 0;
         }
 
-        .feature-hover-effect {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: linear-gradient(135deg, #22C55E10, transparent);
+        /* ── Footer ── */
+        .landing-footer {
+          border-top: 1px solid #E5E7EB;
+          padding: 40px 0 28px;
           opacity: 0;
-          transition: opacity 0.3s ease;
-          pointer-events: none;
+          transform: translateY(16px);
+          transition: opacity 0.5s ease, transform 0.5s ease;
         }
-
-        .feature-card:hover .feature-hover-effect {
+        .landing-footer.visible {
           opacity: 1;
+          transform: translateY(0);
         }
 
-        /* CTA Banner */
-        .cta-banner {
-          background: linear-gradient(135deg, #14532D 0%, #166534 50%, #15803D 100%);
-          border-radius: 30px;
-          padding: 60px 40px;
-          margin: 80px auto 40px;
-          max-width: 1000px;
-          position: relative;
-          z-index: 1;
-          overflow: hidden;
-          box-shadow: 0 30px 50px rgba(0, 50, 0, 0.3);
+        .footer-content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 20px;
+        }
+
+        .footer-brand {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          flex-wrap: wrap;
-          gap: 40px;
+          gap: 8px;
+          font-size: 18px;
+          font-weight: 600;
+          color: #1B4D3E;
         }
 
-        .cta-content {
-          flex: 1;
-          min-width: 300px;
-        }
+        .footer-icon { font-size: 20px; color: #2E7D64; }
 
-        .cta-content h2 {
-          font-size: clamp(1.8rem, 4vw, 2.5rem);
-          font-weight: 700;
-          color: white;
-          margin-bottom: 16px;
-        }
-
-        .cta-content p {
-          font-size: 1.1rem;
-          color: rgba(255,255,255,0.9);
-          margin-bottom: 24px;
-        }
-
-        .banner-cta {
-          padding: 16px 32px !important;
-          font-size: 1.1rem !important;
-          background: white !important;
-          color: #14532D !important;
-          border: none !important;
-        }
-
-        .banner-cta:hover {
-          background: #F0FDF4 !important;
-          transform: translateY(-2px);
-          box-shadow: 0 10px 20px rgba(0,0,0,0.2) !important;
-        }
-
-        .cta-decoration {
+        .footer-links {
           display: flex;
-          gap: 30px;
+          gap: 24px;
           flex-wrap: wrap;
           justify-content: center;
         }
 
-        .decoration-icon {
-          font-size: 4rem;
-          color: rgba(255,255,255,0.2);
-          animation: float 6s infinite ease-in-out;
+        .footer-links a {
+          color: #6B7280;
+          text-decoration: none;
+          font-size: 14px;
+          transition: color 0.2s;
+        }
+        .footer-links a:hover { color: #2E7D64; }
+
+        .footer-copyright {
+          color: #9CA3AF;
+          font-size: 12px;
         }
 
-        .decoration-icon:nth-child(2) {
-          animation-delay: -2s;
-        }
-
-        .decoration-icon:nth-child(3) {
-          animation-delay: -4s;
-        }
-
-        /* Responsive */
+        /* ── Responsive ── */
         @media (max-width: 768px) {
-          .hero-section {
-            padding: 40px 20px;
-          }
-
-          .cta-banner {
-            padding: 40px 20px;
-            text-align: center;
-          }
-
-          .cta-decoration {
-            display: none;
-          }
-
-          .stats-section {
-            gap: 15px;
-          }
-
-          .stat-card {
-            width: 100%;
-            max-width: 280px;
-          }
+          .landing-container { padding: 0 16px; }
+          .hero-section { padding: 60px 0 40px; }
+          .hero-title { font-size: 44px; }
+          .hero-description { font-size: 20px; }
+          .features-grid { grid-template-columns: 1fr; gap: 16px; }
+          .stat-strip { gap: 28px; }
+          .footer-links { gap: 16px; }
         }
 
         @media (max-width: 480px) {
-          .hero-badge {
-            font-size: 0.8rem;
-          }
-
-          .trust-badge {
-            flex-direction: column;
-            gap: 10px;
-          }
-
-          .features-grid {
-            grid-template-columns: 1fr;
-          }
+          .hero-title { font-size: 34px; }
+          .hero-description { font-size: 17px; }
+          .stat-strip { flex-direction: column; gap: 20px; }
+          .cta-primary { width: 100%; justify-content: center !important; }
+          .footer-links { flex-direction: column; align-items: center; gap: 12px; }
         }
       `}</style>
     </div>

@@ -1,15 +1,19 @@
 // src/components/company/RegionSelector.jsx
-import SelectDropdown from "../ui/SelectDropdown";
 import { FiGlobe } from "react-icons/fi";
 
 export default function RegionSelector({ data, updateField }) {
-  // In RegionSelector.jsx, add Asia Pacific if not already there:
-const regions = [
-  { label: "🌍 Middle East", value: "middle-east", flag: "🌍" },
-  { label: "🌏 Asia Pacific", value: "asia-pacific", flag: "🌏" },  // Add this
-  { label: "🇪🇺 Europe (EU)", value: "eu", flag: "🇪🇺" },
-  // ... other regions
-];
+  const regions = [
+    { label: "🌍 Middle East", value: "middle-east" },
+    { label: "🌏 Asia Pacific", value: "asia-pacific" },
+    { label: "🇪🇺 Europe (EU)", value: "eu" },
+    { label: "🇬🇧 United Kingdom", value: "uk" },
+    { label: "🇺🇸 United States", value: "us" },
+    { label: "🇮🇳 India", value: "in" },
+    { label: "🇨🇳 China", value: "cn" },
+    { label: "🌍 Other", value: "other" },
+  ];
+
+  const selectedRegion = regions.find(r => r.value === data.region);
 
   return (
     <div className="form-step">
@@ -23,24 +27,32 @@ const regions = [
       </p>
 
       <div className="region-grid">
-        <SelectDropdown
-          label="Region"
-          value={data.region}
-          onChange={(e) => {
-            updateField("region", e.target.value);
-            // Reset country and locations when region changes
-            updateField("country", "");
-            updateField("locations", []);
-          }}
-          options={regions}
-          placeholder="Choose your primary operating region"
-          required
-        />
+        <div className="field-group">
+          <label className="field-label">
+            Region <span className="required">*</span>
+          </label>
+          <select
+            className="field-select"
+            value={data.region}
+            onChange={(e) => {
+              updateField("region", e.target.value);
+              updateField("country", "");
+              updateField("locations", []);
+            }}
+          >
+            <option value="">Choose your primary operating region</option>
+            {regions.map((region) => (
+              <option key={region.value} value={region.value}>
+                {region.label}
+              </option>
+            ))}
+          </select>
+        </div>
         
-        {data.region && (
+        {data.region && selectedRegion && (
           <div className="region-info">
             <FiGlobe />
-            <span>Emission factors will be based on {regions.find(r => r.value === data.region)?.label}</span>
+            <span>Emission factors will be based on {selectedRegion.label}</span>
           </div>
         )}
       </div>
@@ -69,12 +81,12 @@ const regions = [
         .step-header h3 {
           font-size: 22px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0;
         }
 
         .step-description {
-          color: #4B5563;
+          color: #4A5568;
           margin-bottom: 32px;
           font-size: 15px;
           line-height: 1.6;
@@ -84,17 +96,48 @@ const regions = [
           max-width: 400px;
         }
 
+        .field-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .field-label {
+          font-size: 14px;
+          font-weight: 500;
+          color: #374151;
+        }
+
+        .required {
+          color: #DC2626;
+        }
+
+        .field-select {
+          padding: 12px 16px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          font-size: 14px;
+          transition: all 0.2s ease;
+          background: white;
+          cursor: pointer;
+        }
+
+        .field-select:focus {
+          outline: none;
+          border-color: #2E7D64;
+        }
+
         .region-info {
           margin-top: 16px;
           padding: 12px 16px;
-          background: #F0FDF4;
-          border-radius: 12px;
+          background: #F8FAF8;
+          border-radius: 8px;
           display: flex;
           align-items: center;
           gap: 8px;
           font-size: 14px;
-          color: #15803D;
-          border: 1px solid rgba(34, 197, 94, 0.2);
+          color: #2E7D64;
+          border: 1px solid #E5E7EB;
         }
       `}</style>
     </div>

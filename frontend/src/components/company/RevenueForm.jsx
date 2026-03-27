@@ -1,10 +1,19 @@
 // src/components/company/RevenueForm.jsx
-import InputField from "../ui/InputField";
-import { FiDollarSign } from "react-icons/fi";
 import { useState } from "react";
+import { FiDollarSign } from "react-icons/fi";
 
 export default function RevenueForm({ data, updateField }) {
   const [currency, setCurrency] = useState("USD");
+
+  const formatRevenue = (value) => {
+    if (!value) return "";
+    return new Intl.NumberFormat('en-US', { 
+      style: 'currency', 
+      currency: currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(value);
+  };
 
   return (
     <div className="form-step">
@@ -18,38 +27,38 @@ export default function RevenueForm({ data, updateField }) {
       </p>
 
       <div className="revenue-input">
-        <div className="currency-selector">
+        <div className="field-group">
+          <label className="field-label">Currency</label>
           <select 
             value={currency} 
             onChange={(e) => setCurrency(e.target.value)}
-            className="currency-select"
+            className="field-select"
           >
-            <option value="USD">USD $</option>
-            <option value="EUR">EUR €</option>
-            <option value="GBP">GBP £</option>
-            <option value="AED">AED د.إ</option>
-            <option value="INR">INR ₹</option>
+            <option value="USD">USD ($)</option>
+            <option value="EUR">EUR (€)</option>
+            <option value="GBP">GBP (£)</option>
+            <option value="AED">AED (د.إ)</option>
+            <option value="INR">INR (₹)</option>
           </select>
         </div>
 
-        <InputField
-          label="Annual Revenue"
-          type="number"
-          value={data.revenue}
-          placeholder="e.g., 5000000"
-          onChange={(e) => updateField("revenue", e.target.value)}
-          min="0"
-          required
-        />
+        <div className="field-group">
+          <label className="field-label">
+            Annual Revenue <span className="required">*</span>
+          </label>
+          <input
+            type="number"
+            className="field-input"
+            value={data.revenue}
+            placeholder="e.g., 5000000"
+            onChange={(e) => updateField("revenue", e.target.value)}
+            min="0"
+          />
+        </div>
 
         {data.revenue && (
           <div className="revenue-formatted">
-            {new Intl.NumberFormat('en-US', { 
-              style: 'currency', 
-              currency: currency,
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 0
-            }).format(data.revenue)}
+            {formatRevenue(data.revenue)}
           </div>
         )}
       </div>
@@ -78,12 +87,12 @@ export default function RevenueForm({ data, updateField }) {
         .step-header h3 {
           font-size: 22px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0;
         }
 
         .step-description {
-          color: #4B5563;
+          color: #4A5568;
           margin-bottom: 32px;
           font-size: 15px;
           line-height: 1.6;
@@ -91,37 +100,53 @@ export default function RevenueForm({ data, updateField }) {
 
         .revenue-input {
           max-width: 400px;
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
         }
 
-        .currency-selector {
-          margin-bottom: 12px;
+        .field-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
         }
 
-        .currency-select {
-          padding: 10px 16px;
-          border: 2px solid #E5E7EB;
-          border-radius: 12px;
+        .field-label {
           font-size: 14px;
-          color: #1F2937;
-          background: white;
-          cursor: pointer;
-          outline: none;
-          width: 120px;
+          font-weight: 500;
+          color: #374151;
         }
 
-        .currency-select:focus {
-          border-color: #22C55E;
+        .required {
+          color: #DC2626;
+        }
+
+        .field-input, .field-select {
+          padding: 12px 16px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          font-size: 14px;
+          transition: all 0.2s ease;
+          background: white;
+        }
+
+        .field-input:focus, .field-select:focus {
+          outline: none;
+          border-color: #2E7D64;
+        }
+
+        .field-select {
+          cursor: pointer;
         }
 
         .revenue-formatted {
-          margin-top: 16px;
           padding: 12px 16px;
-          background: #F0FDF4;
-          border-radius: 12px;
+          background: #F8FAF8;
+          border-radius: 8px;
           font-size: 18px;
           font-weight: 600;
-          color: #15803D;
-          border: 1px solid rgba(34, 197, 94, 0.2);
+          color: #2E7D64;
+          border: 1px solid #E5E7EB;
           text-align: center;
         }
       `}</style>

@@ -4,30 +4,32 @@ import ReportsOverview from "../components/reports/ReportsOverview";
 import { FiFileText, FiDownload, FiCalendar, FiFilter, FiBarChart2, FiMapPin } from "react-icons/fi";
 import { BiLeaf } from "react-icons/bi";
 import Card from "../components/ui/Card";
-import { useEmissionStore } from "../store/emissionStore"; // Add this import
+import { useCompanyStore } from "../store/companyStore";
+import { useAuthStore } from "../store/authStore";
 
 export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("monthly");
   const [selectedYear, setSelectedYear] = useState("2026");
-  const [selectedCity, setSelectedCity] = useState("all"); // Add city filter
-  const [cities, setCities] = useState([]);
+  const [selectedCity, setSelectedCity] = useState("all");
+  const [cities, setCities] = useState(["all"]);
+  
+  const { company, fetchCompany } = useCompanyStore();
+  const token = useAuthStore((s) => s.token);
 
-  // Get company data from store (you'll need to add this to your store)
-  // For now, using sample data from company setup
+  // Fetch company data on mount
   useEffect(() => {
-    // This should come from your store/context
-    // Example structure from company setup
-    const companyLocations = [
-      { id: 1, city: "Dubai", country: "UAE" },
-      { id: 2, city: "Abu Dhabi", country: "UAE" },
-      { id: 3, city: "Doha", country: "Qatar" },
-      { id: 4, city: "Riyadh", country: "Saudi Arabia" },
-    ];
-    
-    // Extract unique cities
-    const uniqueCities = ["all", ...new Set(companyLocations.map(loc => loc.city))];
-    setCities(uniqueCities);
-  }, []);
+    if (token && !company) {
+      fetchCompany(token);
+    }
+  }, [token, company, fetchCompany]);
+
+  // Extract unique cities from company locations
+  useEffect(() => {
+    if (company?.locations && company.locations.length > 0) {
+      const uniqueCities = ["all", ...new Set(company.locations.map(loc => loc.city))];
+      setCities(uniqueCities);
+    }
+  }, [company]);
 
   return (
     <div className="reports-page">
@@ -53,7 +55,6 @@ export default function ReportsPage() {
       {/* Filters Bar */}
       <Card className="filters-card">
         <div className="filters-grid">
-          {/* City Filter - New */}
           <div className="filter-group">
             <label>
               <FiMapPin className="filter-icon" />
@@ -138,8 +139,11 @@ export default function ReportsPage() {
         </div>
       </Card>
 
-      {/* Reports Overview - Pass city filter as prop */}
-      <ReportsOverview selectedCity={selectedCity} />
+      {/* Reports Overview - Pass company data */}
+      <ReportsOverview 
+        selectedCity={selectedCity} 
+        company={company}
+      />
 
       {/* Report Templates Section */}
       <Card className="templates-card">
@@ -183,7 +187,6 @@ export default function ReportsPage() {
           margin: 0 auto;
         }
 
-        /* Header */
         .reports-header {
           display: flex;
           justify-content: space-between;
@@ -202,24 +205,25 @@ export default function ReportsPage() {
         .header-icon {
           width: 48px;
           height: 48px;
-          background: linear-gradient(135deg, #22C55E20, #15803D20);
+          background: #F8FAF8;
           border-radius: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 24px;
-          color: #22C55E;
+          color: #2E7D64;
+          border: 1px solid #E5E7EB;
         }
 
         .header-left h1 {
           font-size: 28px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0 0 4px;
         }
 
         .header-left p {
-          color: #4B5563;
+          color: #4A5568;
           margin: 0;
         }
 
@@ -228,7 +232,7 @@ export default function ReportsPage() {
           align-items: center;
           gap: 8px;
           padding: 12px 24px;
-          background: linear-gradient(135deg, #15803D, #22C55E);
+          background: #2E7D64;
           color: white;
           border: none;
           border-radius: 30px;
@@ -239,17 +243,16 @@ export default function ReportsPage() {
         }
 
         .export-all-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 20px rgba(34, 197, 94, 0.3);
+          background: #1B4D3E;
+          transform: translateY(-1px);
         }
 
-        /* Filters Card */
         .filters-card {
           background: white;
-          border-radius: 20px;
+          border-radius: 12px;
           padding: 24px;
           margin-bottom: 24px;
-          border: 1px solid rgba(34, 197, 94, 0.1);
+          border: 1px solid #E5E7EB;
         }
 
         .filters-grid {
@@ -269,21 +272,21 @@ export default function ReportsPage() {
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 600;
-          color: #374151;
+          color: #4A5568;
           text-transform: uppercase;
           letter-spacing: 0.3px;
         }
 
         .filter-icon {
-          color: #22C55E;
+          color: #2E7D64;
         }
 
         .filter-select {
           padding: 12px 16px;
-          border: 2px solid #E5E7EB;
-          border-radius: 12px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
           font-size: 14px;
           color: #1F2937;
           background: white;
@@ -292,7 +295,7 @@ export default function ReportsPage() {
         }
 
         .filter-select:hover, .filter-select:focus {
-          border-color: #22C55E;
+          border-color: #2E7D64;
           outline: none;
         }
 
@@ -301,9 +304,9 @@ export default function ReportsPage() {
           align-items: center;
           gap: 8px;
           padding: 12px 24px;
-          background: #F3F4F6;
+          background: #F8FAF8;
           border: 1px solid #E5E7EB;
-          border-radius: 12px;
+          border-radius: 8px;
           color: #374151;
           font-weight: 600;
           font-size: 14px;
@@ -314,15 +317,15 @@ export default function ReportsPage() {
 
         .filter-btn:hover {
           background: #E5E7EB;
+          border-color: #2E7D64;
         }
 
-        /* Quick Stats */
         .quick-stats {
           display: flex;
           align-items: center;
           justify-content: space-around;
           padding-top: 20px;
-          border-top: 1px solid rgba(34, 197, 94, 0.1);
+          border-top: 1px solid #E5E7EB;
         }
 
         .quick-stat {
@@ -333,7 +336,7 @@ export default function ReportsPage() {
 
         .stat-icon {
           font-size: 24px;
-          color: #22C55E;
+          color: #2E7D64;
         }
 
         .stat-label {
@@ -347,28 +350,27 @@ export default function ReportsPage() {
           display: block;
           font-size: 20px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
         }
 
         .stat-divider {
           width: 1px;
           height: 40px;
-          background: rgba(34, 197, 94, 0.2);
+          background: #E5E7EB;
         }
 
-        /* Templates Card */
         .templates-card {
           background: white;
-          border-radius: 20px;
+          border-radius: 12px;
           padding: 24px;
           margin-top: 24px;
-          border: 1px solid rgba(34, 197, 94, 0.1);
+          border: 1px solid #E5E7EB;
         }
 
         .templates-card h3 {
           font-size: 18px;
           font-weight: 600;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0 0 4px;
         }
 
@@ -390,14 +392,15 @@ export default function ReportsPage() {
           gap: 16px;
           padding: 16px;
           background: #F9FAFB;
-          border-radius: 16px;
-          border: 1px solid rgba(34, 197, 94, 0.1);
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
           transition: all 0.2s ease;
         }
 
         .template-item:hover {
           transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(34, 197, 94, 0.1);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          border-color: #2E7D64;
         }
 
         .template-icon {
@@ -411,7 +414,7 @@ export default function ReportsPage() {
         .template-content h4 {
           font-size: 15px;
           font-weight: 600;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0 0 4px;
         }
 
@@ -424,9 +427,9 @@ export default function ReportsPage() {
         .generate-btn {
           padding: 8px 16px;
           background: white;
-          border: 2px solid #22C55E;
+          border: 1px solid #2E7D64;
           border-radius: 30px;
-          color: #15803D;
+          color: #2E7D64;
           font-weight: 600;
           font-size: 12px;
           cursor: pointer;
@@ -435,11 +438,10 @@ export default function ReportsPage() {
         }
 
         .generate-btn:hover {
-          background: #22C55E;
+          background: #2E7D64;
           color: white;
         }
 
-        /* Responsive */
         @media (max-width: 1024px) {
           .templates-grid {
             grid-template-columns: repeat(2, 1fr);
@@ -447,6 +449,10 @@ export default function ReportsPage() {
         }
 
         @media (max-width: 768px) {
+          .reports-page {
+            padding: 16px;
+          }
+
           .filters-grid {
             grid-template-columns: 1fr;
           }
@@ -471,6 +477,16 @@ export default function ReportsPage() {
 
           .template-item {
             flex-wrap: wrap;
+          }
+
+          .header-left {
+            flex-direction: column;
+            text-align: center;
+          }
+
+          .reports-header {
+            flex-direction: column;
+            text-align: center;
           }
         }
       `}</style>

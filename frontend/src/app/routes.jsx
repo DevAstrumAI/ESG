@@ -1,6 +1,6 @@
+// src/routes.jsx
 import AppLayout from "../layouts/AppLayout";
 import AuthLayout from "../layouts/AuthLayout"; // Create this
-
 import LandingPage from "../pages/LandingPage";
 import LoginPage from "../pages/LoginPage";
 import SignupPage from "../pages/SignupPage";
@@ -15,20 +15,26 @@ import ForgotPassword from "../pages/ForgotPassword";
 import UserGuide from "../pages/UserGuide";
 import ContactPage from "../pages/ContactPage";
 import EmissionFactorsPage from "../pages/admin/EmissionFactorsPage";
+import PrivacyPolicyPage from "../pages/PrivacyPolicyPage";
+import TermsOfServicePage from "../pages/TermsOfServicePage"; // Correct import
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { useCompanyStore } from "../store/companyStore";
+
 export default function AppRoutes() {
   const { loggedIn } = useAuthStore();
 
-  
   return (
     <Routes>
       {/* Public routes - NO header/sidebar */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} /> {/* Removed AppLayout */}
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      
+      {/* Public static pages - NO header/sidebar */}
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/terms" element={<TermsOfServicePage />} /> {/* Now using TermsOfServicePage */}
 
       {/* Protected routes - WITH header/sidebar */}
       <Route
@@ -41,13 +47,13 @@ export default function AppRoutes() {
       />
 
       <Route
-      path="/setup"
-      element={
-        <AppLayout>
+        path="/setup"
+        element={
+          <AppLayout>
             <CompanySetupPage />
-        </AppLayout>
-      }
-    />
+          </AppLayout>
+        }
+      />
 
       <Route
         path="/scope1"
@@ -86,14 +92,13 @@ export default function AppRoutes() {
       />
 
       <Route
-      path="/admin/factors"
-      element={
-        <AppLayout>
-          <EmissionFactorsPage />
-        </AppLayout>
-      }
-    />
-      
+        path="/admin/factors"
+        element={
+          <AppLayout>
+            <EmissionFactorsPage />
+          </AppLayout>
+        }
+      />
 
       <Route
         path="/help"
@@ -120,12 +125,7 @@ export default function AppRoutes() {
             <ContactPage />
           </AppLayout>
         }
-    
       />
     </Routes>
-
-    
   );
-
-  
 }

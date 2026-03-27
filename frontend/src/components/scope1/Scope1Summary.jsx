@@ -1,3 +1,4 @@
+// src/components/scope1/Scope1Summary.jsx
 import React, { useEffect } from "react";
 import { useEmissionStore } from "../../store/emissionStore";
 import Card from "../ui/Card";
@@ -8,18 +9,15 @@ export default function Scope1Summary() {
   const refrigerants = useEmissionStore((s) => s.scope1Refrigerants);
   const fugitive = useEmissionStore((s) => s.scope1Fugitive);
 
-  // Calculate totals using EmissionCalculator
   const scope1Results = useEmissionStore((s) => s.scope1Results);
-  console.log("scope1Results:", scope1Results);
 
-  // Use backend results if available, otherwise show 0
   const totals = scope1Results ? {
     vehicles: scope1Results.mobile?.kgCO2e || 0,
     stationary: scope1Results.stationary?.kgCO2e || 0,
     refrigerants: scope1Results.refrigerants?.kgCO2e || 0,
     fugitive: scope1Results.fugitive?.kgCO2e || 0,
     co2e: scope1Results.total?.kgCO2e || 0,
-    biogenic: scope1Results.biogenic?.totalKgCO2e || 0, // Add biogenic total
+    biogenic: scope1Results.biogenic?.totalKgCO2e || 0,
   } : { 
     vehicles: 0, 
     stationary: 0, 
@@ -29,13 +27,9 @@ export default function Scope1Summary() {
     biogenic: 0 
   };
 
-  // Check if any data exists
   const hasData = vehicles.length > 0 || stationary.length > 0 || refrigerants.length > 0 || fugitive.length > 0;
-
-  // Check if there are biogenic entries
   const hasBiogenic = totals.biogenic > 0;
 
-  // Format large numbers with commas
   const formatNumber = (num) => {
     return (num ?? 0).toLocaleString(undefined, { 
       minimumFractionDigits: 2, 
@@ -43,14 +37,12 @@ export default function Scope1Summary() {
     });
   };
 
-  // Calculate percentages for each category (excluding biogenic)
   const total = totals.co2e ?? 0;
   const getPercentage = (value) => {
     if (total === 0) return 0;
     return ((value ?? 0) / total * 100).toFixed(1);
   };
 
-  // Get category icon
   const getCategoryIcon = (category) => {
     const icons = {
       vehicles: "🚗",
@@ -62,19 +54,8 @@ export default function Scope1Summary() {
     return icons[category] || "📊";
   };
 
-  // Debug overflow (remove in production)
-  useEffect(() => {
-    const elements = document.querySelectorAll('.summary-card, .breakdown-grid, .summary-footer, .breakdown-item');
-    elements.forEach(el => {
-      if (el.scrollWidth > el.clientWidth) {
-        console.log('Overflow element:', el, 'scrollWidth:', el.scrollWidth, 'clientWidth:', el.clientWidth);
-      }
-    });
-  }, [hasData, totals]);
-
   return (
     <div className="summary-wrapper">
-      {/* Main Summary Card */}
       <Card className="summary-card">
         <div className="summary-header">
           <div className="header-icon">📊</div>
@@ -92,20 +73,12 @@ export default function Scope1Summary() {
           </div>
         ) : (
           <>
-          {hasData && !scope1Results && (
-            <div style={{
-              margin: "16px 24px",
-              padding: "12px 16px",
-              background: "#FEF9C3",
-              borderRadius: "12px",
-              border: "1px solid #FDE047",
-              fontSize: "14px",
-              color: "#854D0E"
-            }}>
-              ⚠️ Click "Submit Scope 1" below to calculate your CO₂e emissions.
-            </div>
-          )}
-            {/* Total Emissions Banner */}
+            {hasData && !scope1Results && (
+              <div className="warning-banner">
+                ⚠️ Click "Submit Scope 1" below to calculate your CO₂e emissions.
+              </div>
+            )}
+
             <div className="total-banner">
               <div className="total-label">Total CO₂e Emissions</div>
               <div className="total-value">{formatNumber(total)} kg</div>
@@ -114,7 +87,6 @@ export default function Scope1Summary() {
               </div>
             </div>
 
-            {/* Biogenic Banner (if present) */}
             {hasBiogenic && (
               <div className="biogenic-banner">
                 <div className="biogenic-icon">🌿</div>
@@ -125,11 +97,12 @@ export default function Scope1Summary() {
                     ≈ {(totals.biogenic / 1000).toFixed(2)} tonnes CO₂e
                   </div>
                 </div>
-                <div className="biogenic-note">Per GHG Protocol, biogenic CO₂ from biomass combustion is reported separately and not included in Scope 1 totals.</div>
+                <div className="biogenic-note">
+                  Per GHG Protocol, biogenic CO₂ from biomass combustion is reported separately and not included in Scope 1 totals.
+                </div>
               </div>
             )}
 
-            {/* Category Breakdown Grid */}
             <div className="breakdown-grid">
               {/* Vehicles */}
               <div className="breakdown-item">
@@ -150,7 +123,7 @@ export default function Scope1Summary() {
                 </div>
               </div>
 
-              {/* Stationary - with biogenic indicator */}
+              {/* Stationary */}
               <div className="breakdown-item">
                 <div className="item-header">
                   <span className="item-icon">{getCategoryIcon('stationary')}</span>
@@ -211,7 +184,6 @@ export default function Scope1Summary() {
               </div>
             </div>
 
-            {/* Quick Stats Footer */}
             <div className="summary-footer">
               <div className="stat-item">
                 <span className="stat-label">Data Sources</span>
@@ -236,7 +208,6 @@ export default function Scope1Summary() {
               </div>
             </div>
 
-            {/* Biogenic footnote */}
             {hasBiogenic && (
               <div className="biogenic-footnote">
                 <span>🌿 Biogenic CO₂ from biomass combustion is reported separately per GHG Protocol and not included in Scope 1 totals.</span>
@@ -251,22 +222,19 @@ export default function Scope1Summary() {
           width: 100%;
           max-width: 100%;
           margin-top: 32px;
-          clear: both;
           overflow-x: hidden;
         }
 
         .summary-card {
-          border: 1px solid rgba(46, 125, 50, 0.2);
+          border: 1px solid #E5E7EB !important;
+          border-radius: 12px !important;
           overflow: hidden;
           width: 100%;
-          max-width: 100%;
           box-sizing: border-box;
         }
 
-        /* Ensure all children respect boundaries */
         .summary-card * {
           box-sizing: border-box;
-          max-width: 100%;
         }
 
         .summary-header {
@@ -274,9 +242,8 @@ export default function Scope1Summary() {
           align-items: center;
           gap: 16px;
           padding: 20px 24px;
-          background: linear-gradient(135deg, #f0f9f0 0%, #e6f3e6 100%);
-          border-bottom: 1px solid rgba(46, 125, 50, 0.2);
-          width: 100%;
+          background: #F8FAF8;
+          border-bottom: 1px solid #E5E7EB;
         }
 
         .header-icon {
@@ -286,33 +253,24 @@ export default function Scope1Summary() {
 
         .header-title {
           flex: 1;
-          min-width: 0;
         }
 
         .header-title h3 {
           margin: 0 0 4px 0;
           font-size: 18px;
-          font-weight: 700;
-          color: #1B5E20;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          font-weight: 600;
+          color: #1B4D3E;
         }
 
         .header-title p {
           margin: 0;
           font-size: 13px;
-          color: #4B5563;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          color: #6B7280;
         }
 
-        /* Empty State */
         .empty-summary {
           padding: 48px 24px;
           text-align: center;
-          width: 100%;
         }
 
         .empty-icon {
@@ -334,24 +292,30 @@ export default function Scope1Summary() {
           color: #6B7280;
         }
 
-        /* Total Banner */
+        .warning-banner {
+          margin: 20px 24px;
+          padding: 12px 16px;
+          background: #FEF3C7;
+          border-radius: 8px;
+          border: 1px solid #FCD34D;
+          font-size: 14px;
+          color: #92400E;
+        }
+
         .total-banner {
           margin: 24px;
           padding: 24px;
-          background: linear-gradient(135deg, #2E7D32 0%, #1B5E20 100%);
-          border-radius: 20px;
+          background: #1B4D3E;
+          border-radius: 12px;
           text-align: center;
           color: white;
-          box-shadow: 0 8px 20px rgba(46, 125, 50, 0.3);
-          width: calc(100% - 48px);
-          box-sizing: border-box;
         }
 
         .total-label {
           font-size: 14px;
           text-transform: uppercase;
           letter-spacing: 1px;
-          opacity: 0.9;
+          opacity: 0.8;
           margin-bottom: 8px;
         }
 
@@ -360,28 +324,24 @@ export default function Scope1Summary() {
           font-weight: 700;
           line-height: 1.2;
           margin-bottom: 8px;
-          word-break: break-word;
         }
 
         .total-equivalent {
           font-size: 16px;
-          opacity: 0.9;
+          opacity: 0.8;
           padding-top: 8px;
           border-top: 1px solid rgba(255, 255, 255, 0.2);
         }
 
-        /* Biogenic Banner */
         .biogenic-banner {
           display: flex;
           align-items: center;
           gap: 16px;
           margin: 0 24px 24px;
           padding: 20px;
-          background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
-          border-radius: 16px;
-          border: 1px solid #81C784;
-          width: calc(100% - 48px);
-          box-sizing: border-box;
+          background: #F0FDF4;
+          border-radius: 12px;
+          border: 1px solid #86EFAC;
         }
 
         .biogenic-icon {
@@ -396,55 +356,48 @@ export default function Scope1Summary() {
         .biogenic-label {
           font-size: 14px;
           font-weight: 600;
-          color: #2E7D32;
+          color: #166534;
           margin-bottom: 4px;
         }
 
         .biogenic-value {
           font-size: 24px;
           font-weight: 700;
-          color: #1B5E20;
-          line-height: 1.2;
+          color: #15803D;
         }
 
         .biogenic-equivalent {
           font-size: 13px;
-          color: #4B5563;
+          color: #4A5568;
         }
 
         .biogenic-note {
           max-width: 300px;
           font-size: 12px;
-          color: #4B5563;
+          color: #4A5568;
           padding-left: 16px;
-          border-left: 1px solid #81C784;
+          border-left: 1px solid #86EFAC;
         }
 
-        /* Breakdown Grid */
         .breakdown-grid {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
           gap: 16px;
           padding: 0 24px 24px;
-          width: 100%;
-          box-sizing: border-box;
         }
 
         .breakdown-item {
-          background: #f8faf8;
-          border-radius: 16px;
+          background: #F9FAFB;
+          border-radius: 12px;
           padding: 16px;
-          border: 1px solid rgba(46, 125, 50, 0.1);
+          border: 1px solid #E5E7EB;
           transition: all 0.2s ease;
-          width: 100%;
-          box-sizing: border-box;
-          overflow: hidden;
         }
 
         .breakdown-item:hover {
           transform: translateY(-2px);
-          box-shadow: 0 8px 16px rgba(46, 125, 50, 0.1);
-          border-color: rgba(46, 125, 50, 0.3);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          border-color: #2E7D64;
         }
 
         .item-header {
@@ -452,12 +405,10 @@ export default function Scope1Summary() {
           align-items: center;
           gap: 8px;
           margin-bottom: 12px;
-          width: 100%;
         }
 
         .item-icon {
           font-size: 20px;
-          flex-shrink: 0;
         }
 
         .item-title {
@@ -465,27 +416,22 @@ export default function Scope1Summary() {
           font-size: 14px;
           font-weight: 600;
           color: #374151;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
         }
 
         .item-percentage {
           font-size: 14px;
           font-weight: 700;
-          color: #2E7D32;
-          background: rgba(46, 125, 50, 0.1);
+          color: #2E7D64;
+          background: #E8F0EA;
           padding: 2px 8px;
           border-radius: 20px;
-          flex-shrink: 0;
         }
 
         .item-value {
           font-size: 20px;
           font-weight: 700;
-          color: #1B5E20;
+          color: #1B4D3E;
           margin-bottom: 8px;
-          word-break: break-word;
         }
 
         .item-stats {
@@ -505,17 +451,16 @@ export default function Scope1Summary() {
         }
 
         .biogenic-badge {
-          background: #E8F5E9;
-          color: #2E7D32;
-          border: 1px solid #81C784;
+          background: #E8F0EA;
+          color: #2E7D64;
+          border: 1px solid #C6E0C8;
         }
 
         .progress-bar {
           height: 6px;
-          background: #e5e7eb;
+          background: #E5E7EB;
           border-radius: 3px;
           overflow: hidden;
-          width: 100%;
         }
 
         .progress-fill {
@@ -525,38 +470,33 @@ export default function Scope1Summary() {
         }
 
         .progress-fill.vehicles {
-          background: linear-gradient(90deg, #3B82F6 0%, #2563EB 100%);
+          background: #3B82F6;
         }
 
         .progress-fill.stationary {
-          background: linear-gradient(90deg, #F59E0B 0%, #D97706 100%);
+          background: #F59E0B;
         }
 
         .progress-fill.refrigerants {
-          background: linear-gradient(90deg, #06b6d4 0%, #0891b2 100%);
+          background: #06B6D4;
         }
 
         .progress-fill.fugitive {
-          background: linear-gradient(90deg, #8B5CF6 0%, #7C3AED 100%);
+          background: #8B5CF6;
         }
 
-        /* Summary Footer */
         .summary-footer {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 1px;
-          background: #e5e7eb;
-          border-top: 1px solid #e5e7eb;
-          width: 100%;
-          box-sizing: border-box;
+          background: #E5E7EB;
+          border-top: 1px solid #E5E7EB;
         }
 
         .stat-item {
           background: white;
           padding: 20px;
           text-align: center;
-          width: 100%;
-          box-sizing: border-box;
         }
 
         .stat-label {
@@ -570,28 +510,25 @@ export default function Scope1Summary() {
           display: block;
           font-size: 24px;
           font-weight: 700;
-          color: #1B5E20;
-          word-break: break-word;
+          color: #1B4D3E;
         }
 
         .stat-number.highlight {
-          color: #2E7D32;
+          color: #2E7D64;
           font-size: 28px;
         }
 
-        /* Biogenic Footnote */
         .biogenic-footnote {
           margin: 16px 24px 24px;
           padding: 12px 16px;
-          background: #F3F4F6;
+          background: #F9FAFB;
           border-radius: 8px;
           font-size: 12px;
-          color: #4B5563;
+          color: #6B7280;
           text-align: center;
           border: 1px solid #E5E7EB;
         }
 
-        /* Responsive */
         @media (max-width: 768px) {
           .breakdown-grid {
             grid-template-columns: 1fr;
@@ -601,7 +538,6 @@ export default function Scope1Summary() {
           .total-banner {
             margin: 16px;
             padding: 20px;
-            width: calc(100% - 32px);
           }
 
           .total-value {
@@ -612,27 +548,18 @@ export default function Scope1Summary() {
             flex-direction: column;
             text-align: center;
             margin: 0 16px 16px;
-            width: calc(100% - 32px);
           }
 
           .biogenic-note {
             padding-left: 0;
             padding-top: 12px;
             border-left: none;
-            border-top: 1px solid #81C784;
+            border-top: 1px solid #86EFAC;
             max-width: 100%;
           }
 
           .summary-footer {
             grid-template-columns: 1fr;
-          }
-
-          .stat-number {
-            font-size: 20px;
-          }
-
-          .stat-number.highlight {
-            font-size: 24px;
           }
 
           .header-title h3,
@@ -651,7 +578,6 @@ export default function Scope1Summary() {
           .total-banner {
             margin: 12px;
             padding: 16px;
-            width: calc(100% - 24px);
           }
 
           .total-value {

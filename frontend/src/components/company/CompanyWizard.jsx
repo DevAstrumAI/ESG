@@ -1,5 +1,5 @@
 // src/components/company/CompanyWizard.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import CompanyInfoForm from "./CompanyInfoForm";
 import RegionSelector from "./RegionSelector";
 import IndustrySelector from "./IndustrySelector";
@@ -17,10 +17,11 @@ import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useNavigate } from "react-router-dom";
 
-
 export default function CompanyWizard() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
+  const [loadingSubmit, setLoadingSubmit] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
   const [companyData, setCompanyData] = useState({
     name: "",
     description: "",
@@ -31,35 +32,41 @@ export default function CompanyWizard() {
     revenue: "",
     locations: [],
   });
-const { company, updateCompany } = useCompanyStore();
-const token = useAuthStore((state) => state.token);
+  
+  const { company, fetchCompany, updateCompany, createCompany, loading } = useCompanyStore();
+  const token = useAuthStore((state) => state.token);
+  const { user } = useAuthStore();
 
-// If company exists, map it to the wizard data format
-const existingData = company ? {
-  name: company.basicInfo?.name || "",
-  description: company.basicInfo?.description || "",
-  region: company.basicInfo?.region || "",
-  country: company.locations?.[0]?.country || "",
-  industry: company.basicInfo?.industry || "",
-  employees: company.basicInfo?.employees || "",
-  revenue: company.basicInfo?.revenue || "",
-  locations: company.locations || [],
-} : null;
+  // Fetch company data when component mounts
+  useEffect(() => {
+    const loadCompany = async () => {
+      if (token) {
+        await fetchCompany(token);
+      }
+    };
+    loadCompany();
+  }, [token, fetchCompany]);
 
-const handleUpdateField = async (field, value) => {
-  updateField(field, value);
-  // Also sync to backend
-  if (token && company) {
-    await updateCompany(token, { [field]: value });
-  }
-};  const { createCompany, loading } = useCompanyStore();
-  console.log("Token in wizard:", token);
-
+  // If company exists, populate the wizard data
+  useEffect(() => {
+    if (company) {
+      setCompanyData({
+        name: company.basicInfo?.name || "",
+        description: company.basicInfo?.description || "",
+        region: company.basicInfo?.region || "",
+        country: company.locations?.[0]?.country || "",
+        industry: company.basicInfo?.industry || "",
+        employees: company.basicInfo?.employees || "",
+        revenue: company.basicInfo?.revenue || "",
+        locations: company.locations || [],
+      });
+    }
+  }, [company]);
 
   const steps = [
     { id: 1, label: "Company Info", icon: "🏢" },
     { id: 2, label: "Region", icon: "🌍" },
-    { id: 3, label: "Country", icon: "🗺️" },
+    { id: 3, label: "Location", icon: "🗺️" },
     { id: 4, label: "Industry", icon: "🏭" },
     { id: 5, label: "Employees", icon: "👥" },
     { id: 6, label: "Revenue", icon: "💰" },
@@ -71,39 +78,82 @@ const handleUpdateField = async (field, value) => {
     setCompanyData((prev) => ({ ...prev, [field]: value }));
   }
 
-  
-
-  async function nextStep() {
-  if (step < steps.length) {
-    setStep((prev) => prev + 1);
-  } else {
-    // Final step — submit to backend
+  const handleUpdateCompany = async () => {
+    setLoadingSubmit(true);
+    setSubmitError(null);
+    
+    // In CompanyWizard.jsx, in the nextStep function when creating company:
     const payload = {
       name: companyData.name,
+      description: companyData.description,
       industry: companyData.industry,
       employees: Number(companyData.employees),
       revenue: Number(companyData.revenue),
+      region: companyData.region,  // ← Make sure this is included
       fiscalYear: new Date().getFullYear(),
       locations: companyData.locations.map((loc) => ({
         city: loc.city || loc.name,
-        country: companyData.country,
+        country: loc.country,
         isPrimary: loc.isPrimary || false,
       })),
     };
-    const result = await createCompany(token, payload);
+    
+    const result = await updateCompany(token, payload);
+    setLoadingSubmit(false);
+    
     if (result.success) {
       navigate("/dashboard");
     } else {
-      alert("Failed to save company: " + result.error);
+      setSubmitError(result.error || "Failed to update company");
+    }
+  };
+
+  const handleCreateCompany = async () => {
+    setLoadingSubmit(true);
+    setSubmitError(null);
+    
+    const payload = {
+      name: companyData.name,
+      description: companyData.description,
+      industry: companyData.industry,
+      employees: Number(companyData.employees),
+      revenue: Number(companyData.revenue),
+      region: companyData.region,
+      fiscalYear: new Date().getFullYear(),
+      locations: companyData.locations.map((loc) => ({
+        city: loc.city || loc.name,
+        country: loc.country,
+        isPrimary: loc.isPrimary || false,
+      })),
+    };
+    
+    const result = await createCompany(token, payload);
+    setLoadingSubmit(false);
+    
+    if (result.success) {
+      navigate("/dashboard");
+    } else {
+      setSubmitError(result.error || "Failed to create company");
+    }
+  };
+
+  async function nextStep() {
+    if (step < steps.length) {
+      setStep((prev) => prev + 1);
+    } else {
+      // Final step - create or update company
+      if (company) {
+        await handleUpdateCompany();
+      } else {
+        await handleCreateCompany();
+      }
     }
   }
-}
 
   function prevStep() {
     if (step > 1) setStep((prev) => prev - 1);
   }
 
-  // Check if current step is valid
   const isStepValid = () => {
     switch(step) {
       case 1: return companyData.name.trim() !== "";
@@ -112,19 +162,93 @@ const handleUpdateField = async (field, value) => {
       case 4: return companyData.industry !== "";
       case 5: return companyData.employees !== "";
       case 6: return companyData.revenue !== "";
-      case 7: return companyData.country !== "" && companyData.locations.length > 0; // Require at least one city
-      case 8: return true; // Summary just shows data
+      case 7: return companyData.locations.length > 0;
+      case 8: return true;
       default: return true;
     }
   };
 
-  if (existingData) {
-  return (
-    <div className="wizard-container">
-      <SetupSummary data={existingData} updateField={handleUpdateField} />
-    </div>
-  );
-}
+  // If company exists, show summary view
+  if (company && company.basicInfo?.name) {
+    return (
+      <div className="wizard-container">
+        <SetupSummary data={companyData} updateField={updateField} />
+        <div className="summary-actions">
+          {submitError && (
+            <div className="error-message">
+              ⚠️ {submitError}
+            </div>
+          )}
+          <PrimaryButton 
+            onClick={handleUpdateCompany} 
+            className="update-btn"
+            disabled={loadingSubmit}
+          >
+            {loadingSubmit ? "Saving..." : "Save Changes"}
+          </PrimaryButton>
+        </div>
+        <style jsx>{`
+          .wizard-container {
+            max-width: 900px;
+            margin: 0 auto;
+          }
+          .summary-actions {
+            margin-top: 24px;
+            display: flex;
+            justify-content: flex-end;
+          }
+          .error-message {
+            background: #FEF2F2;
+            border: 1px solid #FECACA;
+            color: #DC2626;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-right: 16px;
+            flex: 1;
+          }
+          .update-btn {
+            background: #2E7D64 !important;
+            padding: 12px 32px !important;
+          }
+          .update-btn:hover {
+            background: #1B4D3E !important;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // Show loading state while fetching company
+  if (loading && !company) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Loading company data...</p>
+        <style jsx>{`
+          .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 400px;
+          }
+          .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #E5E7EB;
+            border-top-color: #2E7D64;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+          p { margin-top: 16px; color: #6B7280; }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="wizard-container">
@@ -159,10 +283,7 @@ const handleUpdateField = async (field, value) => {
           {step === 4 && <IndustrySelector data={companyData} updateField={updateField} />}
           {step === 5 && <EmployeeForm data={companyData} updateField={updateField} />}
           {step === 6 && <RevenueForm data={companyData} updateField={updateField} />}
-          {step === 7 && <FacilitiesList 
-            locations={companyData.locations} 
-            setLocations={(newList) => updateField("locations", newList)} 
-          />}
+          {step === 7 && <FacilitiesList locations={companyData.locations} />}
           {step === 8 && <SetupSummary data={companyData} updateField={updateField} />}
         </div>
 
@@ -193,7 +314,6 @@ const handleUpdateField = async (field, value) => {
           margin: 0 auto;
         }
 
-        /* Step Progress Header */
         .wizard-header {
           margin-bottom: 30px;
         }
@@ -202,7 +322,6 @@ const handleUpdateField = async (field, value) => {
           display: flex;
           justify-content: space-between;
           margin-bottom: 15px;
-          position: relative;
         }
 
         .step-item {
@@ -229,16 +348,16 @@ const handleUpdateField = async (field, value) => {
         }
 
         .step-indicator.completed {
-          background: #22C55E;
-          border-color: #22C55E;
+          background: #2E7D64;
+          border-color: #2E7D64;
           color: white;
         }
 
         .step-indicator.active {
-          border-color: #22C55E;
-          color: #22C55E;
+          border-color: #2E7D64;
+          color: #2E7D64;
           transform: scale(1.1);
-          box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
+          box-shadow: 0 0 0 4px rgba(46, 125, 100, 0.15);
         }
 
         .step-label {
@@ -249,7 +368,7 @@ const handleUpdateField = async (field, value) => {
         }
 
         .step-label.active {
-          color: #22C55E;
+          color: #2E7D64;
           font-weight: 600;
         }
 
@@ -262,17 +381,15 @@ const handleUpdateField = async (field, value) => {
 
         .progress-bar-fill {
           height: 100%;
-          background: linear-gradient(90deg, #22C55E, #15803D);
+          background: #2E7D64;
           border-radius: 3px;
           transition: width 0.4s ease;
         }
 
-        /* Content Card */
         .wizard-content-card {
           padding: 32px !important;
-          border-radius: 24px !important;
-          border: 1px solid rgba(34, 197, 94, 0.2) !important;
-          box-shadow: 0 10px 30px rgba(0, 40, 0, 0.1) !important;
+          border-radius: 12px !important;
+          border: 1px solid #E5E7EB !important;
         }
 
         .wizard-content {
@@ -280,13 +397,12 @@ const handleUpdateField = async (field, value) => {
           margin-bottom: 30px;
         }
 
-        /* Footer */
         .wizard-footer {
           display: flex;
           justify-content: space-between;
           gap: 16px;
           padding-top: 24px;
-          border-top: 1px solid rgba(34, 197, 94, 0.2);
+          border-top: 1px solid #E5E7EB;
         }
 
         .nav-btn {
@@ -301,23 +417,22 @@ const handleUpdateField = async (field, value) => {
         .back-btn {
           background: white !important;
           color: #374151 !important;
-          border: 2px solid #E5E7EB !important;
+          border: 1px solid #E5E7EB !important;
         }
 
         .back-btn:hover {
-          border-color: #22C55E !important;
-          background: #F0FDF4 !important;
+          border-color: #2E7D64 !important;
+          color: #2E7D64 !important;
         }
 
         .next-btn {
-          background: linear-gradient(135deg, #22C55E, #15803D) !important;
+          background: #2E7D64 !important;
           margin-left: auto !important;
         }
 
         .next-btn.disabled {
           opacity: 0.5;
           pointer-events: none;
-          background: #9CA3AF !important;
         }
 
         @media (max-width: 768px) {
@@ -325,23 +440,18 @@ const handleUpdateField = async (field, value) => {
             flex-wrap: wrap;
             gap: 10px;
           }
-
           .step-item {
             flex: 0 0 calc(33.333% - 10px);
           }
-
           .step-label {
             font-size: 10px;
           }
-
           .wizard-content-card {
             padding: 20px !important;
           }
-
           .wizard-footer {
             flex-direction: column-reverse;
           }
-
           .nav-btn {
             width: 100%;
             justify-content: center;

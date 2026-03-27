@@ -1,10 +1,20 @@
 // src/components/company/FacilitiesList.jsx
 import { FiMapPin } from "react-icons/fi";
-import { BiBuilding } from "react-icons/bi";
 import Card from "../ui/Card";
 import EmptyState from "../ui/EmptyState";
 
 export default function FacilitiesList({ locations }) {
+  const getCountryLabel = (country) => {
+    const countries = {
+      'uae': "UAE",
+      'qatar': "Qatar",
+      'saudi-arabia': "Saudi Arabia",
+      'saudi': "Saudi Arabia",
+      'singapore': "Singapore",
+    };
+    return countries[country] || country;
+  };
+
   return (
     <div className="facilities-step">
       <div className="step-header">
@@ -16,7 +26,6 @@ export default function FacilitiesList({ locations }) {
         Review the facilities and locations you've added for your company.
       </p>
 
-      {/* Facilities List - Read Only Table */}
       <Card className="facilities-list-card">
         <div className="list-header">
           <div>
@@ -27,10 +36,7 @@ export default function FacilitiesList({ locations }) {
         </div>
 
         {locations.length === 0 ? (
-          <EmptyState 
-            message="No facilities added yet" 
-            suggestion="Go back to Step 3 to add cities"
-          />
+          <EmptyState message="No facilities added yet" />
         ) : (
           <div className="table-wrapper">
             <table className="facilities-table">
@@ -39,24 +45,21 @@ export default function FacilitiesList({ locations }) {
                   <th>City</th>
                   <th>Country</th>
                   <th>Status</th>
-                </tr>
-              </thead>
+                  </tr>
+                </thead>
               <tbody>
                 {locations.map((loc, index) => (
-                  <tr key={loc.id} className={index % 2 === 0 ? 'even-row' : 'odd-row'}>
-                    <td>
+                  <tr key={loc.id}>
+                    <td data-label="City">
                       <div className="city-cell">
                         <FiMapPin className="cell-icon" />
                         <span className="city-name">{loc.city}</span>
                       </div>
                     </td>
-                    <td>
-                      <span className="country-badge">
-                        {loc.country === 'uae' ? 'UAE' : 
-                         loc.country === 'qatar' ? 'Qatar' : 'Saudi Arabia'}
-                      </span>
+                    <td data-label="Country">
+                      <span className="country-badge">{getCountryLabel(loc.country)}</span>
                     </td>
-                    <td>
+                    <td data-label="Status">
                       <span className="status-badge active">Active</span>
                     </td>
                   </tr>
@@ -91,23 +94,21 @@ export default function FacilitiesList({ locations }) {
         .step-header h3 {
           font-size: 22px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0;
         }
 
         .step-description {
-          color: #4B5563;
+          color: #4A5568;
           margin-bottom: 32px;
           font-size: 15px;
           line-height: 1.6;
         }
 
-        /* Facilities List - Read Only Table */
         .facilities-list-card {
           padding: 0;
-          border: 1px solid rgba(34, 197, 94, 0.15);
+          border: 1px solid #E5E7EB;
           overflow: hidden;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
         }
 
         .list-header {
@@ -115,31 +116,31 @@ export default function FacilitiesList({ locations }) {
           justify-content: space-between;
           align-items: center;
           padding: 20px 24px;
-          background: linear-gradient(135deg, #f8faf8 0%, #f0f9f0 100%);
-          border-bottom: 2px solid rgba(34, 197, 94, 0.2);
+          background: #F8FAF8;
+          border-bottom: 1px solid #E5E7EB;
         }
 
         .list-header h4 {
           margin: 0 0 4px 0;
           font-size: 18px;
-          font-weight: 700;
-          color: #14532D;
+          font-weight: 600;
+          color: #1B4D3E;
         }
 
         .list-subtitle {
           margin: 0;
           font-size: 13px;
-          color: #4B5563;
+          color: #6B7280;
         }
 
         .facility-count {
           padding: 6px 16px;
           background: white;
-          color: #15803D;
+          color: #2E7D64;
           border-radius: 30px;
           font-size: 13px;
           font-weight: 600;
-          border: 1px solid rgba(34, 197, 94, 0.2);
+          border: 1px solid #E5E7EB;
         }
 
         .table-wrapper {
@@ -154,27 +155,23 @@ export default function FacilitiesList({ locations }) {
 
         .facilities-table th {
           text-align: left;
-          padding: 16px 20px;
+          padding: 14px 20px;
           background: white;
-          color: #374151;
+          color: #4A5568;
           font-weight: 600;
           font-size: 12px;
           text-transform: uppercase;
           letter-spacing: 0.5px;
-          border-bottom: 2px solid rgba(34, 197, 94, 0.15);
+          border-bottom: 1px solid #E5E7EB;
         }
 
         .facilities-table td {
-          padding: 16px 20px;
-          border-bottom: 1px solid #edf2f7;
+          padding: 14px 20px;
+          border-bottom: 1px solid #F3F4F6;
         }
 
-        .even-row {
-          background: white;
-        }
-
-        .odd-row {
-          background: #fafdfa;
+        .facilities-table tr:last-child td {
+          border-bottom: none;
         }
 
         .city-cell {
@@ -184,23 +181,24 @@ export default function FacilitiesList({ locations }) {
         }
 
         .cell-icon {
-          color: #22C55E;
+          color: #2E7D64;
           font-size: 16px;
         }
 
         .city-name {
           font-weight: 500;
-          color: #14532D;
+          color: #1B4D3E;
         }
 
         .country-badge {
           display: inline-block;
           padding: 4px 12px;
-          background: #F0FDF4;
-          color: #15803D;
+          background: #F8FAF8;
+          color: #1B4D3E;
           border-radius: 30px;
           font-size: 12px;
           font-weight: 500;
+          border: 1px solid #E5E7EB;
         }
 
         .status-badge {
@@ -212,39 +210,31 @@ export default function FacilitiesList({ locations }) {
         }
 
         .status-badge.active {
-          background: #E6F7E6;
-          color: #15803D;
-          border: 1px solid rgba(34, 197, 94, 0.3);
+          background: #E8F0EA;
+          color: #2E7D64;
+          border: 1px solid #C6E0C8;
         }
 
         @media (max-width: 768px) {
-          .facilities-table {
-            border: 0;
-          }
-
           .facilities-table thead {
             display: none;
           }
-
           .facilities-table tr {
             display: block;
             margin-bottom: 16px;
-            border: 1px solid rgba(34, 197, 94, 0.15);
+            border: 1px solid #E5E7EB;
             border-radius: 8px;
           }
-
           .facilities-table td {
             display: flex;
             align-items: center;
             gap: 10px;
             padding: 12px;
-            border-bottom: 1px solid #E5E7EB;
+            border-bottom: 1px solid #F3F4F6;
           }
-
           .facilities-table td:last-child {
             border-bottom: none;
           }
-
           .facilities-table td::before {
             content: attr(data-label);
             font-weight: 600;

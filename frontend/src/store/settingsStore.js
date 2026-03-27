@@ -49,13 +49,13 @@ export const useSettingsStore = create((set, get) => ({
     try {
       await settingsAPI.update(token, {
         reportingPreferences: {
-          defaultYear: updates.reportingYear,
-          currency: updates.currency,
-          region: updates.region,
-          distanceUnit: updates.distanceUnit,
-          fuelUnit: updates.fuelUnit,
-          electricityUnit: updates.electricityUnit,
-          heatUnit: updates.heatUnit,
+          defaultYear:      updates.reportingYear,
+          currency:         updates.currency,
+          region:           updates.region,
+          distanceUnit:     updates.distanceUnit,
+          fuelUnit:         updates.fuelUnit,
+          electricityUnit:  updates.electricityUnit,
+          heatUnit:         updates.heatUnit,
         },
         factorSource: updates.factorSource,
       });

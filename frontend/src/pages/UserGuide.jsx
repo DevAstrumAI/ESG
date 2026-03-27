@@ -37,7 +37,7 @@ export default function UserGuide() {
         <div className="header-content">
           <BiLeaf className="header-leaf" />
           <h1>User Guide</h1>
-          <p>Everything you need to know about using ESG Calculator</p>
+          <p>Everything you need to know about using Lumyna</p>
         </div>
       </div>
 
@@ -61,7 +61,7 @@ export default function UserGuide() {
           
           <div className="guide-help">
             <FiAlertCircle />
-            <p>Need additional help? <Link to="/help">Contact support</Link></p>
+            <p>Need additional help? <Link to="/contact">Contact support</Link></p>
           </div>
         </div>
 
@@ -83,7 +83,7 @@ export default function UserGuide() {
                 <div className="step-card">
                   <div className="step-number">1</div>
                   <h4>Complete Company Setup</h4>
-                  <p>Add your company details, industry, and baseline year</p>
+                  <p>Add your company details, industry, and location</p>
                 </div>
                 <div className="step-card">
                   <div className="step-number">2</div>
@@ -168,8 +168,8 @@ export default function UserGuide() {
                   <li>Navigate to the <strong>Scope 1</strong> tab</li>
                   <li>Select the emission category (Mobile, Stationary, etc.)</li>
                   <li>Enter fuel type and consumption amount</li>
-                  <li>Click "Add Entry" to save</li>
-                  <li>Repeat for all emission sources</li>
+                  <li>Click "+ Add Row" to save</li>
+                  <li>Click "Calculate & Submit" to view summary</li>
                 </ol>
               </div>
             </div>
@@ -220,11 +220,11 @@ export default function UserGuide() {
                 <h4>Calculation Methods:</h4>
                 <div className="method-row">
                   <span className="method-badge">Location-based</span>
-                  <p>Uses average grid emission factors</p>
+                  <p>Uses average grid emission factors for your region</p>
                 </div>
                 <div className="method-row">
                   <span className="method-badge">Market-based</span>
-                  <p>Uses supplier-specific factors and RECs</p>
+                  <p>Uses supplier-specific factors and RECs/PPAs</p>
                 </div>
               </div>
             </div>
@@ -239,35 +239,34 @@ export default function UserGuide() {
                   <div className="setup-step-number">1</div>
                   <div className="setup-step-content">
                     <h4>Basic Information</h4>
-                    <p>Company name, industry, location, and size</p>
+                    <p>Company name, description, and industry</p>
                   </div>
                 </div>
 
                 <div className="setup-step">
                   <div className="setup-step-number">2</div>
                   <div className="setup-step-content">
-                    <h4>Reporting Period</h4>
-                    <p>Set your fiscal year and baseline year</p>
+                    <h4>Location</h4>
+                    <p>Select region, country, and add facility cities</p>
                   </div>
                 </div>
 
                 <div className="setup-step">
                   <div className="setup-step-number">3</div>
                   <div className="setup-step-content">
-                    <h4>Emission Factors</h4>
-                    <p>Choose default factors or upload custom</p>
+                    <h4>Company Size</h4>
+                    <p>Number of employees and annual revenue</p>
                   </div>
                 </div>
 
                 <div className="setup-step">
                   <div className="setup-step-number">4</div>
                   <div className="setup-step-content">
-                    <h4>Team Members</h4>
-                    <p>Add colleagues and set permissions</p>
+                    <h4>Review & Confirm</h4>
+                    <p>Verify all information before completing setup</p>
                   </div>
                 </div>
               </div>
-
             </div>
           )}
 
@@ -288,7 +287,7 @@ export default function UserGuide() {
                   <FiFilter />
                   <div>
                     <h4>Data Filtering</h4>
-                    <p>Filter by scope, category, date range</p>
+                    <p>Filter by scope, category, date range, or city</p>
                   </div>
                 </div>
 
@@ -372,11 +371,11 @@ export default function UserGuide() {
       <style jsx>{`
         .guide-container {
           min-height: 100vh;
-          background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%);
+          background: #F8FAF8;
         }
 
         .guide-header {
-          background: linear-gradient(135deg, #14532D 0%, #166534 100%);
+          background: #1B4D3E;
           color: white;
           padding: 40px 24px;
           text-align: center;
@@ -390,7 +389,7 @@ export default function UserGuide() {
         .header-leaf {
           font-size: 48px;
           margin-bottom: 16px;
-          color: rgba(255,255,255,0.2);
+          color: rgba(255,255,255,0.3);
         }
 
         .header-content h1 {
@@ -418,7 +417,7 @@ export default function UserGuide() {
         }
 
         .guide-sidebar h3 {
-          color: #14532D;
+          color: #1B4D3E;
           margin-bottom: 20px;
           font-size: 18px;
         }
@@ -437,8 +436,8 @@ export default function UserGuide() {
           padding: 12px 16px;
           border: none;
           background: none;
-          border-radius: 12px;
-          color: #4B5563;
+          border-radius: 8px;
+          color: #4A5568;
           font-size: 15px;
           cursor: pointer;
           transition: all 0.2s ease;
@@ -446,12 +445,12 @@ export default function UserGuide() {
         }
 
         .section-btn:hover {
-          background: rgba(34, 197, 94, 0.1);
-          color: #15803D;
+          background: #F8FAF8;
+          color: #2E7D64;
         }
 
         .section-btn.active {
-          background: #15803D;
+          background: #2E7D64;
           color: white;
         }
 
@@ -462,8 +461,8 @@ export default function UserGuide() {
         .guide-help {
           background: white;
           padding: 16px;
-          border-radius: 16px;
-          border: 1px solid rgba(34, 197, 94, 0.2);
+          border-radius: 8px;
+          border: 1px solid #E5E7EB;
           display: flex;
           align-items: center;
           gap: 12px;
@@ -471,22 +470,26 @@ export default function UserGuide() {
         }
 
         .guide-help a {
-          color: #15803D;
+          color: #2E7D64;
           text-decoration: none;
           font-weight: 600;
+        }
+
+        .guide-help a:hover {
+          text-decoration: underline;
         }
 
         /* Main Content */
         .guide-content {
           flex: 1;
           background: white;
-          border-radius: 24px;
+          border-radius: 12px;
           padding: 32px;
-          box-shadow: 0 10px 30px rgba(0,40,0,0.1);
+          border: 1px solid #E5E7EB;
         }
 
         .content-section h2 {
-          color: #14532D;
+          color: #1B4D3E;
           font-size: 28px;
           margin: 0 0 24px;
         }
@@ -496,15 +499,16 @@ export default function UserGuide() {
           display: flex;
           align-items: center;
           gap: 20px;
-          background: #F0FDF4;
+          background: #F8FAF8;
           padding: 24px;
-          border-radius: 20px;
+          border-radius: 12px;
           margin-bottom: 32px;
+          border: 1px solid #E5E7EB;
         }
 
         .welcome-icon {
           font-size: 48px;
-          color: #22C55E;
+          color: #2E7D64;
         }
 
         /* Steps Grid */
@@ -518,15 +522,14 @@ export default function UserGuide() {
         .step-card {
           background: #F9FAFB;
           padding: 24px;
-          border-radius: 16px;
-          position: relative;
-          border: 1px solid rgba(34, 197, 94, 0.1);
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
         }
 
         .step-number {
           width: 32px;
           height: 32px;
-          background: #22C55E;
+          background: #2E7D64;
           color: white;
           border-radius: 50%;
           display: flex;
@@ -536,6 +539,17 @@ export default function UserGuide() {
           margin-bottom: 16px;
         }
 
+        .step-card h4 {
+          color: #1B4D3E;
+          margin: 0 0 8px;
+        }
+
+        .step-card p {
+          color: #4A5568;
+          font-size: 14px;
+          margin: 0;
+        }
+
         /* Tip Box */
         .tip-box {
           display: flex;
@@ -543,8 +557,9 @@ export default function UserGuide() {
           gap: 16px;
           background: #FEF3C7;
           padding: 16px 24px;
-          border-radius: 16px;
+          border-radius: 12px;
           color: #92400E;
+          border: 1px solid #FCD34D;
         }
 
         .tip-icon {
@@ -557,15 +572,16 @@ export default function UserGuide() {
           display: flex;
           align-items: center;
           gap: 16px;
-          background: #F0FDF4;
+          background: #F8FAF8;
           padding: 20px;
-          border-radius: 16px;
+          border-radius: 12px;
           margin-bottom: 32px;
+          border: 1px solid #E5E7EB;
         }
 
         .scope-icon {
           font-size: 32px;
-          color: #22C55E;
+          color: #2E7D64;
         }
 
         /* Category Grid */
@@ -579,25 +595,25 @@ export default function UserGuide() {
         .category-card {
           background: white;
           padding: 24px;
-          border-radius: 16px;
-          border: 1px solid rgba(34, 197, 94, 0.2);
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
         }
 
         .category-icon {
           font-size: 28px;
-          color: #22C55E;
+          color: #2E7D64;
           margin-bottom: 16px;
         }
 
         .category-card h4 {
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0 0 12px;
         }
 
         .category-card ul {
           margin: 0;
           padding-left: 20px;
-          color: #4B5563;
+          color: #4A5568;
         }
 
         .category-card li {
@@ -608,13 +624,19 @@ export default function UserGuide() {
         .instruction-steps {
           background: #F9FAFB;
           padding: 24px;
-          border-radius: 16px;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
+        }
+
+        .instruction-steps h3 {
+          color: #1B4D3E;
+          margin: 0 0 16px;
         }
 
         .instruction-steps ol {
-          margin: 16px 0 0;
+          margin: 0;
           padding-left: 20px;
-          color: #4B5563;
+          color: #4A5568;
         }
 
         .instruction-steps li {
@@ -623,9 +645,15 @@ export default function UserGuide() {
 
         /* Method Box */
         .method-box {
-          background: #F0FDF4;
+          background: #F8FAF8;
           padding: 24px;
-          border-radius: 16px;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
+        }
+
+        .method-box h4 {
+          color: #1B4D3E;
+          margin: 0 0 16px;
         }
 
         .method-row {
@@ -636,7 +664,7 @@ export default function UserGuide() {
         }
 
         .method-badge {
-          background: #22C55E;
+          background: #2E7D64;
           color: white;
           padding: 4px 12px;
           border-radius: 30px;
@@ -644,21 +672,31 @@ export default function UserGuide() {
           font-weight: 600;
         }
 
+        .method-row p {
+          color: #4A5568;
+          margin: 0;
+          font-size: 14px;
+        }
+
         /* Setup Wizard */
         .setup-wizard {
-          margin: 32px 0;
+          margin: 0;
         }
 
         .setup-step {
           display: flex;
           gap: 20px;
           margin-bottom: 24px;
+          padding: 20px;
+          background: #F9FAFB;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
         }
 
         .setup-step-number {
           width: 40px;
           height: 40px;
-          background: #22C55E;
+          background: #2E7D64;
           color: white;
           border-radius: 50%;
           display: flex;
@@ -668,14 +706,15 @@ export default function UserGuide() {
           flex-shrink: 0;
         }
 
-        .file-upload-note {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 16px;
-          background: #F3F4F6;
-          border-radius: 12px;
-          color: #4B5563;
+        .setup-step-content h4 {
+          color: #1B4D3E;
+          margin: 0 0 4px;
+        }
+
+        .setup-step-content p {
+          color: #4A5568;
+          margin: 0;
+          font-size: 14px;
         }
 
         /* Reports */
@@ -691,24 +730,47 @@ export default function UserGuide() {
           gap: 16px;
           padding: 20px;
           background: #F9FAFB;
-          border-radius: 16px;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
         }
 
         .report-feature svg {
           font-size: 24px;
-          color: #22C55E;
+          color: #2E7D64;
+        }
+
+        .report-feature h4 {
+          color: #1B4D3E;
+          margin: 0 0 4px;
+        }
+
+        .report-feature p {
+          color: #4A5568;
+          margin: 0;
+          font-size: 14px;
         }
 
         .report-types {
-          background: #F0FDF4;
+          background: #F8FAF8;
           padding: 24px;
-          border-radius: 16px;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
+        }
+
+        .report-types h3 {
+          color: #1B4D3E;
+          margin: 0 0 16px;
         }
 
         .report-types ul {
-          margin: 16px 0 0;
+          margin: 0;
           columns: 2;
-          color: #4B5563;
+          color: #4A5568;
+          padding-left: 20px;
+        }
+
+        .report-types li {
+          margin-bottom: 8px;
         }
 
         /* Best Practices */
@@ -723,13 +785,25 @@ export default function UserGuide() {
           gap: 16px;
           padding: 20px;
           background: #F9FAFB;
-          border-radius: 16px;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
         }
 
         .practice-icon {
-          color: #22C55E;
+          color: #2E7D64;
           font-size: 24px;
           flex-shrink: 0;
+        }
+
+        .practice-item h4 {
+          color: #1B4D3E;
+          margin: 0 0 4px;
+        }
+
+        .practice-item p {
+          color: #4A5568;
+          margin: 0;
+          font-size: 14px;
         }
 
         .quote-box {
@@ -737,9 +811,9 @@ export default function UserGuide() {
           align-items: center;
           gap: 16px;
           padding: 24px;
-          background: #14532D;
+          background: #1B4D3E;
           color: white;
-          border-radius: 16px;
+          border-radius: 12px;
           font-style: italic;
         }
 
@@ -748,10 +822,15 @@ export default function UserGuide() {
           opacity: 0.5;
         }
 
+        .quote-box p {
+          margin: 0;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
           .guide-layout {
             flex-direction: column;
+            padding: 24px 16px;
           }
 
           .guide-sidebar {
@@ -765,6 +844,23 @@ export default function UserGuide() {
 
           .report-types ul {
             columns: 1;
+          }
+
+          .guide-header h1 {
+            font-size: 28px;
+          }
+
+          .guide-content {
+            padding: 24px;
+          }
+
+          .content-section h2 {
+            font-size: 24px;
+          }
+
+          .welcome-card {
+            flex-direction: column;
+            text-align: center;
           }
         }
       `}</style>

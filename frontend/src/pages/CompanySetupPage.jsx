@@ -1,6 +1,8 @@
+// src/pages/CompanySetupPage.jsx
 import { useCompanyStore } from "../store/companyStore";
 import { BiLeaf } from "react-icons/bi";
 import CompanyWizard from "../components/company/CompanyWizard";
+
 export default function CompanySetupPage() {
   const { company } = useCompanyStore();
 
@@ -17,8 +19,6 @@ export default function CompanySetupPage() {
       )}
 
       <CompanyWizard />
-      
-     
 
       <style jsx>{`
         .setup-page {
@@ -39,19 +39,19 @@ export default function CompanySetupPage() {
 
         .header-icon {
           font-size: 48px;
-          color: #22C55E;
+          color: #2E7D64;
           animation: float 3s ease-in-out infinite;
         }
 
         .header-content h1 {
           font-size: 32px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0 0 8px;
         }
 
         .header-content p {
-          color: #4B5563;
+          color: #4A5568;
           margin: 0;
           font-size: 16px;
         }
@@ -62,19 +62,13 @@ export default function CompanySetupPage() {
         }
 
         @media (max-width: 768px) {
-          .setup-page {
-            padding: 16px;
-          }
-
+          .setup-page { padding: 16px; }
           .header-content {
             flex-direction: column;
             text-align: center;
             gap: 12px;
           }
-
-          .header-content h1 {
-            font-size: 28px;
-          }
+          .header-content h1 { font-size: 28px; }
         }
       `}</style>
     </div>

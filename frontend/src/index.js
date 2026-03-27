@@ -1,4 +1,5 @@
 import React from "react";
+import './index.css';  // ← Make sure this line exists
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 

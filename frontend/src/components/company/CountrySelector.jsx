@@ -3,14 +3,14 @@ import SelectDropdown from "../ui/SelectDropdown";
 import { FiMapPin } from "react-icons/fi";
 
 export default function CountrySelector({ data, updateField }) {
-  // Countries by region - Updated with correct values
+  // Countries by region
   const countriesByRegion = {
     "middle-east": [
       { label: "🇦🇪 United Arab Emirates", value: "uae" },
-      { label: "🇸🇦 Saudi Arabia", value: "saudi-arabia" },  // Changed from "saudi" to "saudi-arabia"
+      { label: "🇸🇦 Saudi Arabia", value: "saudi-arabia" },
       { label: "🇶🇦 Qatar", value: "qatar" },
     ],
-    "asia-pacific": [  // Added Asia Pacific region
+    "asia-pacific": [
       { label: "🇸🇬 Singapore", value: "singapore" },
       { label: "🇲🇾 Malaysia", value: "malaysia" },
       { label: "🇮🇩 Indonesia", value: "indonesia" },
@@ -67,7 +67,7 @@ export default function CountrySelector({ data, updateField }) {
         .country-selector {
           margin-top: 24px;
           padding-top: 24px;
-          border-top: 1px solid rgba(34, 197, 94, 0.2);
+          border-top: 1px solid #E5E7EB;
           animation: slideDown 0.3s ease;
         }
 
@@ -85,18 +85,18 @@ export default function CountrySelector({ data, updateField }) {
 
         .subheader-icon {
           font-size: 18px;
-          color: #22C55E;
+          color: #2E7D64;
         }
 
         .step-subheader h4 {
           font-size: 16px;
           font-weight: 600;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0;
         }
 
         .sub-description {
-          color: #4B5563;
+          color: #4A5568;
           margin-bottom: 20px;
           font-size: 14px;
         }

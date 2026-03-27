@@ -14,25 +14,28 @@ import {
   FiThermometer,
   FiAlertCircle,
   FiCheckCircle,
-  FiTrash2,
-  FiLoader
+  FiTrash2
 } from "react-icons/fi";
-import { BiLeaf, BiWorld, BiGasPump } from "react-icons/bi";
-import { GiFactory } from "react-icons/gi";
+import { BiLeaf, BiWorld, BiGasPump, BiBuilding } from "react-icons/bi";
 import { useSettingsStore } from "../store/settingsStore";
 import { useAuthStore } from "../store/authStore";
+import { useCompanyStore } from "../store/companyStore";
 
 export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [companyName, setCompanyName] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [country, setCountry] = useState("");
+  const [city, setCity] = useState("");
 
   const token = useAuthStore((s) => s.token);
+  const { company, fetchCompany } = useCompanyStore();
 
   const {
     reportingYear,
     currency,
-    region,
     distanceUnit,
     fuelUnit,
     electricityUnit,
@@ -44,12 +47,69 @@ export default function SettingsPage() {
     saveSettings,
   } = useSettingsStore();
 
+  // Helper function to convert region codes to readable names
+  const getRegionDisplay = (regionCode) => {
+    const regions = {
+      'middle-east': 'Middle East',
+      'asia-pacific': 'Asia Pacific',
+      'eu': 'Europe (EU)',
+      'uk': 'United Kingdom',
+      'us': 'United States',
+      'in': 'India',
+      'cn': 'China',
+      'other': 'Other',
+    };
+    return regions[regionCode] || regionCode || '—';
+  };
+
+  const getRegionFromCompany = (company) => {
+    if (!company) return null;
+    
+    // Try basicInfo.region first
+    if (company.basicInfo?.region) return company.basicInfo.region;
+    
+    // Try to infer region from country
+    if (company.locations?.[0]?.country) {
+      const country = company.locations[0].country;
+      // Map country to region
+      if (country === 'uae' || country === 'qatar' || country === 'saudi-arabia') {
+        return 'middle-east';
+      }
+      if (country === 'singapore') {
+        return 'asia-pacific';
+      }
+    }
+    
+    // If all else fails, return null
+    return null;
+  };
+
+  // Fetch company data on mount
+  useEffect(() => {
+    if (token && !company) {
+      fetchCompany(token);
+    }
+  }, [token, company, fetchCompany]);
+
+  // Populate company info when available
+  useEffect(() => {
+    if (company) {
+      setCompanyName(company.basicInfo?.name || "");
+      setIndustry(company.basicInfo?.industry || "");
+      const primaryLocation = company.locations?.[0];
+      if (primaryLocation) {
+        setCountry(primaryLocation.country || "");
+        setCity(primaryLocation.city || "");
+      }
+    }
+  }, [company]);
+
   // Fetch settings on mount
   useEffect(() => {
     if (token) {
       fetchSettings(token);
     }
-  }, [token]);
+  }, [token, fetchSettings]);
 
   const handleSave = async () => {
     setLoading(true);
@@ -57,7 +117,7 @@ export default function SettingsPage() {
     const result = await saveSettings(token, {
       reportingYear,
       currency,
-      region,
+      region: getRegionFromCompany(company) || "",  // add this line
       distanceUnit,
       fuelUnit,
       electricityUnit,
@@ -79,13 +139,42 @@ export default function SettingsPage() {
     }
   };
 
+  const getCountryDisplay = (code) => {
+    const countries = {
+      'uae': 'UAE',
+      'qatar': 'Qatar',
+      'saudi-arabia': 'Saudi Arabia',
+      'singapore': 'Singapore',
+    };
+    return countries[code] || code || '—';
+  };
+
+  const getIndustryDisplay = (value) => {
+    const industries = {
+      'manufacturing': 'Manufacturing',
+      'it': 'IT / Software',
+      'healthcare': 'Healthcare',
+      'education': 'Education',
+      'retail': 'Retail',
+      'logistics': 'Logistics',
+      'hospitality': 'Hospitality',
+      'agriculture': 'Agriculture',
+      'energy': 'Energy',
+      'construction': 'Construction',
+      'telecom': 'Telecommunications',
+      'creative': 'Creative / Design',
+      'finance': 'Financial Services',
+      'other': 'Other',
+    };
+    return industries[value] || value || '—';
+  };
+
   return (
     <div className="settings-container">
-      {/* Header */}
       <div className="settings-header">
         <div>
           <h1>Settings</h1>
-          <p>Configure your reporting preferences, units, and emission factors</p>
+          <p>Manage your company profile and reporting configuration</p>
         </div>
         <div className="header-actions">
           {saved && (
@@ -100,24 +189,75 @@ export default function SettingsPage() {
           )}
           <PrimaryButton onClick={handleSave} disabled={loading} className="save-btn">
             {loading ? <FiRefreshCw className="spin" /> : <FiSave />}
-            {loading ? "Saving..." : "Save Changes"}
+            {loading ? "Saving..." : "Save Settings"}
           </PrimaryButton>
         </div>
       </div>
 
-      {/* Settings Grid */}
       <div className="settings-grid">
-        {/* General Settings */}
+        {/* Company Profile Card */}
         <Card className="settings-card">
           <div className="card-header">
-            <div className="header-icon"><FiGlobe /></div>
+            <div className="header-icon"><BiBuilding /></div>
             <div>
-              <h2>General Reporting</h2>
-              <p>Basic reporting preferences</p>
+              <h2>Company Profile</h2>
+              <p>Basic information about your organization</p>
             </div>
           </div>
 
           <div className="settings-form">
+            <div className="info-row">
+              <span className="info-label">Company Name</span>
+              <span className="info-value">{companyName || "—"}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Industry</span>
+              <span className="info-value">{getIndustryDisplay(industry)}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Region</span>
+              <span className="info-value">
+              {getRegionDisplay(
+                company?.basicInfo?.region ||
+                getRegionFromCompany(company)
+              )}
+            </span>            </div>
+          </div>
+        </Card>
+
+        {/* Primary Location Card */}
+        <Card className="settings-card">
+          <div className="card-header">
+            <div className="header-icon"><FiMapPin /></div>
+            <div>
+              <h2>Primary Location</h2>
+              <p>Determines which emission factors are applied to your calculations</p>
+            </div>
+          </div>
+
+          <div className="settings-form">
+            <div className="info-row">
+              <span className="info-label">Country</span>
+              <span className="info-value">{getCountryDisplay(country)}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">City</span>
+              <span className="info-value">{city || "—"}</span>
+            </div>
+          </div>
+        </Card>
+
+        {/* Reporting Configuration Card */}
+        <Card className="settings-card full-width">
+          <div className="card-header">
+            <div className="header-icon"><FiCalendar /></div>
+            <div>
+              <h2>Reporting Configuration</h2>
+              <p>Units and preferences for emission calculations</p>
+            </div>
+          </div>
+
+          <div className="settings-form two-columns">
             <div className="form-group">
               <label><FiCalendar className="label-icon" />Reporting Year</label>
               <SelectDropdown
@@ -147,39 +287,28 @@ export default function SettingsPage() {
             </div>
 
             <div className="form-group">
-              <label><FiMapPin className="label-icon" />Default Region</label>
+              <label><BiWorld className="label-icon" />Factor Source</label>
               <SelectDropdown
-                value={region}
-                onChange={(e) => updateSetting("region", e.target.value)}
+                value={factorSource}
+                onChange={(e) => updateSetting("factorSource", e.target.value)}
                 options={[
-                  { label: "🇦🇪 UAE", value: "UAE" },
-                  { label: "🇬🇧 UK", value: "UK" },
-                  { label: "🇺🇸 USA", value: "USA" },
-                  { label: "🌍 Global Average", value: "GLOBAL" },
+                  { label: "Regional Default", value: "Regional Default" },
+                  { label: "UAE MoCCaE", value: "UAE MoCCaE" },
+                  { label: "DEFRA (UK)", value: "DEFRA" },
+                  { label: "EPA (US)", value: "EPA" },
+                  { label: "EEA (Europe)", value: "EEA" },
+                  { label: "Custom", value: "Custom" },
                 ]}
               />
             </div>
-          </div>
-        </Card>
 
-        {/* Units Settings */}
-        <Card className="settings-card">
-          <div className="card-header">
-            <div className="header-icon"><BiWorld /></div>
-            <div>
-              <h2>Measurement Units</h2>
-              <p>Preferred units for calculations</p>
-            </div>
-          </div>
-
-          <div className="settings-form">
             <div className="form-group">
               <label><FiMapPin className="label-icon" />Distance Unit</label>
               <SelectDropdown
                 value={distanceUnit}
                 onChange={(e) => updateSetting("distanceUnit", e.target.value)}
                 options={[
-                  { label: "Kilometers (km)", value: "km" },
+                  { label: "Kilometres (km)", value: "km" },
                   { label: "Miles", value: "miles" },
                 ]}
               />
@@ -193,7 +322,6 @@ export default function SettingsPage() {
                 options={[
                   { label: "Litres (L)", value: "litres" },
                   { label: "Gallons (gal)", value: "gallons" },
-                  { label: "Cubic meters (m³)", value: "m3" },
                 ]}
               />
             </div>
@@ -204,8 +332,8 @@ export default function SettingsPage() {
                 value={electricityUnit}
                 onChange={(e) => updateSetting("electricityUnit", e.target.value)}
                 options={[
-                  { label: "Kilowatt-hours (kWh)", value: "kWh" },
-                  { label: "Megawatt-hours (MWh)", value: "MWh" },
+                  { label: "kWh", value: "kWh" },
+                  { label: "MWh", value: "MWh" },
                 ]}
               />
             </div>
@@ -216,77 +344,52 @@ export default function SettingsPage() {
                 value={heatUnit}
                 onChange={(e) => updateSetting("heatUnit", e.target.value)}
                 options={[
-                  { label: "Megajoules (MJ)", value: "MJ" },
-                  { label: "Gigajoules (GJ)", value: "GJ" },
+                  { label: "kWh", value: "kWh" },
+                  { label: "MJ", value: "MJ" },
+                  { label: "GJ", value: "GJ" },
                 ]}
               />
             </div>
           </div>
-        </Card>
 
-        {/* Emission Factors */}
-        <Card className="settings-card">
-          <div className="card-header">
-            <div className="header-icon"><GiFactory /></div>
-            <div>
-              <h2>Emission Factors</h2>
-              <p>Choose your factor database</p>
-            </div>
-          </div>
-
-          <div className="settings-form">
-            <div className="form-group">
-              <label><BiLeaf className="label-icon" />Factor Database</label>
-              <SelectDropdown
-                value={factorSource}
-                onChange={(e) => updateSetting("factorSource", e.target.value)}
-                options={[
-                  { label: "🇦🇪 UAE MoCCaE", value: "UAE MoCCaE" },
-                  { label: "🇬🇧 DEFRA (UK)", value: "DEFRA" },
-                  { label: "🇺🇸 EPA (US)", value: "EPA" },
-                  { label: "🇪🇺 EEA (Europe)", value: "EEA" },
-                  { label: "⚙️ Custom (Manual)", value: "Custom" },
-                ]}
-              />
-            </div>
-
-            <div className="factor-info">
-              <FiAlertCircle className="info-icon" />
-              <p>Factors are updated annually. Last update: January 2024</p>
-            </div>
+          <div className="factor-info">
+            <FiAlertCircle className="info-icon" />
+            <p>
+              <strong>Emission Factor Sources:</strong> UAE: MoCCaE 2023, DEWA 2023 · 
+              Singapore: NEA/SEFR 2024, EMA 2024 · 
+              Saudi Arabia: IEA 2023, DEFRA 2024 · 
+              All regions: IPCC AR5 GWP100 for refrigerants
+            </p>
           </div>
         </Card>
 
-        {/* Data Management */}
-        <Card className="settings-card">
+        {/* Data Management Card */}
+        <Card className="settings-card full-width">
           <div className="card-header">
             <div className="header-icon"><FiRefreshCw /></div>
             <div>
               <h2>Data Management</h2>
-              <p>Import, export, and reset options</p>
+              <p>Reset preferences or export your data</p>
             </div>
           </div>
 
-          <div className="settings-form">
-            <div className="button-group">
-              <PrimaryButton onClick={handleReset} className="reset-btn">
-                <FiRefreshCw /> Reset to Default
-              </PrimaryButton>
-              <button className="export-btn">Export Data</button>
-            </div>
-
-            <div className="danger-zone">
-              <button
-                className="delete-btn"
-                onClick={() => {
-                  if (window.confirm("This will permanently delete all your emission data. Are you sure?")) {
-                    alert("Delete functionality coming soon.");
-                  }
-                }}
-              >
-                <FiTrash2 /> Delete All Data
-              </button>
-            </div>
+          <div className="settings-form horizontal-buttons">
+            <button onClick={handleReset} className="reset-btn">
+              <FiRefreshCw /> Reset to Default
+            </button>
+            <button className="export-btn">
+              Export Data
+            </button>
+            <button
+              className="delete-btn"
+              onClick={() => {
+                if (window.confirm("This will permanently delete all your emission data. Are you sure?")) {
+                  alert("Delete functionality coming soon.");
+                }
+              }}
+            >
+              <FiTrash2 /> Delete All Data
+            </button>
           </div>
         </Card>
       </div>
@@ -310,12 +413,12 @@ export default function SettingsPage() {
         .settings-header h1 {
           font-size: 28px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0 0 4px;
         }
 
         .settings-header p {
-          color: #4B5563;
+          color: #4A5568;
           margin: 0;
         }
 
@@ -333,7 +436,6 @@ export default function SettingsPage() {
           color: #10B981;
           font-size: 14px;
           font-weight: 500;
-          animation: fadeIn 0.3s ease;
         }
 
         .save-error {
@@ -343,11 +445,6 @@ export default function SettingsPage() {
           color: #DC2626;
           font-size: 14px;
           font-weight: 500;
-        }
-
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateX(10px); }
-          to { opacity: 1; transform: translateX(0); }
         }
 
         @keyframes spin {
@@ -363,8 +460,8 @@ export default function SettingsPage() {
           display: flex !important;
           align-items: center;
           gap: 8px !important;
-          padding: 12px 24px !important;
-          background: linear-gradient(135deg, #15803D, #22C55E) !important;
+          padding: 10px 24px !important;
+          background: #2E7D64 !important;
         }
 
         .save-btn:disabled {
@@ -380,14 +477,18 @@ export default function SettingsPage() {
 
         .settings-card {
           background: white;
-          border-radius: 20px;
+          border-radius: 12px;
           padding: 24px;
-          border: 1px solid rgba(34, 197, 94, 0.1);
-          transition: all 0.3s ease;
+          border: 1px solid #E5E7EB;
+          transition: all 0.2s ease;
         }
 
         .settings-card:hover {
-          box-shadow: 0 10px 30px rgba(34, 197, 94, 0.1);
+          border-color: #2E7D64;
+        }
+
+        .full-width {
+          grid-column: span 2;
         }
 
         .card-header {
@@ -396,26 +497,27 @@ export default function SettingsPage() {
           gap: 16px;
           margin-bottom: 24px;
           padding-bottom: 16px;
-          border-bottom: 1px solid rgba(34, 197, 94, 0.1);
+          border-bottom: 1px solid #E5E7EB;
         }
 
         .header-icon {
           width: 48px;
           height: 48px;
-          background: linear-gradient(135deg, #22C55E20, #15803D20);
+          background: #F8FAF8;
           border-radius: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 24px;
-          color: #22C55E;
+          color: #2E7D64;
+          border: 1px solid #E5E7EB;
           flex-shrink: 0;
         }
 
         .card-header h2 {
           font-size: 18px;
           font-weight: 600;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0 0 4px;
         }
 
@@ -428,7 +530,44 @@ export default function SettingsPage() {
         .settings-form {
           display: flex;
           flex-direction: column;
+          gap: 16px;
+        }
+
+        .two-columns {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
           gap: 20px;
+        }
+
+        .horizontal-buttons {
+          display: flex;
+          flex-direction: row;
+          gap: 12px;
+          align-items: center;
+        }
+
+        .info-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 0;
+          border-bottom: 1px solid #F3F4F6;
+        }
+
+        .info-row:last-child {
+          border-bottom: none;
+        }
+
+        .info-label {
+          font-size: 14px;
+          font-weight: 500;
+          color: #6B7280;
+        }
+
+        .info-value {
+          font-size: 14px;
+          font-weight: 600;
+          color: #1B4D3E;
         }
 
         .form-group {
@@ -443,110 +582,95 @@ export default function SettingsPage() {
           gap: 8px;
           font-size: 13px;
           font-weight: 600;
-          color: #374151;
+          color: #4A5568;
           text-transform: uppercase;
           letter-spacing: 0.3px;
         }
 
         .label-icon {
-          color: #22C55E;
+          color: #2E7D64;
           font-size: 14px;
         }
 
         .factor-info {
           display: flex;
-          align-items: center;
-          gap: 10px;
-          background: #F0FDF4;
-          padding: 12px 16px;
-          border-radius: 12px;
-          margin-top: 8px;
+          align-items: flex-start;
+          gap: 12px;
+          background: #F8FAF8;
+          padding: 16px;
+          border-radius: 8px;
+          margin-top: 20px;
+          border: 1px solid #E5E7EB;
         }
 
         .info-icon {
-          color: #22C55E;
+          color: #2E7D64;
           font-size: 18px;
           flex-shrink: 0;
+          margin-top: 2px;
         }
 
         .factor-info p {
           margin: 0;
           font-size: 13px;
-          color: #166534;
+          color: #4A5568;
+          line-height: 1.5;
         }
 
-        .button-group {
-          display: flex;
-          gap: 12px;
-          flex-wrap: wrap;
-        }
-
-        .reset-btn {
-          flex: 1;
-          background: #F3F4F6 !important;
-          color: #374151 !important;
-          border: 1px solid #E5E7EB !important;
-          display: flex !important;
-          align-items: center !important;
-          gap: 8px !important;
-        }
-
-        .reset-btn:hover {
-          background: #E5E7EB !important;
-        }
-
-        .export-btn {
-          flex: 1;
+        .reset-btn, .export-btn, .delete-btn {
           padding: 10px 20px;
-          background: white;
-          border: 2px solid #22C55E;
           border-radius: 8px;
-          color: #15803D;
-          font-weight: 600;
           font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .export-btn:hover {
-          background: #F0FDF4;
-        }
-
-        .danger-zone {
-          margin-top: 16px;
-          padding: 16px;
-          background: #FEF2F2;
-          border-radius: 12px;
-          border: 1px solid #FECACA;
-        }
-
-        .delete-btn {
-          width: 100%;
-          padding: 10px;
-          background: transparent;
-          border: 2px solid #DC2626;
-          border-radius: 8px;
-          color: #DC2626;
-          font-weight: 600;
-          font-size: 14px;
+          font-weight: 500;
           cursor: pointer;
           transition: all 0.2s ease;
           display: flex;
           align-items: center;
-          justify-content: center;
           gap: 8px;
         }
 
+        .reset-btn {
+          background: #F8FAF8;
+          border: 1px solid #E5E7EB;
+          color: #374151;
+        }
+
+        .reset-btn:hover {
+          border-color: #2E7D64;
+          background: white;
+        }
+
+        .export-btn {
+          background: white;
+          border: 1px solid #2E7D64;
+          color: #2E7D64;
+        }
+
+        .export-btn:hover {
+          background: #F8FAF8;
+        }
+
+        .delete-btn {
+          background: white;
+          border: 1px solid #FEE2E2;
+          color: #DC2626;
+        }
+
         .delete-btn:hover {
-          background: #DC2626;
-          color: white;
+          background: #FEF2F2;
+          border-color: #DC2626;
         }
 
         @media (max-width: 768px) {
+          .settings-container { padding: 16px; }
           .settings-grid { grid-template-columns: 1fr; }
+          .full-width { grid-column: span 1; }
+          .two-columns { grid-template-columns: 1fr; }
+          .horizontal-buttons { flex-direction: column; }
+          .reset-btn, .export-btn, .delete-btn { width: 100%; justify-content: center; }
           .settings-header { flex-direction: column; align-items: flex-start; }
           .header-actions { width: 100%; }
-          .save-btn { width: 100%; }
+          .save-btn { width: 100%; justify-content: center; }
         }
       `}</style>
     </div>

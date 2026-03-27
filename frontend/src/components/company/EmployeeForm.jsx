@@ -1,5 +1,4 @@
 // src/components/company/EmployeeForm.jsx
-import InputField from "../ui/InputField";
 import { FiUsers } from "react-icons/fi";
 
 export default function EmployeeForm({ data, updateField }) {
@@ -15,30 +14,30 @@ export default function EmployeeForm({ data, updateField }) {
       </p>
 
       <div className="employee-input">
-        <InputField
-          label="Employees"
-          type="number"
-          value={data.employees}
-          placeholder="e.g., 250"
-          onChange={(e) => updateField("employees", e.target.value)}
-          min="1"
-          required
-        />
-
-        <div className="employee-size-badge">
-          <FiUsers />
-          <span>
-            {data.employees ? (
-              <>
-                {data.employees < 50 ? "Small Business" :
-                 data.employees < 250 ? "Medium Business" :
-                 data.employees < 1000 ? "Large Business" : "Enterprise"}
-              </>
-            ) : (
-              "Enter employee count"
-            )}
-          </span>
+        <div className="field-group">
+          <label className="field-label">
+            Number of Employees <span className="required">*</span>
+          </label>
+          <input
+            type="number"
+            className="field-input"
+            value={data.employees}
+            placeholder="e.g., 250"
+            onChange={(e) => updateField("employees", e.target.value)}
+            min="1"
+          />
         </div>
+
+        {data.employees && (
+          <div className="employee-size-badge">
+            <FiUsers />
+            <span>
+              {data.employees < 50 ? "Small Business" :
+               data.employees < 250 ? "Medium Business" :
+               data.employees < 1000 ? "Large Business" : "Enterprise"}
+            </span>
+          </div>
+        )}
       </div>
 
       <style jsx>{`
@@ -65,12 +64,12 @@ export default function EmployeeForm({ data, updateField }) {
         .step-header h3 {
           font-size: 22px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0;
         }
 
         .step-description {
-          color: #4B5563;
+          color: #4A5568;
           margin-bottom: 32px;
           font-size: 15px;
           line-height: 1.6;
@@ -80,17 +79,47 @@ export default function EmployeeForm({ data, updateField }) {
           max-width: 300px;
         }
 
+        .field-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .field-label {
+          font-size: 14px;
+          font-weight: 500;
+          color: #374151;
+        }
+
+        .required {
+          color: #DC2626;
+        }
+
+        .field-input {
+          padding: 12px 16px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          font-size: 14px;
+          transition: all 0.2s ease;
+          background: white;
+        }
+
+        .field-input:focus {
+          outline: none;
+          border-color: #2E7D64;
+        }
+
         .employee-size-badge {
           margin-top: 16px;
           padding: 12px 16px;
-          background: #F0FDF4;
-          border-radius: 12px;
+          background: #F8FAF8;
+          border-radius: 8px;
           display: flex;
           align-items: center;
           gap: 8px;
           font-size: 14px;
-          color: #15803D;
-          border: 1px solid rgba(34, 197, 94, 0.2);
+          color: #2E7D64;
+          border: 1px solid #E5E7EB;
         }
       `}</style>
     </div>

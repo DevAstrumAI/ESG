@@ -1,108 +1,101 @@
 // src/components/dashboard/DashboardCharts/TotalEmissionsPie.jsx
 import React from "react";
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { useEmissionStore } from '../../../store/emissionStore';
-
-const COLORS = {
-  scope1: "#3B82F6",
-  scope2: "#F59E0B"
-};
-
-const RADIAN = Math.PI / 180;
-const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name }) => {
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-  const y = cy + radius * Math.sin(-midAngle * RADIAN);
-
-  return (
-    <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
-      {`${(percent * 100).toFixed(0)}%`}
-    </text>
-  );
-};
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { useEmissionStore } from "../../../store/emissionStore";
+import { FiBarChart2 } from "react-icons/fi";
 
 export default function TotalEmissionsPie() {
-  const scope1Total = useEmissionStore((s) => s.scope1Total || 0);
-  const scope2Total = useEmissionStore((s) => s.scope2Total || 0);
+  const scope1Results = useEmissionStore((s) => s.scope1Results);
+  const scope2Results = useEmissionStore((s) => s.scope2Results);
 
-  const data = [
-    { name: "Scope 1", value: scope1Total },
-    { name: "Scope 2", value: scope2Total },
-  ].filter(item => item.value > 0); // Only show non-zero values
+  const scope1Kg = scope1Results?.total?.kgCO2e || 0;
+  const scope2Kg = scope2Results?.total?.kgCO2e || 0;
+  const totalKg = scope1Kg + scope2Kg;
 
   // If no data, show empty state
-  if (data.length === 0) {
+  if (totalKg === 0) {
     return (
       <div className="empty-chart">
+        <FiBarChart2 size={48} />
         <p>No emissions data yet</p>
+        <span>Submit Scope 1 and Scope 2 data to see distribution</span>
         <style jsx>{`
           .empty-chart {
-            height: 250px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            text-align: center;
             color: #9CA3AF;
+            padding: 40px 20px;
+          }
+          .empty-chart svg {
+            margin-bottom: 12px;
+            opacity: 0.5;
+          }
+          .empty-chart p {
             font-size: 14px;
-            background: #F9FAFB;
-            border-radius: 12px;
+            margin: 0 0 4px;
+            color: #6B7280;
+          }
+          .empty-chart span {
+            font-size: 12px;
+            color: #9CA3AF;
           }
         `}</style>
       </div>
     );
   }
 
-  return (
-    <div className="pie-chart-container">
-      <ResponsiveContainer width="100%" height={250}>
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            label={renderCustomizedLabel}
-            outerRadius={80}
-            fill="#8884d8"
-            dataKey="value"
-            animationBegin={0}
-            animationDuration={800}
-          >
-            {data.map((entry, index) => (
-              <Cell 
-                key={`cell-${index}`} 
-                fill={index === 0 ? COLORS.scope1 : COLORS.scope2}
-                stroke="white"
-                strokeWidth={2}
-              />
-            ))}
-          </Pie>
-          <Tooltip 
-            contentStyle={{
-              backgroundColor: 'white',
-              border: '1px solid rgba(34, 197, 94, 0.2)',
-              borderRadius: '8px',
-              padding: '8px 12px',
-              fontSize: '12px'
-            }}
-            formatter={(value) => [`${value.toFixed(1)} tCO₂e`, '']}
-          />
-          <Legend 
-            verticalAlign="bottom" 
-            height={36}
-            formatter={(value) => <span style={{ color: '#374151', fontSize: '12px' }}>{value}</span>}
-          />
-        </PieChart>
-      </ResponsiveContainer>
+  const data = [
+    { name: "Scope 1", value: scope1Kg, color: "#3B82F6" },
+    { name: "Scope 2", value: scope2Kg, color: "#F97316" },
+  ];
 
-      <style jsx>{`
-        .pie-chart-container {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-      `}</style>
-    </div>
+  const formatValue = (value) => {
+    const tonnes = value / 1000;
+    return `${tonnes.toFixed(1)} tCO₂e`;
+  };
+
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <PieChart>
+        <Pie
+          data={data}
+          cx="50%"
+          cy="50%"
+          innerRadius={60}
+          outerRadius={90}
+          paddingAngle={2}
+          dataKey="value"
+          label={false}
+        >
+          {data.map((entry, index) => (
+            <Cell key={`cell-${index}`} fill={entry.color} />
+          ))}
+        </Pie>
+        <Tooltip 
+          formatter={formatValue}
+          contentStyle={{ 
+            borderRadius: "8px", 
+            border: "1px solid #E5E7EB",
+            backgroundColor: "white",
+            padding: "8px 12px",
+            fontSize: "12px"
+          }}
+        />
+        <Legend 
+          layout="vertical"
+          align="right"
+          verticalAlign="middle"
+          formatter={(value, entry, index) => {
+            const item = data[index];
+            const percent = ((item.value / totalKg) * 100).toFixed(0);
+            return `${value}: ${percent}% (${formatValue(item.value)})`;
+          }}
+          wrapperStyle={{ 
+            fontSize: "13px", 
+            paddingLeft: "16px",
+            lineHeight: "28px"
+          }}
+        />
+      </PieChart>
+    </ResponsiveContainer>
   );
 }

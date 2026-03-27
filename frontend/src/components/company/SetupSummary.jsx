@@ -9,8 +9,6 @@ import SecondaryButton from "../ui/SecondaryButton";
 
 export default function SetupSummary({ data, updateField }) {
   const [editingSection, setEditingSection] = useState(null);
-
-  // Local state for editing
   const [editData, setEditData] = useState({
     name: data.name,
     description: data.description,
@@ -24,8 +22,8 @@ export default function SetupSummary({ data, updateField }) {
     { label: "🌍 Middle East", value: "middle-east" },
     { label: "🌏 Asia Pacific", value: "asia-pacific" },
     { label: "🇪🇺 Europe (EU)", value: "eu" },
-    { label: "🇬🇧 United Kingdom (UK)", value: "uk" },
-    { label: "🇺🇸 United States (US)", value: "us" },
+    { label: "🇬🇧 United Kingdom", value: "uk" },
+    { label: "🇺🇸 United States", value: "us" },
     { label: "🇮🇳 India", value: "in" },
     { label: "🇨🇳 China", value: "cn" },
     { label: "🌍 Other", value: "other" },
@@ -61,7 +59,6 @@ export default function SetupSummary({ data, updateField }) {
   };
 
   const handleSave = () => {
-    // Update all fields
     Object.keys(editData).forEach(key => {
       if (editData[key] !== data[key]) {
         updateField(key, editData[key]);
@@ -70,19 +67,10 @@ export default function SetupSummary({ data, updateField }) {
     setEditingSection(null);
   };
 
-  const handleCancel = () => {
-    setEditingSection(null);
-  };
+  const handleCancel = () => setEditingSection(null);
 
-  const getRegionLabel = (region) => {
-    const found = regions.find(r => r.value === region);
-    return found ? found.label : region;
-  };
-
-  const getIndustryLabel = (industry) => {
-    const found = industries.find(i => i.value === industry);
-    return found ? found.label : industry;
-  };
+  const getRegionLabel = (region) => regions.find(r => r.value === region)?.label || region;
+  const getIndustryLabel = (industry) => industries.find(i => i.value === industry)?.label || industry;
 
   const getEmployeeSize = (count) => {
     if (!count) return "";
@@ -102,30 +90,20 @@ export default function SetupSummary({ data, updateField }) {
     }).format(value);
   };
 
-  // Updated getCountryLabel function with all countries
   const getCountryLabel = (country) => {
     const countries = {
       'uae': "UAE",
       'qatar': "Qatar",
+      'saudi-arabia': "Saudi Arabia",
       'saudi': "Saudi Arabia",
-      'saudi-arabia': "Saudi Arabia",  // Support both formats
       'singapore': "Singapore",
-      'malaysia': "Malaysia",
-      'indonesia': "Indonesia",
-      'thailand': "Thailand",
-      'vietnam': "Vietnam",
-      'philippines': "Philippines",
     };
     return countries[country] || country;
   };
 
-  // Helper to get display name for location (city and country)
   const getLocationDisplay = (loc) => {
     const countryName = getCountryLabel(loc.country);
-    if (countryName && countryName !== loc.country) {
-      return `${loc.city}, ${countryName}`;
-    }
-    return loc.city;
+    return countryName ? `${loc.city}, ${countryName}` : loc.city;
   };
 
   return (
@@ -171,12 +149,8 @@ export default function SetupSummary({ data, updateField }) {
                 rows={2}
               />
               <div className="edit-actions">
-                <PrimaryButton onClick={handleSave} className="save-btn">
-                  <FiSave /> Save
-                </PrimaryButton>
-                <SecondaryButton onClick={handleCancel} className="cancel-btn">
-                  <FiX /> Cancel
-                </SecondaryButton>
+                <PrimaryButton onClick={handleSave} className="save-btn"><FiSave /> Save</PrimaryButton>
+                <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
               </div>
             </div>
           ) : (
@@ -216,12 +190,8 @@ export default function SetupSummary({ data, updateField }) {
                 options={regions}
               />
               <div className="edit-actions">
-                <PrimaryButton onClick={handleSave} className="save-btn">
-                  <FiSave /> Save
-                </PrimaryButton>
-                <SecondaryButton onClick={handleCancel} className="cancel-btn">
-                  <FiX /> Cancel
-                </SecondaryButton>
+                <PrimaryButton onClick={handleSave} className="save-btn"><FiSave /> Save</PrimaryButton>
+                <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
               </div>
             </div>
           ) : (
@@ -257,12 +227,8 @@ export default function SetupSummary({ data, updateField }) {
                 options={industries}
               />
               <div className="edit-actions">
-                <PrimaryButton onClick={handleSave} className="save-btn">
-                  <FiSave /> Save
-                </PrimaryButton>
-                <SecondaryButton onClick={handleCancel} className="cancel-btn">
-                  <FiX /> Cancel
-                </SecondaryButton>
+                <PrimaryButton onClick={handleSave} className="save-btn"><FiSave /> Save</PrimaryButton>
+                <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
               </div>
             </div>
           ) : (
@@ -299,26 +265,22 @@ export default function SetupSummary({ data, updateField }) {
                 placeholder="e.g., 250"
               />
               <div className="edit-actions">
-                <PrimaryButton onClick={handleSave} className="save-btn">
-                  <FiSave /> Save
-                </PrimaryButton>
-                <SecondaryButton onClick={handleCancel} className="cancel-btn">
-                  <FiX /> Cancel
-                </SecondaryButton>
+                <PrimaryButton onClick={handleSave} className="save-btn"><FiSave /> Save</PrimaryButton>
+                <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
               </div>
             </div>
           ) : (
             <div className="summary-content">
               <div className="summary-row">
                 <span className="row-label">Employees:</span>
-                <span className="row-value">
+                <div className="row-value">
                   {data.employees ? (
                     <>
-                      {Number(data.employees).toLocaleString()} 
+                      {Number(data.employees).toLocaleString()}
                       <span className="size-badge">{getEmployeeSize(data.employees)}</span>
                     </>
                   ) : "—"}
-                </span>
+                </div>
               </div>
             </div>
           )}
@@ -348,12 +310,8 @@ export default function SetupSummary({ data, updateField }) {
                 placeholder="e.g., 5000000"
               />
               <div className="edit-actions">
-                <PrimaryButton onClick={handleSave} className="save-btn">
-                  <FiSave /> Save
-                </PrimaryButton>
-                <SecondaryButton onClick={handleCancel} className="cancel-btn">
-                  <FiX /> Cancel
-                </SecondaryButton>
+                <PrimaryButton onClick={handleSave} className="save-btn"><FiSave /> Save</PrimaryButton>
+                <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
               </div>
             </div>
           ) : (
@@ -384,9 +342,7 @@ export default function SetupSummary({ data, updateField }) {
             <div className="edit-mode">
               <p className="edit-note">To edit facilities, please go back to Step 6</p>
               <div className="edit-actions">
-                <SecondaryButton onClick={handleCancel} className="cancel-btn">
-                  <FiX /> Cancel
-                </SecondaryButton>
+                <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
               </div>
             </div>
           ) : (
@@ -397,9 +353,7 @@ export default function SetupSummary({ data, updateField }) {
                 data.locations.map((loc) => (
                   <div key={loc.id} className="facility-item">
                     <FiMapPin className="location-icon" />
-                    <span>
-                      {getLocationDisplay(loc)}
-                    </span>
+                    <span>{getLocationDisplay(loc)}</span>
                   </div>
                 ))
               )}
@@ -430,19 +384,16 @@ export default function SetupSummary({ data, updateField }) {
           margin-bottom: 16px;
         }
 
-        .step-icon {
-          font-size: 32px;
-        }
-
+        .step-icon { font-size: 32px; }
         .step-header h3 {
           font-size: 22px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0;
         }
 
         .step-description {
-          color: #4B5563;
+          color: #4A5568;
           margin-bottom: 32px;
           font-size: 15px;
           line-height: 1.6;
@@ -457,20 +408,19 @@ export default function SetupSummary({ data, updateField }) {
 
         .summary-card {
           background: #F9FAFB;
-          border-radius: 20px;
+          border-radius: 12px;
           padding: 20px;
-          border: 1px solid rgba(34, 197, 94, 0.15);
+          border: 1px solid #E5E7EB;
           transition: all 0.2s ease;
         }
 
         .summary-card:hover {
           transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(34, 197, 94, 0.1);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          border-color: #2E7D64;
         }
 
-        .facilities-card {
-          grid-column: span 2;
-        }
+        .facilities-card { grid-column: span 2; }
 
         .card-header {
           display: flex;
@@ -478,7 +428,7 @@ export default function SetupSummary({ data, updateField }) {
           align-items: center;
           margin-bottom: 16px;
           padding-bottom: 12px;
-          border-bottom: 1px solid rgba(34, 197, 94, 0.2);
+          border-bottom: 1px solid #E5E7EB;
         }
 
         .card-title {
@@ -487,17 +437,8 @@ export default function SetupSummary({ data, updateField }) {
           gap: 10px;
         }
 
-        .title-icon {
-          font-size: 20px;
-          color: #22C55E;
-        }
-
-        .card-title h4 {
-          margin: 0;
-          font-size: 16px;
-          font-weight: 600;
-          color: #14532D;
-        }
+        .title-icon { font-size: 20px; color: #2E7D64; }
+        .card-title h4 { margin: 0; font-size: 16px; font-weight: 600; color: #1B4D3E; }
 
         .edit-section-btn {
           display: flex;
@@ -505,9 +446,9 @@ export default function SetupSummary({ data, updateField }) {
           gap: 6px;
           padding: 6px 12px;
           background: white;
-          border: 1px solid rgba(34, 197, 94, 0.2);
+          border: 1px solid #E5E7EB;
           border-radius: 30px;
-          color: #15803D;
+          color: #2E7D64;
           font-size: 12px;
           font-weight: 500;
           cursor: pointer;
@@ -515,163 +456,55 @@ export default function SetupSummary({ data, updateField }) {
         }
 
         .edit-section-btn:hover {
-          background: #22C55E;
+          background: #2E7D64;
           color: white;
-          border-color: #22C55E;
+          border-color: #2E7D64;
         }
 
-        .summary-content {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
+        .summary-content { display: flex; flex-direction: column; gap: 12px; }
+        .summary-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .row-label { font-size: 14px; color: #6B7280; font-weight: 500; }
+        .row-value { font-size: 14px; font-weight: 600; color: #1B4D3E; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .size-badge { font-size: 11px; padding: 2px 8px; background: #F8FAF8; color: #2E7D64; border-radius: 30px; font-weight: 500; border: 1px solid #E5E7EB; }
 
-        .summary-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
+        .edit-mode { display: flex; flex-direction: column; gap: 16px; }
+        .edit-note { color: #6B7280; font-size: 14px; font-style: italic; padding: 8px 0; }
+        .edit-actions { display: flex; gap: 12px; margin-top: 8px; }
+        .save-btn, .cancel-btn { flex: 1; padding: 10px !important; font-size: 14px !important; }
 
-        .row-label {
-          font-size: 14px;
-          color: #6B7280;
-          font-weight: 500;
-        }
-
-        .row-value {
-          font-size: 14px;
-          font-weight: 600;
-          color: #14532D;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex-wrap: wrap;
-          justify-content: flex-end;
-        }
-
-        .size-badge {
-          font-size: 11px;
-          padding: 2px 8px;
-          background: #F0FDF4;
-          color: #15803D;
-          border-radius: 30px;
-          font-weight: 500;
-        }
-
-        /* Edit Mode */
-        .edit-mode {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-
-        .edit-note {
-          color: #6B7280;
-          font-size: 14px;
-          font-style: italic;
-          padding: 8px 0;
-        }
-
-        .edit-actions {
-          display: flex;
-          gap: 12px;
-          margin-top: 8px;
-        }
-
-        .save-btn, .cancel-btn {
-          flex: 1;
-          padding: 10px !important;
-          font-size: 14px !important;
-        }
-
-        /* Facilities */
-        .facilities-list {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
+        .facilities-list { display: flex; flex-direction: column; gap: 12px; }
         .facility-item {
           display: flex;
           align-items: center;
           gap: 12px;
           padding: 10px 12px;
           background: white;
-          border-radius: 12px;
-          border: 1px solid rgba(34, 197, 94, 0.1);
+          border-radius: 8px;
+          border: 1px solid #E5E7EB;
         }
-
-        .location-icon {
-          color: #22C55E;
-          font-size: 16px;
-          flex-shrink: 0;
-        }
-
-        .facility-item span {
-          font-size: 14px;
-          color: #374151;
-        }
-
-        .empty-facilities {
-          color: #9CA3AF;
-          font-style: italic;
-          text-align: center;
-          padding: 20px;
-        }
+        .location-icon { color: #2E7D64; font-size: 16px; flex-shrink: 0; }
+        .facility-item span { font-size: 14px; color: #374151; }
+        .empty-facilities { color: #9CA3AF; font-style: italic; text-align: center; padding: 20px; }
 
         .confirmation-note {
           display: flex;
           align-items: center;
           gap: 12px;
           padding: 16px 24px;
-          background: #F0FDF4;
-          border-radius: 16px;
-          border: 1px solid rgba(34, 197, 94, 0.2);
+          background: #F8FAF8;
+          border-radius: 12px;
+          border: 1px solid #E5E7EB;
         }
-
-        .note-icon {
-          color: #22C55E;
-          font-size: 24px;
-          flex-shrink: 0;
-        }
-
-        .confirmation-note p {
-          margin: 0;
-          color: #15803D;
-          font-size: 14px;
-          font-weight: 500;
-        }
+        .note-icon { color: #2E7D64; font-size: 24px; flex-shrink: 0; }
+        .confirmation-note p { margin: 0; color: #1B4D3E; font-size: 14px; font-weight: 500; }
 
         @media (max-width: 768px) {
-          .summary-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .facilities-card {
-            grid-column: span 1;
-          }
-
-          .summary-row {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 4px;
-          }
-
-          .row-value {
-            justify-content: flex-start;
-          }
-
-          .card-header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 8px;
-          }
-
-          .edit-section-btn {
-            align-self: flex-start;
-          }
+          .summary-grid { grid-template-columns: 1fr; }
+          .facilities-card { grid-column: span 1; }
+          .summary-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+          .row-value { justify-content: flex-start; }
+          .card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+          .edit-section-btn { align-self: flex-start; }
         }
       `}</style>
     </div>

@@ -1,241 +1,362 @@
+// src/components/scope2/RenewableForm.jsx
 import React, { useState } from "react";
-import PrimaryButton from "../ui/PrimaryButton";
-import SecondaryButton from "../ui/SecondaryButton";
-import EmptyState from "../ui/EmptyState";
 import { useEmissionStore } from "../../store/emissionStore";
-
-function mapRenewableSourceType(label) {
-  const map = {
-    "Solar PV / PPA":   "solar_ppa",
-    "Wind PPA":         "wind_ppa",
-    "Hydro (GO)":       "hydro_go",
-    "Nuclear (GO)":     "nuclear_go",
-    "REC / I-REC":      "rec_ppa",
-  };
-  return map[label] || "solar_ppa";
-}
+import { FiTrash2, FiSend, FiSun, FiDroplet } from "react-icons/fi";
+import { useAuthStore } from "../../store/authStore";
 
 const RENEWABLE_TYPES = [
-  "Solar PV / PPA",
-  "Wind PPA",
-  "Hydro (GO)",
-  "Nuclear (GO)",
-  "REC / I-REC",
+  { label: "Solar PV / PPA", key: "solar_ppa" },
+  { label: "Wind PPA", key: "wind_ppa" },
+  { label: "Hydro (GO)", key: "hydro_go" },
+  { label: "Nuclear (GO)", key: "nuclear_go" },
+  { label: "REC / I-REC", key: "rec_ppa" },
 ];
 
-export default function RenewableForm() {
-  const [sourceTypeLabel, setSourceTypeLabel] = useState(RENEWABLE_TYPES[0]);
-  const [consumption, setConsumption] = useState("");
-  const [search, setSearch] = useState("");
+const MONTHS = [
+  "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06",
+  "2026-07","2026-08","2026-09","2026-10","2026-11","2026-12",
+  "2025-01","2025-02","2025-03","2025-04","2025-05","2025-06",
+  "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
+];
 
-  const renewableEntries = useEmissionStore((s) => s.scope2Renewable);
+const currentMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+};
+
+export default function RenewableForm({ onSubmitSuccess }) {
+  const renewables = useEmissionStore((s) => s.scope2Renewable || []);
   const addRenewable = useEmissionStore((s) => s.addScope2Renewable);
   const deleteRenewable = useEmissionStore((s) => s.deleteScope2Renewable);
+  const submitScope2 = useEmissionStore((s) => s.submitScope2);
+  const token = useAuthStore((s) => s.token);
 
-  const handleAddRenewable = () => {
+  const [sourceTypeKey, setSourceTypeKey] = useState("solar_ppa");
+  const [consumption, setConsumption] = useState("");
+  const [month, setMonth] = useState(currentMonth());
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+
+  const selectedType = RENEWABLE_TYPES.find((t) => t.key === sourceTypeKey);
+
+  const handleAddRow = () => {
     if (!consumption || Number(consumption) <= 0) return;
-
     addRenewable({
       id: Date.now(),
-      sourceTypeLabel,
-      sourceType: mapRenewableSourceType(sourceTypeLabel),
+      sourceType: sourceTypeKey,
+      sourceTypeLabel: selectedType?.label,
       consumption: Number(consumption),
+      month,
     });
-
     setConsumption("");
+    setMonth(currentMonth());
   };
 
-  const filteredEntries = renewableEntries.filter((r) =>
-    (r.sourceTypeLabel || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const handleCalculateSubmit = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    const monthStr = renewables[0]?.month || currentMonth();
+    const [yr, mo] = monthStr.split("-").map(Number);
+    const result = await submitScope2(token, yr, mo);
+    setSubmitting(false);
+    if (result.success) {
+      setSubmitted(true);
+      if (onSubmitSuccess) onSubmitSuccess();
+    } else {
+      setSubmitError(result.error || "Submission failed");
+    }
+  };
 
   return (
-    <div className="renewable-form">
-      <div className="form-header">
-        <h2>Renewable Energy</h2>
-        <p className="header-description">
-          Report renewable electricity generation and on-site production
+    <div className="rw-wrap">
+      <div className="rw-desc-header">
+        <FiSun className="rw-header-icon" />
+        <p className="rw-desc">
+          Report <strong>renewable electricity generation</strong> from on-site sources or PPAs. Generation offsets your market-based Scope 2 emissions.
         </p>
       </div>
 
-      <div className="search-wrapper">
-        <svg className="search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <path d="M9 17C13.4183 17 17 13.4183 17 9C17 4.58172 13.4183 1 9 1C4.58172 1 1 4.58172 1 9C1 13.4183 4.58172 17 9 17Z" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M19 19L15 15" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        <input
-          type="text"
-          placeholder="Search by source type..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="search-input"
-        />
+      <div className="rw-table-wrap">
+        <table className="rw-table">
+          <thead>
+            <tr>
+              <th>Source Type</th>
+              <th>Generation (kWh)</th>
+              <th>Month</th>
+              <th></th>
+              </tr>
+            </thead>
+          <tbody>
+            {renewables.length === 0 && (
+              <tr>
+                <td colSpan={4} className="rw-empty">
+                  No entries yet. Add a row below.
+                </td>
+               </tr>
+            )}
+            {renewables.map((r) => (
+              <tr key={r.id}>
+                <td>
+                  <span className="rw-badge">{r.sourceTypeLabel}</span>
+                </td>
+                <td>
+                  <span className="rw-qty">{r.consumption?.toLocaleString()}</span>
+                  <span className="rw-unit"> kWh</span>
+                </td>
+                <td>{r.month || "—"}</td>
+                <td>
+                  <button
+                    className="rw-delete"
+                    onClick={() => deleteRenewable(r.id)}
+                    title="Remove"
+                  >
+                    <FiTrash2 size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+
+            <tr className="rw-add-row">
+              <td>
+                <select
+                  value={sourceTypeKey}
+                  onChange={(e) => setSourceTypeKey(e.target.value)}
+                  className="rw-select"
+                >
+                  {RENEWABLE_TYPES.map((t) => (
+                    <option key={t.key} value={t.key}>{t.label}</option>
+                  ))}
+                </select>
+              </td>
+              <td>
+                <div className="rw-qty-input">
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={consumption}
+                    onChange={(e) => setConsumption(e.target.value)}
+                    className="rw-input"
+                    min="0"
+                  />
+                  <span className="rw-unit-tag">kWh</span>
+                </div>
+              </td>
+              <td>
+                <select
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                  className="rw-select"
+                >
+                  {MONTHS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <div className="info-card">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <path d="M10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18Z" stroke="#2E7D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M10 14V10M10 6H10.01" stroke="#2E7D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        <p>
-          Report renewable electricity generated on-site or via PPA. Generation offsets your
-          market-based Scope 2 emissions.
-        </p>
-      </div>
-
-      <div className="section-card">
-        <div className="section-header">
-          <h3>On-site Renewable Generation</h3>
-          <span className="section-badge">Generation</span>
+      <div className="rw-footer">
+        <button className="rw-add-btn" onClick={handleAddRow}>
+          + Add Row
+        </button>
+        <div className="rw-footer-right">
+          {submitError && <span className="rw-error">{submitError}</span>}
+          <button
+            className={`rw-submit-btn ${submitted ? "submitted" : ""}`}
+            onClick={handleCalculateSubmit}
+            disabled={submitting || submitted || renewables.length === 0}
+          >
+            {submitted ? "✅ Submitted!" : submitting ? "Calculating..." : (
+              <><FiSend size={14} /> Calculate & Submit</>
+            )}
+          </button>
         </div>
-
-        <div className="input-grid">
-          <div className="input-group">
-            <label className="input-label">Source Type</label>
-            <div className="select-wrapper">
-              <select
-                value={sourceTypeLabel}
-                onChange={(e) => setSourceTypeLabel(e.target.value)}
-                className="renewable-select"
-              >
-                {RENEWABLE_TYPES.map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-              <svg className="select-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M4 6L8 10L12 6" stroke="#6B7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-          </div>
-
-          <div className="input-group">
-            <label className="input-label">Generation (kWh)</label>
-            <div className="input-wrapper">
-              <input
-                type="number"
-                min="0"
-                value={consumption}
-                onChange={(e) => setConsumption(e.target.value)}
-                placeholder="e.g. 2000"
-                className="text-input"
-              />
-              <span className="input-suffix">kWh</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="add-button-wrapper">
-          <PrimaryButton onClick={handleAddRenewable} className="add-button">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M10 4V16M4 10H16" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Add Renewable Entry
-          </PrimaryButton>
-        </div>
-      </div>
-
-      <div className="table-section">
-        <div className="table-header">
-          <h3>Renewable Generation Entries</h3>
-          <span className="entry-count">{filteredEntries.length} entries</span>
-        </div>
-
-        {filteredEntries.length === 0 ? (
-          <EmptyState message="No renewable generation entries added yet." />
-        ) : (
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Source Type</th>
-                  <th>Generation</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEntries.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <span className="type-badge">{r.sourceTypeLabel}</span>
-                    </td>
-                    <td>
-                      <span className="production-value">{Number(r.consumption).toLocaleString()}</span>
-                      <span className="production-unit"> kWh</span>
-                    </td>
-                    <td>
-                      <SecondaryButton
-                        onClick={() => deleteRenewable(r.id)}
-                        className="remove-button"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                          <path d="M2 4H14M12 4V13C12 14 11 15 10 15H6C5 15 4 14 4 13V4M5.5 2.5V2C5.5 1 6.5 0 7.5 0H8.5C9.5 0 10.5 1 10.5 2V2.5" stroke="#DC2626" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          <path d="M6.5 7V11M9.5 7V11" stroke="#DC2626" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        Remove
-                      </SecondaryButton>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
       <style jsx>{`
-        .renewable-form { width: 100%; }
-        .form-header { margin-bottom: 24px; }
-        .form-header h2 { margin: 0 0 8px 0; font-size: 20px; font-weight: 700; color: #1B5E20; }
-        .header-description { margin: 0; font-size: 14px; color: #6B7280; }
-        .search-wrapper { position: relative; margin-bottom: 24px; }
-        .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; }
-        .search-input { width: 100%; padding: 12px 16px 12px 44px; font-size: 14px; border: 1px solid #E5E7EB; border-radius: 30px; background: white; transition: all 0.2s ease; outline: none; }
-        .search-input:focus { border-color: #2E7D32; box-shadow: 0 0 0 3px rgba(46,125,50,0.1); }
-        .search-input::placeholder { color: #9CA3AF; }
-        .info-card { display: flex; align-items: flex-start; gap: 12px; background: #f0f9f0; border-radius: 12px; padding: 16px; margin-bottom: 24px; border: 1px solid rgba(46,125,50,0.2); }
-        .info-card svg { flex-shrink: 0; }
-        .info-card p { margin: 0; font-size: 14px; color: #374151; line-height: 1.5; }
-        .section-card { background: #F9FAFB; border-radius: 16px; padding: 24px; margin-bottom: 24px; border: 1px solid rgba(46,125,50,0.1); }
-        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .section-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: #1B5E20; }
-        .section-badge { font-size: 12px; font-weight: 600; padding: 4px 10px; background: #2E7D32; color: white; border-radius: 30px; text-transform: uppercase; letter-spacing: 0.3px; }
-        .input-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px; }
-        .input-group { display: flex; flex-direction: column; gap: 8px; }
-        .input-label { font-size: 13px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.3px; }
-        .select-wrapper { position: relative; width: 100%; }
-        .renewable-select { width: 100%; padding: 12px 40px 12px 16px; font-size: 14px; border: 1px solid #E5E7EB; border-radius: 12px; background: white; cursor: pointer; outline: none; transition: all 0.2s ease; appearance: none; -webkit-appearance: none; }
-        .renewable-select:hover { border-color: #2E7D32; }
-        .renewable-select:focus { border-color: #2E7D32; box-shadow: 0 0 0 3px rgba(46,125,50,0.1); }
-        .select-arrow { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); pointer-events: none; }
-        .input-wrapper { position: relative; width: 100%; }
-        .text-input { width: 100%; padding: 12px 48px 12px 16px; font-size: 14px; border: 1px solid #E5E7EB; border-radius: 12px; background: white; transition: all 0.2s ease; outline: none; box-sizing: border-box; }
-        .text-input:focus { border-color: #2E7D32; box-shadow: 0 0 0 3px rgba(46,125,50,0.1); }
-        .text-input::placeholder { color: #9CA3AF; }
-        .input-suffix { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: #6B7280; font-size: 14px; font-weight: 500; }
-        .add-button-wrapper { display: flex; justify-content: flex-end; border-top: 1px solid #E5E7EB; padding-top: 20px; }
-        .add-button { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; font-size: 14px; font-weight: 600; }
-        .table-section { background: white; border-radius: 16px; border: 1px solid rgba(46,125,50,0.1); overflow: hidden; }
-        .table-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; background: #F9FAFB; border-bottom: 1px solid rgba(46,125,50,0.1); }
-        .table-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: #1B5E20; }
-        .entry-count { font-size: 13px; color: #6B7280; background: white; padding: 4px 12px; border-radius: 30px; border: 1px solid rgba(46,125,50,0.1); }
-        .table-wrapper { overflow-x: auto; }
-        .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        .data-table th { text-align: left; padding: 16px 24px; background: white; color: #374151; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 2px solid rgba(46,125,50,0.1); }
-        .data-table td { padding: 16px 24px; color: #1F2937; border-bottom: 1px solid #F3F4F6; }
-        .data-table tr:last-child td { border-bottom: none; }
-        .data-table tr:hover td { background: #F9FAFB; }
-        .type-badge { background: #E3F2E3; color: #1B5E20; padding: 4px 12px; border-radius: 30px; font-size: 13px; font-weight: 500; }
-        .production-value { font-weight: 600; color: #1B5E20; }
-        .production-unit { color: #6B7280; font-size: 13px; }
-        .remove-button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 13px; color: #DC2626; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 30px; transition: all 0.2s ease; }
-        .remove-button:hover { background: #FEE2E2; border-color: #F87171; }
-        @media (max-width: 768px) {
-          .input-grid { grid-template-columns: 1fr; gap: 16px; }
-          .add-button-wrapper { justify-content: center; }
-          .add-button { width: 100%; justify-content: center; }
-          .table-header { flex-direction: column; gap: 12px; align-items: flex-start; }
-          .data-table th, .data-table td { padding: 12px 16px; }
-          .section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+        .rw-wrap { width: 100%; }
+
+        .rw-desc-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 20px;
+        }
+
+        .rw-header-icon {
+          font-size: 20px;
+          color: #2E7D64;
+        }
+
+        .rw-desc {
+          font-size: 13px;
+          color: #6B7280;
+          margin: 0;
+        }
+        .rw-desc strong { color: #1B4D3E; }
+
+        .rw-table-wrap {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          overflow: hidden;
+        }
+
+        .rw-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 14px;
+        }
+
+        .rw-table thead tr { background: #F9FAFB; }
+
+        .rw-table th {
+          text-align: left;
+          padding: 11px 14px;
+          font-size: 12px;
+          font-weight: 600;
+          color: #6B7280;
+          border-bottom: 1px solid #E5E7EB;
+        }
+
+        .rw-table td {
+          padding: 11px 14px;
+          color: #111827;
+          border-bottom: 1px solid #F3F4F6;
+          vertical-align: middle;
+        }
+
+        .rw-table tbody tr:last-child td { border-bottom: none; }
+
+        .rw-empty {
+          text-align: center;
+          color: #9CA3AF;
+          font-size: 13px;
+          padding: 28px 0 !important;
+        }
+
+        .rw-qty { font-weight: 500; }
+        .rw-unit { font-size: 12px; color: #6B7280; }
+
+        .rw-badge {
+          display: inline-block;
+          padding: 2px 8px;
+          background: #E8F0EA;
+          border-radius: 20px;
+          font-size: 12px;
+          color: #2E7D64;
+        }
+
+        .rw-delete {
+          background: none;
+          border: none;
+          color: #9CA3AF;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+        }
+        .rw-delete:hover { color: #DC2626; background: #FEF2F2; }
+
+        .rw-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
+
+        .rw-select {
+          width: 100%;
+          padding: 7px 10px;
+          border: 1px solid #E5E7EB;
+          border-radius: 7px;
+          font-size: 13px;
+          background: white;
+          color: #374151;
+          outline: none;
+        }
+        .rw-select:focus { border-color: #2E7D64; }
+
+        .rw-qty-input {
+          display: flex;
+          align-items: center;
+          border: 1px solid #E5E7EB;
+          border-radius: 7px;
+          background: white;
+          overflow: hidden;
+        }
+        .rw-qty-input:focus-within { border-color: #2E7D64; }
+
+        .rw-input {
+          flex: 1;
+          border: none;
+          outline: none;
+          padding: 7px 10px;
+          font-size: 13px;
+          background: transparent;
+          min-width: 60px;
+        }
+
+        .rw-unit-tag {
+          padding: 0 10px;
+          font-size: 12px;
+          color: #6B7280;
+          background: #F3F4F6;
+          border-left: 1px solid #E5E7EB;
+          display: flex;
+          align-items: center;
+          min-height: 33px;
+          white-space: nowrap;
+        }
+
+        .rw-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 0 0 0;
+          margin-top: 16px;
+        }
+
+        .rw-footer-right {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .rw-add-btn {
+          background: none;
+          border: none;
+          font-size: 14px;
+          font-weight: 500;
+          color: #2E7D64;
+          cursor: pointer;
+          padding: 8px 0;
+        }
+        .rw-add-btn:hover { text-decoration: underline; }
+
+        .rw-error { font-size: 13px; color: #DC2626; }
+
+        .rw-submit-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 20px;
+          background: #1B4D3E;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .rw-submit-btn:hover:not(:disabled) { background: #2E7D64; }
+        .rw-submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .rw-submit-btn.submitted { background: #059669; }
+
+        @media (max-width: 640px) {
+          .rw-table th:nth-child(2),
+          .rw-table td:nth-child(2) { display: none; }
         }
       `}</style>
     </div>

@@ -1,5 +1,4 @@
 // src/components/company/CompanyInfoForm.jsx
-import InputField from "../ui/InputField";
 import { FiInfo } from "react-icons/fi";
 
 export default function CompanyInfoForm({ data, updateField }) {
@@ -16,24 +15,26 @@ export default function CompanyInfoForm({ data, updateField }) {
 
       <div className="form-fields">
         <div className="field-group">
-          <InputField
-            label="Company Name "
+          <label className="field-label">
+            Company Name <span className="required">*</span>
+          </label>
+          <input
+            type="text"
+            className="field-input"
             value={data.name}
             placeholder="e.g., Acme Corporation"
             onChange={(e) => updateField("name", e.target.value)}
-            required
-            error={!data.name && "Company name is required"}
           />
           {!data.name && <span className="field-hint">This will be used for all reports</span>}
         </div>
 
         <div className="field-group">
-          <InputField
-            label="Company Description "
+          <label className="field-label">Company Description</label>
+          <textarea
+            className="field-textarea"
             value={data.description}
             placeholder="Brief description of your business activities"
             onChange={(e) => updateField("description", e.target.value)}
-            multiline
             rows={3}
           />
           <span className="field-hint">
@@ -66,12 +67,12 @@ export default function CompanyInfoForm({ data, updateField }) {
         .step-header h3 {
           font-size: 22px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0;
         }
 
         .step-description {
-          color: #4B5563;
+          color: #4A5568;
           margin-bottom: 32px;
           font-size: 15px;
           line-height: 1.6;
@@ -86,7 +87,36 @@ export default function CompanyInfoForm({ data, updateField }) {
         .field-group {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 8px;
+        }
+
+        .field-label {
+          font-size: 14px;
+          font-weight: 500;
+          color: #374151;
+        }
+
+        .required {
+          color: #DC2626;
+        }
+
+        .field-input, .field-textarea {
+          padding: 12px 16px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          font-size: 14px;
+          transition: all 0.2s ease;
+          font-family: inherit;
+          background: white;
+        }
+
+        .field-input:focus, .field-textarea:focus {
+          outline: none;
+          border-color: #2E7D64;
+        }
+
+        .field-textarea {
+          resize: vertical;
         }
 
         .field-hint {

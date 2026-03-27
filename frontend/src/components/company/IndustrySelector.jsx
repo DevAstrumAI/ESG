@@ -1,5 +1,4 @@
 // src/components/company/IndustrySelector.jsx
-import SelectDropdown from "../ui/SelectDropdown";
 import { FiBriefcase } from "react-icons/fi";
 
 export default function IndustrySelector({ data, updateField }) {
@@ -20,6 +19,8 @@ export default function IndustrySelector({ data, updateField }) {
     { label: "⚙️ Other", value: "other" },
   ];
 
+  const selectedIndustry = industries.find(i => i.value === data.industry);
+
   return (
     <div className="form-step">
       <div className="step-header">
@@ -32,19 +33,28 @@ export default function IndustrySelector({ data, updateField }) {
       </p>
 
       <div className="industry-grid">
-        <SelectDropdown
-          label="Industry"
-          value={data.industry}
-          onChange={(e) => updateField("industry", e.target.value)}
-          options={industries}
-          placeholder="Choose your primary industry"
-          required
-        />
+        <div className="field-group">
+          <label className="field-label">
+            Industry <span className="required">*</span>
+          </label>
+          <select
+            className="field-select"
+            value={data.industry}
+            onChange={(e) => updateField("industry", e.target.value)}
+          >
+            <option value="">Choose your primary industry</option>
+            {industries.map((industry) => (
+              <option key={industry.value} value={industry.value}>
+                {industry.label}
+              </option>
+            ))}
+          </select>
+        </div>
         
-        {data.industry && (
+        {data.industry && selectedIndustry && (
           <div className="industry-badge">
             <FiBriefcase />
-            <span>Selected: {industries.find(i => i.value === data.industry)?.label.replace(/[🏭💻🏥📚🛍️🚚🏨🌾⚡🏗️📞🎨📊⚙️]/g, '')}</span>
+            <span>Selected: {selectedIndustry.label.replace(/[🏭💻🏥📚🛍️🚚🏨🌾⚡🏗️📞🎨📊⚙️]/g, '')}</span>
           </div>
         )}
       </div>
@@ -73,12 +83,12 @@ export default function IndustrySelector({ data, updateField }) {
         .step-header h3 {
           font-size: 22px;
           font-weight: 700;
-          color: #14532D;
+          color: #1B4D3E;
           margin: 0;
         }
 
         .step-description {
-          color: #4B5563;
+          color: #4A5568;
           margin-bottom: 32px;
           font-size: 15px;
           line-height: 1.6;
@@ -88,17 +98,48 @@ export default function IndustrySelector({ data, updateField }) {
           max-width: 400px;
         }
 
+        .field-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .field-label {
+          font-size: 14px;
+          font-weight: 500;
+          color: #374151;
+        }
+
+        .required {
+          color: #DC2626;
+        }
+
+        .field-select {
+          padding: 12px 16px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          font-size: 14px;
+          transition: all 0.2s ease;
+          background: white;
+          cursor: pointer;
+        }
+
+        .field-select:focus {
+          outline: none;
+          border-color: #2E7D64;
+        }
+
         .industry-badge {
           margin-top: 16px;
           padding: 12px 16px;
-          background: #F0FDF4;
-          border-radius: 12px;
+          background: #F8FAF8;
+          border-radius: 8px;
           display: flex;
           align-items: center;
           gap: 8px;
           font-size: 14px;
-          color: #15803D;
-          border: 1px solid rgba(34, 197, 94, 0.2);
+          color: #2E7D64;
+          border: 1px solid #E5E7EB;
         }
       `}</style>
     </div>

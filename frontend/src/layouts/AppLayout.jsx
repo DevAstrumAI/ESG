@@ -5,8 +5,8 @@ import Header from "./Header";
 export default function AppLayout({ children, pageTitle }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
-  const headerHeight = 64;
-  
+
+  const headerHeight = 0;
   const sidebarWidth = sidebarCollapsed ? 80 : 260;
 
   useEffect(() => {
@@ -66,7 +66,7 @@ export default function AppLayout({ children, pageTitle }) {
           width: "100%",
           flexShrink: 0,
         }}>
-          <Header title={pageTitle || "ESG Calculator"} />
+          {/*<Header title={pageTitle || "ESG Calculator"} />*/}
         </div>
 
         <main style={{

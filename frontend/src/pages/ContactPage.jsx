@@ -57,13 +57,7 @@ export default function ContactPage() {
     }
 
     setLoading(true);
-
-    // TODO: Replace with real API call when /api/contact endpoint is ready:
-    // await fetch("/api/contact", { method: "POST", body: JSON.stringify(formData) });
-
-    // For now, simulate a short delay then show success
     await new Promise((res) => setTimeout(res, 800));
-
     setLoading(false);
     setSubmitted(true);
   };
@@ -252,7 +246,7 @@ export default function ContactPage() {
       <style jsx>{`
         .contact-container {
           min-height: 100vh;
-          background: linear-gradient(135deg, #F0FDF4, #DCFCE7);
+          background: #F8FAF8;
           padding: 40px 20px;
         }
 
@@ -260,7 +254,7 @@ export default function ContactPage() {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          color: #15803D;
+          color: #2E7D64;
           text-decoration: none;
           font-size: 14px;
           font-weight: 500;
@@ -268,7 +262,7 @@ export default function ContactPage() {
           transition: all 0.2s ease;
         }
 
-        .back-link:hover { gap: 12px; color: #14532D; }
+        .back-link:hover { gap: 12px; color: #1B4D3E; }
 
         .contact-header {
           text-align: center;
@@ -278,23 +272,24 @@ export default function ContactPage() {
         .header-icon {
           width: 80px;
           height: 80px;
-          background: linear-gradient(135deg, #22C55E20, #15803D20);
+          background: #F8FAF8;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 40px;
-          color: #22C55E;
+          color: #2E7D64;
           margin: 0 auto 20px;
+          border: 1px solid #E5E7EB;
         }
 
         .contact-header h1 {
-          color: #14532D;
+          color: #1B4D3E;
           font-size: 36px;
           margin: 0 0 8px;
         }
 
-        .contact-header p { color: #166534; font-size: 16px; }
+        .contact-header p { color: #4A5568; font-size: 16px; }
 
         .contact-grid {
           display: grid;
@@ -307,15 +302,14 @@ export default function ContactPage() {
         .contact-form-card,
         .contact-info-card {
           background: white;
-          border-radius: 24px;
+          border-radius: 12px;
           padding: 40px;
-          box-shadow: 0 10px 30px rgba(0,40,0,0.1);
-          border: 1px solid rgba(34,197,94,0.2);
+          border: 1px solid #E5E7EB;
         }
 
         .contact-form-card h2,
         .contact-info-card h2 {
-          color: #14532D;
+          color: #1B4D3E;
           font-size: 24px;
           margin: 0 0 30px;
         }
@@ -327,7 +321,7 @@ export default function ContactPage() {
 
         .success-icon {
           font-size: 64px;
-          color: #22C55E;
+          color: #2E7D64;
           margin-bottom: 20px;
           animation: scaleIn 0.5s ease;
         }
@@ -337,12 +331,12 @@ export default function ContactPage() {
           to { transform: scale(1); }
         }
 
-        .success-message h3 { color: #14532D; font-size: 24px; margin: 0 0 10px; }
-        .success-message p { color: #4B5563; margin: 0 0 20px; }
+        .success-message h3 { color: #1B4D3E; font-size: 24px; margin: 0 0 10px; }
+        .success-message p { color: #4A5568; margin: 0 0 20px; }
 
         .send-another-btn {
           padding: 12px 24px;
-          background: linear-gradient(135deg, #15803D, #22C55E);
+          background: #2E7D64;
           color: white;
           border: none;
           border-radius: 30px;
@@ -352,8 +346,7 @@ export default function ContactPage() {
         }
 
         .send-another-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 20px rgba(34,197,94,0.3);
+          background: #1B4D3E;
         }
 
         .contact-form { display: flex; flex-direction: column; gap: 20px; }
@@ -372,18 +365,20 @@ export default function ContactPage() {
           gap: 8px;
           font-size: 14px;
           font-weight: 600;
-          color: #374151;
+          color: #4A5568;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
         }
 
-        .label-icon { color: #22C55E; }
+        .label-icon { color: #2E7D64; }
 
         .form-group input,
         .form-group select,
         .form-group textarea {
-          padding: 14px 16px;
-          border: 2px solid #E5E7EB;
-          border-radius: 12px;
-          font-size: 15px;
+          padding: 12px 16px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          font-size: 14px;
           transition: all 0.2s ease;
           background: white;
           font-family: inherit;
@@ -393,36 +388,34 @@ export default function ContactPage() {
         .form-group select:focus,
         .form-group textarea:focus {
           outline: none;
-          border-color: #22C55E;
-          box-shadow: 0 0 0 4px rgba(34,197,94,0.1);
+          border-color: #2E7D64;
         }
 
         .form-group input.error,
         .form-group select.error,
-        .form-group textarea.error { border-color: #EF4444; }
+        .form-group textarea.error { border-color: #DC2626; }
 
-        .error-text { color: #EF4444; font-size: 12px; }
+        .error-text { color: #DC2626; font-size: 12px; }
 
         .submit-btn {
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
-          padding: 16px 24px;
-          background: linear-gradient(135deg, #15803D, #22C55E);
+          padding: 14px 24px;
+          background: #2E7D64;
           color: white;
           border: none;
-          border-radius: 30px;
+          border-radius: 8px;
           font-weight: 600;
-          font-size: 16px;
+          font-size: 15px;
           cursor: pointer;
           transition: all 0.2s ease;
           margin-top: 10px;
         }
 
         .submit-btn:hover:not(:disabled) {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 20px rgba(34,197,94,0.3);
+          background: #1B4D3E;
         }
 
         .submit-btn:disabled { opacity: 0.7; cursor: not-allowed; }
@@ -446,43 +439,45 @@ export default function ContactPage() {
         .info-icon {
           width: 48px;
           height: 48px;
-          background: linear-gradient(135deg, #22C55E20, #15803D20);
+          background: #F8FAF8;
           border-radius: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 24px;
-          color: #22C55E;
+          color: #2E7D64;
+          border: 1px solid #E5E7EB;
           flex-shrink: 0;
         }
 
-        .info-item h4 { color: #14532D; font-size: 16px; margin: 0 0 6px; }
-        .info-item a { color: #22C55E; text-decoration: none; font-size: 15px; display: block; margin-bottom: 4px; }
+        .info-item h4 { color: #1B4D3E; font-size: 16px; margin: 0 0 6px; }
+        .info-item a { color: #2E7D64; text-decoration: none; font-size: 15px; display: block; margin-bottom: 4px; }
         .info-item a:hover { text-decoration: underline; }
-        .info-item p { color: #4B5563; font-size: 14px; margin: 0; }
+        .info-item p { color: #4A5568; font-size: 14px; margin: 0; }
         .info-note { color: #6B7280; font-size: 13px; margin: 0; }
 
         .office-hours {
           display: flex;
           gap: 16px;
           padding: 20px;
-          background: #F0FDF4;
-          border-radius: 16px;
+          background: #F8FAF8;
+          border-radius: 12px;
           margin-bottom: 30px;
+          border: 1px solid #E5E7EB;
         }
 
-        .hours-icon { font-size: 24px; color: #22C55E; flex-shrink: 0; }
-        .office-hours h4 { color: #14532D; font-size: 16px; margin: 0 0 8px; }
-        .office-hours p { color: #4B5563; font-size: 14px; margin: 4px 0; }
+        .hours-icon { font-size: 24px; color: #2E7D64; flex-shrink: 0; }
+        .office-hours h4 { color: #1B4D3E; font-size: 16px; margin: 0 0 8px; }
+        .office-hours p { color: #4A5568; font-size: 14px; margin: 4px 0; }
 
         .social-links { margin-bottom: 30px; }
-        .social-links h4 { color: #14532D; font-size: 16px; margin: 0 0 16px; }
+        .social-links h4 { color: #1B4D3E; font-size: 16px; margin: 0 0 16px; }
         .social-icons { display: flex; gap: 12px; }
 
         .social-icon {
           width: 44px;
           height: 44px;
-          border-radius: 12px;
+          border-radius: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -496,7 +491,7 @@ export default function ContactPage() {
         .social-icon.twitter { background: #1DA1F2; }
         .social-icon.linkedin { background: #0077B5; }
         .social-icon.github { background: #333; }
-        .social-icon.earth { background: linear-gradient(135deg, #15803D, #22C55E); }
+        .social-icon.earth { background: #2E7D64; }
 
         .emergency-note {
           display: flex;
@@ -504,8 +499,8 @@ export default function ContactPage() {
           gap: 16px;
           padding: 20px;
           background: #FEF3C7;
-          border-radius: 16px;
-          border: 1px solid #F59E0B;
+          border-radius: 12px;
+          border: 1px solid #FCD34D;
         }
 
         .emergency-icon { font-size: 32px; color: #F59E0B; flex-shrink: 0; }

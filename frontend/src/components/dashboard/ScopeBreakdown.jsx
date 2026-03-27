@@ -1,113 +1,110 @@
 // src/components/dashboard/ScopeBreakdown.jsx
 import React from "react";
-import Card from "../ui/Card";
-import { FiPieChart } from "react-icons/fi";
+import { useCompanyStore } from "../../store/companyStore";
 
-const ScopeBreakdown = ({ title, items }) => {
-  // Calculate total to ensure percentages sum to 100
-  const total = items.reduce((sum, item) => sum + item.value, 0);
+export default function ScopeBreakdown({ title, items, totalEmissions }) {
+  const { company } = useCompanyStore();
+  const hasData = items.some(item => item.value > 0);
+
+  // Calculate emissions intensity (tCO₂e per thousand currency)
+  const revenue = company?.basicInfo?.revenue || 0;
+  const totalEmissionsTonnes = totalEmissions || 0;
   
-  // If total is not 100, adjust values proportionally
-  const normalizedItems = total !== 100 
-    ? items.map(item => ({ ...item, value: (item.value / total) * 100 }))
-    : items;
+  // Intensity = total emissions (tonnes) / revenue (in thousands)
+  const revenueInThousands = revenue / 1000;
+  const intensity = revenueInThousands > 0 
+    ? (totalEmissionsTonnes / revenueInThousands).toFixed(2) 
+    : 0;
+
+  // Get currency symbol
+  const currency = company?.basicInfo?.currency || "USD";
+  const currencySymbol = currency === "USD" ? "$" : 
+                         currency === "EUR" ? "€" : 
+                         currency === "GBP" ? "£" : 
+                         currency === "AED" ? "د.إ" : "$";
 
   return (
-    <Card className="breakdown-card">
-      <div className="breakdown-header">
-        <div className="header-left">
-          <FiPieChart className="header-icon" />
-          <h3>{title}</h3>
+    <div className="scope-breakdown">
+      <h3>{title}</h3>
+      {!hasData ? (
+        <div className="empty-breakdown">
+          <p>No data available</p>
+          <span>Submit emissions data to see breakdown</span>
         </div>
-        <span className="total-badge">
-          {items.length} {items.length === 1 ? 'source' : 'sources'}
-        </span>
-      </div>
-
-      <div className="breakdown-list">
-        {normalizedItems.map((item, idx) => (
-          <div key={idx} className="breakdown-item">
-            <div className="item-header">
-              <div className="item-title">
-                <span className="item-icon">{item.icon || '📊'}</span>
-                <span className="item-label">{item.label}</span>
+      ) : (
+        <>
+          <div className="breakdown-list">
+            {items.map((item, index) => (
+              <div key={index} className="breakdown-item">
+                <div className="breakdown-header">
+                  <div className="breakdown-title">
+                    <span className="breakdown-icon">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </div>
+                  <span className="breakdown-percentage">{item.value}%</span>
+                </div>
+                <div className="breakdown-bar">
+                  <div 
+                    className="breakdown-fill" 
+                    style={{ width: `${item.value}%`, backgroundColor: item.color }}
+                  />
+                </div>
+                <div className="breakdown-value">
+                  {item.kgCO2e ? (item.kgCO2e / 1000).toFixed(1) : 0} tCO₂e
+                </div>
               </div>
-              <span className="item-value">{item.value.toFixed(1)}%</span>
+            ))}
+          </div>
+          
+          {/* Intensity Footer */}
+          <div className="intensity-footer">
+            <div className="intensity-item">
+              <span className="intensity-label">TOTAL</span>
+              <span className="intensity-value">{totalEmissionsTonnes.toFixed(1)} tCO₂e</span>
             </div>
-            
-            <div className="progress-bar">
-              <div 
-                className={`progress-fill ${item.color}`}
-                style={{ width: `${item.value}%` }}
-              />
-            </div>
-
-            <div className="item-footer">
-              <span className="emission-value">
-                {((item.value / 100) * 1000).toFixed(0)} tCO₂e
-              </span>
+            <div className="intensity-divider"></div>
+            <div className="intensity-item">
+              <span className="intensity-label">INTENSITY</span>
+              <span className="intensity-value">{intensity} t/{currencySymbol}k</span>
             </div>
           </div>
-        ))}
-      </div>
-
-      <div className="breakdown-footer">
-        <div className="footer-stat">
-          <span className="stat-label">Total</span>
-          <span className="stat-value">{total.toFixed(1)}%</span>
-        </div>
-        <div className="footer-stat">
-          <span className="stat-label">Intensity</span>
-          <span className="stat-value">0.24 t/£k</span>
-        </div>
-      </div>
-
+        </>
+      )}
+      
       <style jsx>{`
-        .breakdown-card {
+        .scope-breakdown {
           background: white;
-          border-radius: 20px;
-          padding: 24px;
-          border: 1px solid rgba(34, 197, 94, 0.1);
+          border-radius: 12px;
+          padding: 20px;
+          border: 1px solid #E5E7EB;
         }
 
-        .breakdown-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-        }
-
-        .header-left {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .header-icon {
-          color: #22C55E;
-          font-size: 20px;
-        }
-
-        .breakdown-header h3 {
+        .scope-breakdown h3 {
           font-size: 16px;
           font-weight: 600;
-          color: #14532D;
-          margin: 0;
+          color: #1B4D3E;
+          margin: 0 0 16px;
         }
 
-        .total-badge {
-          background: #F0FDF4;
-          color: #15803D;
-          padding: 4px 12px;
-          border-radius: 30px;
+        .empty-breakdown {
+          text-align: center;
+          padding: 32px 20px;
+          color: #9CA3AF;
+        }
+
+        .empty-breakdown p {
+          margin: 0 0 4px;
+          font-size: 14px;
+        }
+
+        .empty-breakdown span {
           font-size: 12px;
-          font-weight: 500;
         }
 
         .breakdown-list {
           display: flex;
           flex-direction: column;
-          gap: 20px;
+          gap: 16px;
           margin-bottom: 20px;
         }
 
@@ -115,113 +112,92 @@ const ScopeBreakdown = ({ title, items }) => {
           width: 100%;
         }
 
-        .item-header {
+        .breakdown-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
           margin-bottom: 8px;
         }
 
-        .item-title {
+        .breakdown-title {
           display: flex;
           align-items: center;
           gap: 8px;
-        }
-
-        .item-icon {
-          font-size: 16px;
-        }
-
-        .item-label {
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 500;
           color: #374151;
         }
 
-        .item-value {
-          font-size: 14px;
-          font-weight: 600;
-          color: #14532D;
+        .breakdown-icon {
+          display: inline-flex;
+          align-items: center;
+          color: #2E7D64;
         }
 
-        .progress-bar {
-          height: 8px;
+        .breakdown-percentage {
+          font-size: 12px;
+          font-weight: 600;
+          color: #6B7280;
+        }
+
+        .breakdown-bar {
+          height: 6px;
           background: #E5E7EB;
-          border-radius: 4px;
+          border-radius: 3px;
           overflow: hidden;
           margin-bottom: 6px;
         }
 
-        .progress-fill {
+        .breakdown-fill {
           height: 100%;
-          border-radius: 4px;
-          transition: width 0.5s ease;
+          border-radius: 3px;
+          transition: width 0.3s ease;
         }
 
-        .progress-fill.bg-blue-500 {
-          background: linear-gradient(90deg, #3B82F6, #2563EB);
-        }
-
-        .progress-fill.bg-green-500 {
-          background: linear-gradient(90deg, #22C55E, #16A34A);
-        }
-
-        .progress-fill.bg-orange-500 {
-          background: linear-gradient(90deg, #F97316, #EA580C);
-        }
-
-        .progress-fill.bg-purple-500 {
-          background: linear-gradient(90deg, #A855F7, #9333EA);
-        }
-
-        .progress-fill.bg-yellow-500 {
-          background: linear-gradient(90deg, #EAB308, #CA8A04);
-        }
-
-        .item-footer {
-          display: flex;
-          justify-content: flex-end;
-        }
-
-        .emission-value {
+        .breakdown-value {
           font-size: 12px;
-          color: #6B7280;
+          font-weight: 600;
+          color: #1B4D3E;
+          text-align: right;
         }
 
-        .breakdown-footer {
+        .intensity-footer {
           display: flex;
-          justify-content: space-between;
+          align-items: center;
+          justify-content: center;
+          gap: 24px;
           padding-top: 16px;
-          border-top: 1px solid rgba(34, 197, 94, 0.1);
+          margin-top: 8px;
+          border-top: 1px solid #E5E7EB;
         }
 
-        .footer-stat {
+        .intensity-item {
           text-align: center;
-          flex: 1;
         }
 
-        .footer-stat:first-child {
-          border-right: 1px solid rgba(34, 197, 94, 0.1);
-        }
-
-        .stat-label {
+        .intensity-label {
           display: block;
           font-size: 11px;
+          font-weight: 600;
           color: #6B7280;
-          margin-bottom: 4px;
           text-transform: uppercase;
-          letter-spacing: 0.3px;
+          letter-spacing: 0.5px;
+          margin-bottom: 4px;
         }
 
-        .stat-value {
+        .intensity-value {
           display: block;
-          font-size: 16px;
-          font-weight: 600;
-          color: #14532D;
+          font-size: 18px;
+          font-weight: 700;
+          color: #1B4D3E;
+        }
+
+        .intensity-divider {
+          width: 1px;
+          height: 30px;
+          background: #E5E7EB;
         }
       `}</style>
-    </Card>
+    </div>
   );
-};
-
-export default ScopeBreakdown;
+}
