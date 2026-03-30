@@ -8,32 +8,21 @@ export default function CountrySelector({ data, updateField }) {
     "middle-east": [
       { label: "🇦🇪 United Arab Emirates", value: "uae" },
       { label: "🇸🇦 Saudi Arabia", value: "saudi-arabia" },
-      { label: "🇶🇦 Qatar", value: "qatar" },
     ],
     "asia-pacific": [
       { label: "🇸🇬 Singapore", value: "singapore" },
-      { label: "🇲🇾 Malaysia", value: "malaysia" },
-      { label: "🇮🇩 Indonesia", value: "indonesia" },
-      { label: "🇹🇭 Thailand", value: "thailand" },
-      { label: "🇻🇳 Vietnam", value: "vietnam" },
-      { label: "🇵🇭 Philippines", value: "philippines" },
     ],
-    "eu": [
-      { label: "🇩🇪 Germany", value: "germany" },
-      { label: "🇫🇷 France", value: "france" },
-      { label: "🇮🇹 Italy", value: "italy" },
-      { label: "🇪🇸 Spain", value: "spain" },
-    ],
-    "uk": [{ label: "🇬🇧 United Kingdom", value: "uk" }],
-    "us": [{ label: "🇺🇸 United States", value: "us" }],
-    "in": [{ label: "🇮🇳 India", value: "india" }],
-    "cn": [{ label: "🇨🇳 China", value: "china" }],
-    "other": [{ label: "🌍 Other", value: "other" }],
+    "eu": [],
+    "uk": [],
+    "us": [],
+    "in": [],
+    "cn": [],
+    "other": [],
   };
 
   const availableCountries = countriesByRegion[data.region] || [];
 
-  if (!data.region || data.region === "other") {
+  if (!data.region || data.region === "other" || availableCountries.length === 0) {
     return null;
   }
 

@@ -1,6 +1,6 @@
 // src/components/company/SetupSummary.jsx
-import { useState } from "react";
-import { FiCheckCircle, FiMapPin, FiUsers, FiDollarSign, FiGlobe, FiBriefcase, FiEdit2, FiSave, FiX } from "react-icons/fi";
+import { useState, useEffect } from "react";
+import { FiCheckCircle, FiMapPin, FiUsers, FiDollarSign, FiGlobe, FiBriefcase, FiEdit2, FiSave, FiX, FiPlus, FiTrash2 } from "react-icons/fi";
 import { BiBuilding } from "react-icons/bi";
 import InputField from "../ui/InputField";
 import SelectDropdown from "../ui/SelectDropdown";
@@ -17,6 +17,14 @@ export default function SetupSummary({ data, updateField }) {
     employees: data.employees,
     revenue: data.revenue,
   });
+  
+  // Facilities editing state
+  const [facilitiesEditData, setFacilitiesEditData] = useState({
+    country: data.country || "",
+    locations: [...(data.locations || [])]
+  });
+  const [selectedCity, setSelectedCity] = useState("");
+  const [cities, setCities] = useState([]);
 
   const regions = [
     { label: "🌍 Middle East", value: "middle-east" },
@@ -46,6 +54,25 @@ export default function SetupSummary({ data, updateField }) {
     { label: "⚙️ Other", value: "other" },
   ];
 
+  // Cities by country
+  const citiesByCountry = {
+    uae: ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"],
+    qatar: ["Doha", "Al Wakrah", "Al Khor", "Al Rayyan"],
+    "saudi-arabia": ["Riyadh", "Jeddah", "Dammam", "Khobar", "Medina", "Mecca"],
+    singapore: ["Singapore"],
+    malaysia: ["Kuala Lumpur", "Penang", "Johor Bahru"],
+    indonesia: ["Jakarta", "Surabaya", "Bandung"],
+    thailand: ["Bangkok", "Phuket", "Chiang Mai"],
+    germany: ["Berlin", "Munich", "Frankfurt"],
+    france: ["Paris", "Lyon", "Marseille"],
+    italy: ["Rome", "Milan", "Naples"],
+    spain: ["Madrid", "Barcelona", "Valencia"],
+    uk: ["London", "Manchester", "Birmingham"],
+    us: ["New York", "Los Angeles", "Chicago"],
+    india: ["Mumbai", "Delhi", "Bangalore"],
+    china: ["Beijing", "Shanghai", "Guangzhou"],
+  };
+
   const handleEdit = (section) => {
     setEditData({
       name: data.name,
@@ -55,6 +82,19 @@ export default function SetupSummary({ data, updateField }) {
       employees: data.employees,
       revenue: data.revenue,
     });
+    
+    // Initialize facilities edit data
+    if (section === 'facilities') {
+      setFacilitiesEditData({
+        country: data.country || "",
+        locations: [...(data.locations || [])]
+      });
+      // Load cities for the current country
+      if (data.country) {
+        setCities(citiesByCountry[data.country] || []);
+      }
+    }
+    
     setEditingSection(section);
   };
 
@@ -67,7 +107,45 @@ export default function SetupSummary({ data, updateField }) {
     setEditingSection(null);
   };
 
+  const handleFacilitiesSave = () => {
+    updateField("country", facilitiesEditData.country);
+    updateField("locations", facilitiesEditData.locations);
+    setEditingSection(null);
+  };
+
   const handleCancel = () => setEditingSection(null);
+
+  // Facilities edit functions
+  const handleCountryChange = (country) => {
+    setFacilitiesEditData(prev => ({ ...prev, country }));
+    setCities(citiesByCountry[country] || []);
+    setSelectedCity("");
+  };
+
+  const handleAddCity = () => {
+    if (!selectedCity) return;
+    const cityExists = facilitiesEditData.locations.some(loc => loc.city === selectedCity);
+    if (cityExists) return;
+    
+    const newLocation = {
+      id: Date.now(),
+      country: facilitiesEditData.country,
+      city: selectedCity,
+    };
+    
+    setFacilitiesEditData(prev => ({
+      ...prev,
+      locations: [...prev.locations, newLocation]
+    }));
+    setSelectedCity("");
+  };
+
+  const handleRemoveCity = (id) => {
+    setFacilitiesEditData(prev => ({
+      ...prev,
+      locations: prev.locations.filter(loc => loc.id !== id)
+    }));
+  };
 
   const getRegionLabel = (region) => regions.find(r => r.value === region)?.label || region;
   const getIndustryLabel = (industry) => industries.find(i => i.value === industry)?.label || industry;
@@ -97,6 +175,17 @@ export default function SetupSummary({ data, updateField }) {
       'saudi-arabia': "Saudi Arabia",
       'saudi': "Saudi Arabia",
       'singapore': "Singapore",
+      'malaysia': "Malaysia",
+      'indonesia': "Indonesia",
+      'thailand': "Thailand",
+      'germany': "Germany",
+      'france': "France",
+      'italy': "Italy",
+      'spain': "Spain",
+      'uk': "United Kingdom",
+      'us': "United States",
+      'india': "India",
+      'china': "China",
     };
     return countries[country] || country;
   };
@@ -324,7 +413,7 @@ export default function SetupSummary({ data, updateField }) {
           )}
         </div>
 
-        {/* Facilities Card */}
+        {/* Facilities Card - Updated with inline editing */}
         <div className="summary-card facilities-card">
           <div className="card-header">
             <div className="card-title">
@@ -340,9 +429,84 @@ export default function SetupSummary({ data, updateField }) {
 
           {editingSection === 'facilities' ? (
             <div className="edit-mode">
-              <p className="edit-note">To edit facilities, please go back to Step 6</p>
+              {/* Country Selection */}
+              <div className="field-group">
+                <label className="field-label">Country</label>
+                <select
+                  className="field-select"
+                  value={facilitiesEditData.country}
+                  onChange={(e) => handleCountryChange(e.target.value)}
+                >
+                  <option value="">Select Country</option>
+                  {Object.keys(citiesByCountry).map(country => (
+                    <option key={country} value={country}>{getCountryLabel(country)}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* City Selection and Add Button */}
+              {facilitiesEditData.country && (
+                <div className="add-city-section">
+                  <div className="field-group">
+                    <label className="field-label">Add City</label>
+                    <div className="city-input-group">
+                      <select
+                        className="field-select"
+                        value={selectedCity}
+                        onChange={(e) => setSelectedCity(e.target.value)}
+                      >
+                        <option value="">Select City</option>
+                        {cities.map(city => (
+                          <option key={city} value={city}>{city}</option>
+                        ))}
+                      </select>
+                      <button onClick={handleAddCity} className="add-city-btn" disabled={!selectedCity}>
+                        <FiPlus /> Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Locations List */}
+              {facilitiesEditData.locations.length > 0 && (
+                <div className="locations-list">
+                  <label className="field-label">Added Locations</label>
+                  {facilitiesEditData.locations.map((loc) => (
+                    <div key={loc.id} className="location-item">
+                      <FiMapPin className="location-icon" />
+                      <span>{getLocationDisplay(loc)}</span>
+                      <button
+                        onClick={() => handleRemoveCity(loc.id)}
+                        className="remove-location-btn"
+                        title="Remove"
+                      >
+                        <FiTrash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {facilitiesEditData.locations.length === 0 && facilitiesEditData.country && (
+                <div className="empty-locations">
+                  <p>No cities added yet. Select a city above to add.</p>
+                </div>
+              )}
+
+              {!facilitiesEditData.country && (
+                <div className="empty-locations">
+                  <p>Please select a country first.</p>
+                </div>
+              )}
+
               <div className="edit-actions">
-                <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
+                <PrimaryButton onClick={handleFacilitiesSave} className="save-btn">
+                  <FiSave /> Save Facilities
+                </PrimaryButton>
+                <SecondaryButton onClick={handleCancel} className="cancel-btn">
+                  <FiX /> Cancel
+                </SecondaryButton>
               </div>
             </div>
           ) : (
@@ -420,7 +584,9 @@ export default function SetupSummary({ data, updateField }) {
           border-color: #2E7D64;
         }
 
-        .facilities-card { grid-column: span 2; }
+        .facilities-card {
+          grid-column: span 2;
+        }
 
         .card-header {
           display: flex;
@@ -468,7 +634,76 @@ export default function SetupSummary({ data, updateField }) {
         .size-badge { font-size: 11px; padding: 2px 8px; background: #F8FAF8; color: #2E7D64; border-radius: 30px; font-weight: 500; border: 1px solid #E5E7EB; }
 
         .edit-mode { display: flex; flex-direction: column; gap: 16px; }
-        .edit-note { color: #6B7280; font-size: 14px; font-style: italic; padding: 8px 0; }
+        .field-group { display: flex; flex-direction: column; gap: 8px; }
+        .field-label { font-size: 13px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.3px; }
+        .field-select {
+          width: 100%;
+          padding: 10px 12px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          font-size: 14px;
+          background: white;
+        }
+        .field-select:focus { outline: none; border-color: #2E7D64; }
+
+        .add-city-section { margin-top: 8px; }
+        .city-input-group {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+        }
+        .city-input-group .field-select { flex: 1; }
+        .add-city-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 10px 16px;
+          background: #2E7D64;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 500;
+        }
+        .add-city-btn:disabled {
+          background: #9CA3AF;
+          cursor: not-allowed;
+        }
+
+        .locations-list { margin-top: 8px; }
+        .location-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          background: white;
+          border-radius: 8px;
+          border: 1px solid #E5E7EB;
+          margin-bottom: 8px;
+        }
+        .location-icon { color: #2E7D64; font-size: 16px; }
+        .location-item span { flex: 1; font-size: 14px; color: #374151; }
+        .remove-location-btn {
+          background: none;
+          border: none;
+          color: #DC2626;
+          cursor: pointer;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+        }
+        .remove-location-btn:hover { background: #FEE2E2; border-radius: 4px; }
+
+        .empty-locations {
+          text-align: center;
+          padding: 20px;
+          color: #9CA3AF;
+          font-size: 13px;
+          background: #F8FAF8;
+          border-radius: 8px;
+        }
+
         .edit-actions { display: flex; gap: 12px; margin-top: 8px; }
         .save-btn, .cancel-btn { flex: 1; padding: 10px !important; font-size: 14px !important; }
 
@@ -505,6 +740,8 @@ export default function SetupSummary({ data, updateField }) {
           .row-value { justify-content: flex-start; }
           .card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
           .edit-section-btn { align-self: flex-start; }
+          .city-input-group { flex-direction: column; }
+          .add-city-btn { width: 100%; justify-content: center; }
         }
       `}</style>
     </div>
