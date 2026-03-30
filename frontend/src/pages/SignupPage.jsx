@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import PrimaryButton from "../components/ui/PrimaryButton";
 import { useAuthStore } from "../store/authStore";
-import { FiUser, FiMail, FiLock, FiArrowRight } from "react-icons/fi";
+import { FiUser, FiMail, FiLock, FiArrowRight, FiEye, FiEyeOff } from "react-icons/fi";
 import { BiLeaf } from "react-icons/bi";
 
 export default function SignupPage() {
@@ -12,6 +12,8 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const { register, loading, error, clearError } = useAuthStore();
@@ -98,13 +100,21 @@ export default function SignupPage() {
             <div className="input-wrapper">
               <FiLock className="input-icon" />
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Create a strong password"
                 required
               />
+              <button
+                type="button"
+                className="toggle-password-btn"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <FiEyeOff /> : <FiEye />}
+              </button>
             </div>
           </div>
 
@@ -113,13 +123,21 @@ export default function SignupPage() {
             <div className="input-wrapper">
               <FiLock className="input-icon" />
               <input
-                type="password"
+                type={showConfirmPassword ? "text" : "password"}
                 id="confirmPassword"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm your password"
                 required
               />
+              <button
+                type="button"
+                className="toggle-password-btn"
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+              >
+                {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
+              </button>
             </div>
             {confirmPassword && (
               <div className="password-match">
@@ -262,7 +280,7 @@ export default function SignupPage() {
 
         .input-wrapper input {
           width: 100%;
-          padding: 12px 12px 12px 44px;
+          padding: 12px 44px 12px 44px;
           border: 1px solid #E5E7EB;
           border-radius: 8px;
           font-size: 15px;
@@ -277,6 +295,23 @@ export default function SignupPage() {
 
         .input-wrapper input::placeholder {
           color: #9CA3AF;
+        }
+
+        .toggle-password-btn {
+          position: absolute;
+          right: 12px;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          color: #9CA3AF;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px;
+        }
+
+        .toggle-password-btn:hover {
+          color: #4B5563;
         }
 
         .password-match {
