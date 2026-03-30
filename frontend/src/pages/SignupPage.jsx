@@ -16,8 +16,9 @@ export default function SignupPage() {
   const [isVisible, setIsVisible] = useState(false);
   const { register, loading, error, clearError } = useAuthStore();
 
+  // Clear error on component mount
   useEffect(() => {
-    return () => clearError();
+    clearError();
   }, [clearError]);
 
   useEffect(() => {
@@ -26,7 +27,16 @@ export default function SignupPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (password !== confirmPassword) return;
+    
+    // Clear previous error before new submission
+    clearError();
+    
+    // Validation
+    if (password !== confirmPassword) {
+      // You might want to set a local error here
+      return;
+    }
+    
     const result = await register(email, password, name);
     if (result.success) {
       navigate("/setup");
@@ -40,7 +50,7 @@ export default function SignupPage() {
         <div className="brand-section">
           <div className="logo-wrapper">
             <BiLeaf className="logo-icon" />
-            <span className="logo-text">Lumyina</span>
+            <span className="logo-text">Lumyna</span>
           </div>
           <h2 className="welcome-text">Create your account</h2>
         </div>

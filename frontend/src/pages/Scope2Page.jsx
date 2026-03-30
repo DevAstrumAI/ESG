@@ -1,5 +1,5 @@
 // src/pages/Scope2Page.jsx
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Scope2Container from "../components/scope2/Scope2Container";
 import { useCompanyStore } from "../store/companyStore";
 import { useAuthStore } from "../store/authStore";
@@ -11,71 +11,21 @@ export default function Scope2Page() {
   const navigate = useNavigate();
   const { company, fetchCompany, loading, error } = useCompanyStore();
   const token = useAuthStore((state) => state.token);
+  const [hasChecked, setHasChecked] = useState(false);
 
   useEffect(() => {
-    if (token && !company && !loading) {
-      fetchCompany(token);
-    }
-  }, [token, company, loading, fetchCompany]);
+    const checkCompany = async () => {
+      if (token && !hasChecked) {
+        console.log("Checking company...");
+        await fetchCompany(token);
+        setHasChecked(true);
+      }
+    };
+    checkCompany();
+  }, [token, fetchCompany, hasChecked]);
 
-  // Check if company exists and has basic info
-  const hasCompanyData = company && company.basicInfo?.name;
-
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="spinner"></div>
-        <p>Loading company data...</p>
-        <style jsx>{`
-          .loading-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 400px;
-          }
-          .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #E5E7EB;
-            border-top-color: #2E7D64;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-          }
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-          p { margin-top: 16px; color: #6B7280; }
-        `}</style>
-      </div>
-    );
-  }
-
-  // Show error state
-  if (error) {
-    return (
-      <div className="error-container">
-        <p>Error loading company: {error}</p>
-        <button onClick={() => fetchCompany(token)}>Retry</button>
-        <style jsx>{`
-          .error-container { text-align: center; padding: 40px; }
-          p { color: #DC2626; margin-bottom: 16px; }
-          button {
-            padding: 8px 16px;
-            background: #2E7D64;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-          }
-        `}</style>
-      </div>
-    );
-  }
-
-  // Show setup message if company data is missing
-  if (!hasCompanyData) {
+  // Show setup message if no company after check is complete
+  if (hasChecked && !company && !loading) {
     return (
       <div className="setup-message-container">
         <div className="setup-card">
@@ -142,19 +92,77 @@ export default function Scope2Page() {
     );
   }
 
-  console.log("🏢 Company loaded in Scope2Page:", company);
-  console.log("📍 Primary location:", company?.locations?.[0]);
+  // Show loading state
+  if (loading || (!hasChecked && !company)) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Loading company data...</p>
+        <style jsx>{`
+          .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 400px;
+          }
+          .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #E5E7EB;
+            border-top-color: #2E7D64;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+          p { margin-top: 16px; color: #6B7280; }
+        `}</style>
+      </div>
+    );
+  }
 
-  return (
-    <div className="scope2-page">
-      <Scope2Container />
-      <style jsx>{`
-        .scope2-page {
-          width: 100%;
-          min-height: 100vh;
-          background: white;
-        }
-      `}</style>
-    </div>
-  );
+  // Show error state
+  if (error) {
+    return (
+      <div className="error-container">
+        <p>Error loading company: {error}</p>
+        <button onClick={() => {
+          setHasChecked(false);
+          fetchCompany(token);
+        }}>Retry</button>
+        <style jsx>{`
+          .error-container { text-align: center; padding: 40px; }
+          p { color: #DC2626; margin-bottom: 16px; }
+          button {
+            padding: 8px 16px;
+            background: #2E7D64;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // Show Scope 2 page if company exists
+  if (company) {
+    return (
+      <div className="scope2-page">
+        <Scope2Container />
+        <style jsx>{`
+          .scope2-page {
+            width: 100%;
+            min-height: 100vh;
+            background: white;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  return null;
 }
