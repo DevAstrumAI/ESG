@@ -1,12 +1,13 @@
-# render.yaml - Place this in the root of your project
-
+# render.yaml
 services:
   # Frontend Service
   - type: web
     name: lumyna-frontend
     env: static
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    buildCommand: |-
+      npm install
+      npm run build
     staticPublishPath: ./build
     routes:
       - type: rewrite
