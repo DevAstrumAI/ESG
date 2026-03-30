@@ -229,9 +229,18 @@ export const useEmissionStore = create((set, get) => ({
         electricity: state.scope2Electricity.map((e) => ({
           facilityName:    e.facilityName || 'Main Facility',
           consumptionKwh:  Number(e.consumption || e.kwh || 0),
-          method:          e.method || 'location',
-          ...(e.certificateType ? { certificateType: e.certificateType } : {}),
+          method:          e.certificateType === "grid_average" ? "location" : "market",
+          certificateType: e.certificateType,
         })),
+        heating: state.scope2Heating.map((h) => ({
+          energyType:     h.energyType || 'steam_hot_water',
+          consumptionKwh: Number(h.consumption || 0),
+        })),
+        renewables: state.scope2Renewable.map((r) => ({
+          sourceType:    r.sourceType || 'solar_ppa',
+          generationKwh: Number(r.consumption || 0),
+        })),
+    
         heating: state.scope2Heating.map((h) => ({
           energyType:     h.energyType || 'steam_hot_water',
           consumptionKwh: Number(h.consumption || 0),
@@ -260,12 +269,14 @@ export const useEmissionStore = create((set, get) => ({
 
       set({
         scope2Results: {
-          electricity:         { kgCO2e: data.results?.electricity?.locationBasedKgCO2e || 0 },
-          heating:             { kgCO2e: data.results?.heating?.totalKgCO2e             || 0 },
-          renewables:          { kgCO2e: data.results?.renewables?.totalKgCO2e          || 0 },
+          electricity: { 
+            locationBasedKgCO2e: data.results?.electricity?.locationBasedKgCO2e || 0,
+            marketBasedKgCO2e: data.results?.electricity?.marketBasedKgCO2e || 0,
+          },
+          heating: { kgCO2e: data.results?.heating?.totalKgCO2e || 0 },
+          renewables: { kgCO2e: data.results?.renewables?.totalKgCO2e || 0 },
           locationBasedKgCO2e: data.results?.locationBasedKgCO2e || 0,
-          marketBasedKgCO2e:   data.results?.marketBasedKgCO2e   || 0,
-          total:               { kgCO2e: data.results?.locationBasedKgCO2e || 0 },
+          marketBasedKgCO2e: data.results?.marketBasedKgCO2e || 0,
         },
         scope2Total: data.results?.locationBasedKgCO2e || 0,
         selectedYear: year,
@@ -312,12 +323,14 @@ export const useEmissionStore = create((set, get) => ({
           total:        { kgCO2e: result.scope1?.totalKgCO2e             || 0 },
         },
         scope2Results: {
-          electricity:         { kgCO2e: result.scope2?.breakdown?.electricity || 0 },
-          heating:             { kgCO2e: result.scope2?.breakdown?.heating     || 0 },
-          renewables:          { kgCO2e: result.scope2?.breakdown?.renewables  || 0 },
+          electricity: { 
+            locationBasedKgCO2e: result.scope2?.breakdown?.electricityLocation || result.scope2?.breakdown?.electricity || 0,
+            marketBasedKgCO2e: result.scope2?.breakdown?.electricityMarket || result.scope2?.breakdown?.electricity || 0,
+          },
+          heating: { kgCO2e: result.scope2?.breakdown?.heating || 0 },
+          renewables: { kgCO2e: result.scope2?.breakdown?.renewables || 0 },
           locationBasedKgCO2e: result.scope2?.locationBasedKgCO2e || 0,
-          marketBasedKgCO2e:   result.scope2?.marketBasedKgCO2e   || 0,
-          total:               { kgCO2e: result.scope2?.locationBasedKgCO2e || 0 },
+          marketBasedKgCO2e: result.scope2?.marketBasedKgCO2e || 0,
         },
         selectedYear: resolvedYear,
       });

@@ -42,17 +42,25 @@ export default function ElectricityForm({ onSubmitSuccess }) {
   const selectedCertificate = CERTIFICATE_TYPES.find((c) => c.key === certificateKey);
 
   const handleAddRow = () => {
-    if (!consumption || Number(consumption) <= 0) return;
-    addElectricity({
-      id: Date.now(),
-      consumption: Number(consumption),
-      certificateType: certificateKey,
-      certificateLabel: selectedCertificate?.label,
-      month,
-    });
-    setConsumption("");
-    setMonth(currentMonth());
-  };
+  if (!consumption || Number(consumption) <= 0) return;
+  
+  // Determine method based on certificate type
+  const method = certificateKey === "grid_average" ? "location" : "market";
+  
+  console.log("Adding entry:", { consumption, certificateKey, method }); // Debug log
+  
+  addElectricity({
+    id: Date.now(),
+    consumption: Number(consumption),
+    certificateType: certificateKey,
+    certificateLabel: selectedCertificate?.label,
+    method: method,  // This must be present
+    month,
+  });
+  
+  setConsumption("");
+  setMonth(currentMonth());
+};
 
   const handleCalculateSubmit = async () => {
     setSubmitting(true);

@@ -379,19 +379,20 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
     for entry in data.get("electricity", []):
         consumption_kwh = float(entry.get("consumptionKwh", 0))
         method = entry.get("method", "location")
+        certificate_type = entry.get("certificateType", "")
 
         # Location-based always uses grid average
         location_factor_data = electricity_factors.get("grid_average", {})
         location_factor_value = float(location_factor_data.get("value", 0))
         location_kg_co2e = consumption_kwh * location_factor_value
 
-        # Market-based uses certificate type if provided, otherwise grid average
-        if method == "market" and entry.get("certificateType"):
-            market_factor_key = entry.get("certificateType", "rec_ppa")
+        # Market-based: 0 for renewable certificates, grid factor for grid average
+        if method == "market" and certificate_type != "grid_average":
+            market_factor_value = 0
         else:
-            market_factor_key = "grid_average"
-        market_factor_data = electricity_factors.get(market_factor_key, {})
-        market_factor_value = float(market_factor_data.get("value", 0))
+            market_factor_data = electricity_factors.get("grid_average", {})
+            market_factor_value = float(market_factor_data.get("value", 0))
+        
         market_kg_co2e = consumption_kwh * market_factor_value
 
         electricity_location_total += location_kg_co2e
@@ -406,7 +407,7 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
             },
             "marketBased": {
                 "factorUsed": market_factor_value,
-                "unit": market_factor_data.get("unit", ""),
+                "unit": "kg CO₂e/kWh",
                 "kgCO2e": round(market_kg_co2e, 4),
             },
         })

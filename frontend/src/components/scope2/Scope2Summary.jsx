@@ -8,19 +8,26 @@ export default function Scope2Summary() {
   const renewable = useEmissionStore((s) => s.scope2Renewable || []);
   const scope2Results = useEmissionStore((s) => s.scope2Results);
 
-  // Use backend results after submission, otherwise show live estimates from entries
+  // Use backend results after submission
   const totals = scope2Results ? {
-    electricity: scope2Results.electricity?.kgCO2e || 0,
+    electricityLocation: scope2Results.electricity?.locationBasedKgCO2e || 0,
+    electricityMarket: scope2Results.electricity?.marketBasedKgCO2e || 0,
     heating: scope2Results.heating?.kgCO2e || 0,
     renewable: scope2Results.renewables?.kgCO2e || 0,
-    total: scope2Results.total?.kgCO2e || scope2Results.locationBasedKgCO2e || 0,
     locationBased: scope2Results.locationBasedKgCO2e || 0,
     marketBased: scope2Results.marketBasedKgCO2e || 0,
   } : {
-    electricity: electricity.reduce((sum, e) => sum + Number(e.consumption || 0) * 0.428, 0),
+    // Live estimates (before submission)
+    electricityLocation: electricity.reduce((sum, e) => {
+      const factor = e.certificateType === "grid_average" ? 0.428 : 0.428;
+      return sum + (Number(e.consumption) * factor);
+    }, 0),
+    electricityMarket: electricity.reduce((sum, e) => {
+      const factor = e.certificateType === "grid_average" ? 0.428 : 0;
+      return sum + (Number(e.consumption) * factor);
+    }, 0),
     heating: heating.reduce((sum, h) => sum + Number(h.consumption || 0) * 0.2, 0),
     renewable: renewable.reduce((sum, r) => sum + Number(r.consumption || 0) * 0.428, 0),
-    total: 0,
     locationBased: 0,
     marketBased: 0,
   };
@@ -36,21 +43,20 @@ export default function Scope2Summary() {
 
   const fmt = formatNumber;
 
-  const total = totals.total ?? 0;
-  const getPercentage = (value) => {
-    if (total === 0) return 0;
-    return ((value ?? 0) / total * 100).toFixed(1);
+  const getLocationPercentage = (value) => {
+    const locationTotal = totals.locationBased ?? 0;
+    if (locationTotal === 0) return 0;
+    return ((value ?? 0) / locationTotal * 100).toFixed(1);
   };
 
-  const categories = [
-    { key: "electricity", label: "Purchased Electricity", icon: "⚡", value: totals.electricity, count: electricity.length, bar: "#3B82F6" },
-    { key: "heating", label: "Heating & Cooling", icon: "🔥", value: totals.heating, count: heating.length, bar: "#F59E0B" },
-    { key: "renewable", label: "Renewable Generation", icon: "🌱", value: totals.renewable, count: renewable.length, bar: "#10B981" },
-  ];
+  const getMarketPercentage = (value) => {
+    const marketTotal = totals.marketBased ?? 0;
+    if (marketTotal === 0) return 0;
+    return ((value ?? 0) / marketTotal * 100).toFixed(1);
+  };
 
   return (
     <div className="ss-wrap">
-      {/* Header */}
       <div className="ss-header">
         <div>
           <h3>Scope 2 Emissions Summary</h3>
@@ -86,52 +92,76 @@ export default function Scope2Summary() {
             </div>
           </div>
 
-          {/* Category Breakdown Grid */}
+          {/* Category Breakdown */}
           <div className="ss-grid">
-            {categories.map((cat) => (
-              <div key={cat.key} className={`ss-card ${cat.key === "renewable" ? "renewable-card" : ""}`}>
-                <div className="ss-card-header">
-                  <span className="ss-card-icon">{cat.icon}</span>
-                  <span className="ss-card-title">{cat.label}</span>
-                  <span className="ss-card-pct">{getPercentage(cat.value)}%</span>
+            {/* Electricity Card */}
+            <div className="ss-card">
+              <div className="ss-card-header">
+                <span className="ss-card-icon">⚡</span>
+                <span className="ss-card-title">Purchased Electricity</span>
+                <span className="ss-card-pct">L: {getLocationPercentage(totals.electricityLocation)}%</span>
+                <span className="ss-card-pct market">M: {getMarketPercentage(totals.electricityMarket)}%</span>
+              </div>
+              <div className="ss-card-value">{fmt(totals.electricityLocation)} kg</div>
+              <div className="ss-card-count">{electricity.length} entries</div>
+              
+              {/* Electricity Dual Breakdown */}
+              <div className="dual-breakdown">
+                <div className="dual-row">
+                  <span className="dual-name">Location:</span>
+                  <span className="dual-amount">{fmt(totals.electricityLocation)} kg</span>
                 </div>
-                <div className="ss-card-value">{fmt(cat.value)} kg</div>
-                <div className="ss-card-count">{cat.count} {cat.count === 1 ? "entry" : "entries"}</div>
-
-                {/* Electricity dual-method breakdown */}
-                {cat.key === "electricity" && scope2Results?.electricity && (
-                  <div className="dual-breakdown">
-                    <div className="dual-row">
-                      <span className="dual-name">Location:</span>
-                      <span className="dual-amount">{fmt(scope2Results.electricity.locationBasedKgCO2e || 0)} kg</span>
-                    </div>
-                    <div className="dual-row">
-                      <span className="dual-name">Market:</span>
-                      <span className="dual-amount">{fmt(scope2Results.electricity.marketBasedKgCO2e || 0)} kg</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="ss-bar-track">
-                  <div className="ss-bar-fill" style={{ width: `${getPercentage(cat.value)}%`, background: cat.bar }} />
+                <div className="dual-row">
+                  <span className="dual-name">Market:</span>
+                  <span className="dual-amount">{fmt(totals.electricityMarket)} kg</span>
                 </div>
               </div>
-            ))}
+              
+              <div className="ss-bar-track">
+                <div className="ss-bar-fill" style={{ width: `${getLocationPercentage(totals.electricityLocation)}%`, background: "#3B82F6" }} />
+              </div>
+            </div>
+
+            {/* Heating Card */}
+            <div className="ss-card">
+              <div className="ss-card-header">
+                <span className="ss-card-icon">🔥</span>
+                <span className="ss-card-title">Heating & Cooling</span>
+                <span className="ss-card-pct">L: {getLocationPercentage(totals.heating)}%</span>
+                <span className="ss-card-pct market">M: {getMarketPercentage(totals.heating)}%</span>
+              </div>
+              <div className="ss-card-value">{fmt(totals.heating)} kg</div>
+              <div className="ss-card-count">{heating.length} entries</div>
+              <div className="ss-bar-track">
+                <div className="ss-bar-fill" style={{ width: `${getLocationPercentage(totals.heating)}%`, background: "#F59E0B" }} />
+              </div>
+            </div>
+
+            {/* Renewables Card */}
+            <div className="ss-card renewable-card">
+              <div className="ss-card-header">
+                <span className="ss-card-icon">🌱</span>
+                <span className="ss-card-title">Renewable Generation</span>
+                <span className="ss-card-pct">L: {getLocationPercentage(totals.renewable)}%</span>
+                <span className="ss-card-pct market">M: {getMarketPercentage(totals.renewable)}%</span>
+              </div>
+              <div className="ss-card-value">{fmt(totals.renewable)} kg</div>
+              <div className="ss-card-count">{renewable.length} entries</div>
+              <div className="ss-bar-track">
+                <div className="ss-bar-fill" style={{ width: `${getLocationPercentage(totals.renewable)}%`, background: "#10B981" }} />
+              </div>
+            </div>
           </div>
 
           {/* Footer Stats */}
           <div className="ss-footer">
             <div className="ss-stat">
               <span className="ss-stat-label">Total Entries</span>
-              <span className="ss-stat-value">
-                {electricity.length + heating.length + renewable.length}
-              </span>
+              <span className="ss-stat-value">{electricity.length + heating.length + renewable.length}</span>
             </div>
             <div className="ss-stat">
               <span className="ss-stat-label">Categories</span>
-              <span className="ss-stat-value">
-                {[electricity, heating, renewable].filter(a => a.length > 0).length}/3
-              </span>
+              <span className="ss-stat-value">{([electricity, heating, renewable].filter(a => a.length > 0).length)}/3</span>
             </div>
             <div className="ss-stat">
               <span className="ss-stat-label">Reporting Method</span>
@@ -139,13 +169,13 @@ export default function Scope2Summary() {
             </div>
           </div>
 
-          {/* Renewable Info Note */}
+          {/* Renewable Note */}
           {renewable.length > 0 && (
             <div className="renewable-note">
               <span className="renewable-note-icon">🌱</span>
               <div className="renewable-note-content">
                 <strong>Renewable generation:</strong> Reported separately per GHG Protocol — does not reduce Scope 2 totals.
-                {scope2Results?.marketBasedKgCO2e < scope2Results?.locationBasedKgCO2e && (
+                {totals.marketBased < totals.locationBased && (
                   <span className="renewable-impact"> Renewables are lowering your market-based total.</span>
                 )}
               </div>
@@ -201,7 +231,6 @@ export default function Scope2Summary() {
           color: #92400E;
         }
 
-        /* Dual-Method Banner */
         .ss-dual-banner {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -236,7 +265,6 @@ export default function Scope2Summary() {
           border-top: 1px solid rgba(255,255,255,0.2);
         }
 
-        /* Breakdown Grid */
         .ss-grid {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
@@ -265,12 +293,17 @@ export default function Scope2Summary() {
           align-items: center;
           gap: 8px;
           margin-bottom: 10px;
+          flex-wrap: wrap;
         }
-        .ss-card-icon  { font-size: 18px; }
+        .ss-card-icon { font-size: 18px; }
         .ss-card-title { flex: 1; font-size: 13px; font-weight: 600; color: #374151; }
-        .ss-card-pct   {
+        .ss-card-pct {
           font-size: 12px; font-weight: 700; color: #2E7D64;
           background: #E8F0EA; padding: 2px 8px; border-radius: 20px;
+        }
+        .ss-card-pct.market {
+          background: #EDE9FE;
+          color: #7C3AED;
         }
 
         .ss-card-value { font-size: 18px; font-weight: 700; color: #1B4D3E; margin-bottom: 4px; }
@@ -303,7 +336,6 @@ export default function Scope2Summary() {
           transition: width 0.3s ease;
         }
 
-        /* Footer Stats */
         .ss-footer {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
@@ -319,7 +351,6 @@ export default function Scope2Summary() {
         .ss-stat-value { display: block; font-size: 22px; font-weight: 700; color: #1B4D3E; }
         .ss-stat-value.highlight { color: #2E7D64; font-size: 26px; }
 
-        /* Renewable Note */
         .renewable-note {
           display: flex;
           align-items: flex-start;
@@ -354,6 +385,7 @@ export default function Scope2Summary() {
           .ss-card-value { font-size: 16px; }
           .ss-stat-value { font-size: 20px; }
           .ss-stat-value.highlight { font-size: 22px; }
+          .ss-card-header { flex-wrap: wrap; }
         }
       `}</style>
     </div>
