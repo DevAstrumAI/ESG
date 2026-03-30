@@ -57,20 +57,8 @@ export default function SetupSummary({ data, updateField }) {
   // Cities by country
   const citiesByCountry = {
     uae: ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"],
-    qatar: ["Doha", "Al Wakrah", "Al Khor", "Al Rayyan"],
     "saudi-arabia": ["Riyadh", "Jeddah", "Dammam", "Khobar", "Medina", "Mecca"],
     singapore: ["Singapore"],
-    malaysia: ["Kuala Lumpur", "Penang", "Johor Bahru"],
-    indonesia: ["Jakarta", "Surabaya", "Bandung"],
-    thailand: ["Bangkok", "Phuket", "Chiang Mai"],
-    germany: ["Berlin", "Munich", "Frankfurt"],
-    france: ["Paris", "Lyon", "Marseille"],
-    italy: ["Rome", "Milan", "Naples"],
-    spain: ["Madrid", "Barcelona", "Valencia"],
-    uk: ["London", "Manchester", "Birmingham"],
-    us: ["New York", "Los Angeles", "Chicago"],
-    india: ["Mumbai", "Delhi", "Bangalore"],
-    china: ["Beijing", "Shanghai", "Guangzhou"],
   };
 
   const handleEdit = (section) => {

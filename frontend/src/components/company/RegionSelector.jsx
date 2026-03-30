@@ -5,12 +5,6 @@ export default function RegionSelector({ data, updateField }) {
   const regions = [
     { label: "🌍 Middle East", value: "middle-east" },
     { label: "🌏 Asia Pacific", value: "asia-pacific" },
-    { label: "🇪🇺 Europe (EU)", value: "eu" },
-    { label: "🇬🇧 United Kingdom", value: "uk" },
-    { label: "🇺🇸 United States", value: "us" },
-    { label: "🇮🇳 India", value: "in" },
-    { label: "🇨🇳 China", value: "cn" },
-    { label: "🌍 Other", value: "other" },
   ];
 
   const selectedRegion = regions.find(r => r.value === data.region);
