@@ -25,6 +25,12 @@ export default function LoginPage() {
     setIsVisible(true);
   }, []);
 
+  useEffect(() => {
+  // Force reset loading state on mount (fixes stuck loading from localStorage)
+  useAuthStore.setState({ loading: false, error: null });
+  setIsVisible(true);
+}, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const result = await login(email, password);

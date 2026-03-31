@@ -557,20 +557,15 @@ export default function DashboardPage() {
         }
 
         .chart-card {
-        background: white;
-        border-radius: 12px;
-        padding: 20px;
-        border: 1px solid #E5E7EB;
-        overflow: visible;
-      }
+          background: white;
+          border-radius: 12px;
+          padding: 10px;
+          border: 1px solid #E5E7EB;
+          overflow: visible;
+        }
 
-        .chart-card.large { min-height: 400px; }
-
-        .chart-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 16px;
+        .chart-card.large {
+          min-height: 450px;
         }
 
         .chart-header h3 {
@@ -594,15 +589,15 @@ export default function DashboardPage() {
         .legend-dot.scope1 { background: #3B82F6; }
         .legend-dot.scope2 { background: #F97316; }
 
-        .chart-wrapper { height: 300px; width: 100%; }
+        .chart-wrapper { height: 350px; width: 100%; }
 
        .pie-chart-wrapper {
-        min-height: 320px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        overflow: visible;
+          min-height: 340px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          overflow: visible;
       }
 
         .chart-insight {
