@@ -154,6 +154,11 @@ export default function RenewableForm({ onSubmitSuccess }) {
                   ))}
                 </select>
               </td>
+              <td>
+                <button className="rw-add-btn-inline" onClick={handleAddRow}>
+                  + Add
+                </button>
+              </td>
               <td></td>
             </tr>
           </tbody>
@@ -161,9 +166,6 @@ export default function RenewableForm({ onSubmitSuccess }) {
       </div>
 
       <div className="rw-footer">
-        <button className="rw-add-btn" onClick={handleAddRow}>
-          + Add Row
-        </button>
         <div className="rw-footer-right">
           {submitError && <span className="rw-error">{submitError}</span>}
           <button
@@ -309,30 +311,14 @@ export default function RenewableForm({ onSubmitSuccess }) {
           white-space: nowrap;
         }
 
-        .rw-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 16px 0 0 0;
-          margin-top: 16px;
+        .rw-footer { display: flex; justify-content: flex-end; padding: 16px 0 0 0; margin-top: 16px; }
+        .rw-footer-right { display: flex; align-items: center; gap: 12px; }
+        .rw-add-btn-inline {
+          padding: 7px 14px; background: #1B4D3E; color: white;
+          border: none; border-radius: 7px; font-size: 13px;
+          font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
-
-        .rw-footer-right {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .rw-add-btn {
-          background: none;
-          border: none;
-          font-size: 14px;
-          font-weight: 500;
-          color: #2E7D64;
-          cursor: pointer;
-          padding: 8px 0;
-        }
-        .rw-add-btn:hover { text-decoration: underline; }
+        .rw-add-btn-inline:hover { background: #2E7D64; }
 
         .rw-error { font-size: 13px; color: #DC2626; }
 

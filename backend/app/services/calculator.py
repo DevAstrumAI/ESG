@@ -1,24 +1,6 @@
 from app.utils.firebase import get_db
 from app.utils.location_resolver import resolve_location
-from typing import Dict, Any
-import json
-from datetime import datetime
 
-# Debug-mode instrumentation: write NDJSON lines to the session log file.
-LOG_PATH = r"C:\Users\Home\OneDrive\Desktop\ESG\debug-841ec6.log"
-
-def _append_agent_log(hypothesisId: str, location: str, message: str, data: dict, runId: str = "pre-fix"):
-    payload = {
-        "sessionId": "841ec6",
-        "runId": runId,
-        "hypothesisId": hypothesisId,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": int(datetime.utcnow().timestamp() * 1000),
-    }
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 # Fuel types that use distance-based calculation (kg CO₂e/km)
 DISTANCE_BASED_TYPES = {
     "jet_aircraft_per_km", "cargo_ship_hfo", "marine_hfo", "diesel_train", "diesel_bus"
@@ -40,23 +22,10 @@ def get_emission_factors(region: str, country: str, city: str, scope: str) -> di
         # Resolve location
         resolved_region, resolved_country, resolved_city = resolve_location(country, city)
 
-        # #region agent log H15
-        _append_agent_log(
-            hypothesisId="H15",
-            location="backend/app/services/calculator.py:get_emission_factors",
-            message="Resolved location + requested scope",
-            data={
-                "input": {"region": region, "country": country, "city": city, "scope": scope},
-                "resolved": {"region": resolved_region, "country": resolved_country, "city": resolved_city},
-            },
-            runId="pre-fix",
-        )
-        # #endregion
-        
         # Use provided region if it's not empty
         if region:
             resolved_region = region
-        
+
         # Try both path formats
         path_formats = [
             # Format 1: with parentheses (Saudi Arabia)
@@ -65,7 +34,7 @@ def get_emission_factors(region: str, country: str, city: str, scope: str) -> di
             f"cities/city_data/{resolved_city}/"
             f"('{scope}',)/"
             f"factors",
-            
+
             # Format 2: without parentheses (UAE and others)
             f"emissionFactors/regions/{resolved_region}/"
             f"countries/{resolved_country}/"
@@ -73,66 +42,23 @@ def get_emission_factors(region: str, country: str, city: str, scope: str) -> di
             f"{scope}/"
             f"factors"
         ]
-        
+
         # Try each path format
         for doc_path in path_formats:
             print(f"🔍 Trying: {doc_path}")
             doc_ref = db.document(doc_path)
             doc = doc_ref.get()
-            
+
             if doc.exists:
                 print(f"✅ Found {len(doc.to_dict())} factors at: {doc_path}")
-                to_dict = doc.to_dict() or {}
-                # #region agent log H16
-                _append_agent_log(
-                    hypothesisId="H16",
-                    location="backend/app/services/calculator.py:get_emission_factors",
-                    message="Found factors document",
-                    data={
-                        "scope": scope,
-                        "usedDocPath": doc_path,
-                        "topLevelKeys": list(to_dict.keys()),
-                        "mobileHasDieselBus": "diesel_bus" in (to_dict.get("mobile") or {}),
-                        "mobileKeysSample": list((to_dict.get("mobile") or {}).keys())[:10],
-                    },
-                    runId="pre-fix",
-                )
-                # #endregion
-                return to_dict
-        
+                return doc.to_dict() or {}
+
         # If neither format works
         print(f"⚠️ No factors found for {resolved_country}/{resolved_city}/{scope}")
-
-        # #region agent log H17
-        _append_agent_log(
-            hypothesisId="H17",
-            location="backend/app/services/calculator.py:get_emission_factors",
-            message="No emission factors document found",
-            data={
-                "scope": scope,
-                "resolved": {"region": resolved_region, "country": resolved_country, "city": resolved_city},
-                "triedPaths": path_formats,
-            },
-            runId="pre-fix",
-        )
-        # #endregion
         return {}
-            
+
     except Exception as e:
         print(f"❌ Error fetching factors: {e}")
-
-        # #region agent log H18
-        _append_agent_log(
-            hypothesisId="H18",
-            location="backend/app/services/calculator.py:get_emission_factors",
-            message="Exception while fetching emission factors",
-            data={
-                "scope": scope,
-                "error": str(e),
-            },
-            runId="pre-fix",
-        )
-        # #endregion
         return {}
 
 
@@ -169,21 +95,6 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
     # --- Mobile ---
     mobile_entries = []
     mobile_total = 0.0
-    mobile_debug_logged = False
-
-    # #region agent log H5
-    _append_agent_log(
-        hypothesisId="H5",
-        location="backend/app/services/calculator.py:calculate_scope1",
-        message="Scope1 factors presence for mobile",
-        data={
-            "inputLocation": {"region": region, "country": country, "city": city},
-            "factorsTopKeys": list((factors or {}).keys()),
-            "mobileFactorCount": len((factors or {}).get("mobile", {}) or {}),
-        },
-        runId="pre-fix",
-    )
-    # #endregion
 
     for entry in data.get("mobile", []):
         fuel_type = entry.get("fuelType", "")
@@ -200,48 +111,6 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
 
         kg_co2e = quantity * factor_value
         mobile_total += kg_co2e
-
-        # #region agent log H19
-        if factor_value == 0:
-            _append_agent_log(
-                hypothesisId="H19",
-                location="backend/app/services/calculator.py:calculate_scope1/mobile",
-                message="Mobile factor resolved to 0",
-                data={
-                    "fuelType": fuel_type,
-                    "factorDataKeys": list((factor_data or {}).keys()),
-                    "factorDataValueRaw": factor_data.get("value"),
-                    "quantityUsed": quantity,
-                    "distanceKm": entry.get("distanceKm"),
-                    "litresConsumed": entry.get("litresConsumed"),
-                    "unit": unit,
-                    "hasMobileFactors": "mobile" in (factors or {}),
-                    "mobileFactorsCount": len((factors or {}).get("mobile", {}) or {}),
-                },
-                runId="pre-fix",
-            )
-        # #endregion
-
-        # #region agent log H7
-        if not mobile_debug_logged:
-            mobile_debug_logged = True
-            _append_agent_log(
-                hypothesisId="H7",
-                location="backend/app/services/calculator.py:calculate_scope1/mobile",
-                message="Mobile calculation inputs -> quantity -> kgCO2e",
-                data={
-                    "fuelType": fuel_type,
-                    "isDistanceBasedBackend": is_distance_based,
-                    "rawDistanceKm": entry.get("distanceKm", None),
-                    "rawLitresConsumed": entry.get("litresConsumed", None),
-                    "quantityUsed": quantity,
-                    "factorValue": factor_value,
-                    "unit": unit,
-                    "kgCO2e": kg_co2e,
-                },
-                runId="pre-fix",
-            )
-        # #endregion
 
         mobile_entries.append({
             **entry,
@@ -329,22 +198,6 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
     results["totalKgCO2e"] = round(grand_total, 4)
     results["totalTonneCO2e"] = round(grand_total / 1000, 6)
 
-    # #region agent log H10
-    _append_agent_log(
-        hypothesisId="H10",
-        location="backend/app/services/calculator.py:calculate_scope1",
-        message="Scope1 totals after full calculation",
-        data={
-            "mobileTotalKgCO2e": results.get("mobile", {}).get("totalKgCO2e"),
-            "stationaryTotalKgCO2e": results.get("stationary", {}).get("totalKgCO2e"),
-            "refrigerantsTotalKgCO2e": results.get("refrigerants", {}).get("totalKgCO2e"),
-            "fugitiveTotalKgCO2e": results.get("fugitive", {}).get("totalKgCO2e"),
-            "grandTotalKgCO2e": results.get("totalKgCO2e"),
-        },
-        runId="pre-fix",
-    )
-    # #endregion
-
     return results
 
 
@@ -355,16 +208,31 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
 
     Input data format:
     {
-        "electricity": [{"facilityName": "HQ", "consumptionKwh": 50000, "method": "location", "certificateType": "rec_ppa"}, ...],
+        "electricity": [
+            {
+                "facilityName": "HQ",
+                "consumptionKwh": 50000,
+                "method": "location",          # "location" or "market"
+                "certificateType": "rec_ppa"   # only relevant when method == "market"
+            },
+            ...
+        ],
         "heating": [{"energyType": "steam_hot_water", "consumptionKwh": 1000}, ...],
         "renewables": [{"sourceType": "solar_ppa", "generationKwh": 5000}, ...]
     }
+
+    Market-based rules (GHG Protocol Scope 2 Guidance):
+    - method == "location"  → location_kg_co2e = grid factor × kWh, market_kg_co2e = 0
+    - method == "market" + renewable certificate (non grid_average)
+                            → location_kg_co2e = grid factor × kWh, market_kg_co2e = 0
+    - method == "market" + certificateType == "grid_average" (no certificate)
+                            → location_kg_co2e = grid factor × kWh, market_kg_co2e = grid factor × kWh
     """
     factors = get_emission_factors(region, country, city, "scope2")
     results = {}
 
-    # Similar to Scope 1, Scope 2 factors may be stored with an `electricity`/`heating` group,
-    # or directly at the top level. We normalize by selecting the group dict when present.
+    # Scope 2 factors may be stored with an `electricity`/`heating` group,
+    # or directly at the top level. We normalise by selecting the group dict when present.
     electricity_factors = factors.get("electricity") if isinstance(factors.get("electricity"), dict) else factors
     heating_factors = factors.get("heating") if isinstance(factors.get("heating"), dict) else factors
 
@@ -381,18 +249,27 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
         method = entry.get("method", "location")
         certificate_type = entry.get("certificateType", "")
 
-        # Location-based always uses grid average
+        # Location-based always uses the grid average factor
         location_factor_data = electricity_factors.get("grid_average", {})
         location_factor_value = float(location_factor_data.get("value", 0))
         location_kg_co2e = consumption_kwh * location_factor_value
 
-        # Market-based: 0 for renewable certificates, grid factor for grid average
-        if method == "market" and certificate_type != "grid_average":
-            market_factor_value = 0
+        # Market-based logic:
+        # - method == "location"  → not participating in market accounting → market = 0
+        # - method == "market" + renewable cert → zero-emission claim → market = 0
+        # - method == "market" + grid_average (no cert) → use grid factor → market = location value
+        if method == "market":
+            if certificate_type and certificate_type != "grid_average":
+                # Renewable energy certificate — zero market-based emission claim
+                market_factor_value = 0.0
+            else:
+                # No certificate held — fall back to grid average for market-based too
+                market_factor_data = electricity_factors.get("grid_average", {})
+                market_factor_value = float(market_factor_data.get("value", 0))
         else:
-            market_factor_data = electricity_factors.get("grid_average", {})
-            market_factor_value = float(market_factor_data.get("value", 0))
-        
+            # method == "location" — entry is not part of market-based accounting
+            market_factor_value = 0.0
+
         market_kg_co2e = consumption_kwh * market_factor_value
 
         electricity_location_total += location_kg_co2e
@@ -467,7 +344,7 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
         "totalKgCO2e": round(renewable_total, 4),
         "note": "Reported separately per GHG Protocol — does not reduce Scope 1 or 2 totals"
     }
-    # renewables intentionally NOT added to grand totals
+    # Renewables intentionally NOT added to grand totals
 
     results["locationBasedKgCO2e"] = round(location_grand_total, 4)
     results["marketBasedKgCO2e"] = round(market_grand_total, 4)

@@ -1,7 +1,7 @@
 // src/components/scope1/VehicleTable.jsx
 import React, { useState } from "react";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiSend, FiTruck, FiDroplet, FiMapPin, FiSearch } from "react-icons/fi";
+import { FiTrash2, FiSend, FiTruck } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const DISTANCE_BASED_TYPES = new Set([
@@ -15,7 +15,6 @@ const DISTANCE_BASED_TYPES = new Set([
 function mapVehicleFuelType(vehicleType, fuelTypeUI) {
   const type = (vehicleType || "").toLowerCase();
   const fuel = (fuelTypeUI || "").toLowerCase();
-
   if (type === "car"        && fuel === "petrol")  return "petrol_car";
   if (type === "car"        && fuel === "diesel")  return "diesel_car";
   if (type === "truck"      && fuel === "diesel")  return "diesel_truck";
@@ -27,7 +26,6 @@ function mapVehicleFuelType(vehicleType, fuelTypeUI) {
   if (type === "airplane")                          return "jet_aircraft_per_km";
   if (type === "ship")                              return "cargo_ship_hfo";
   if (type === "train"      && fuel === "diesel")  return "diesel_train";
-
   return fuel === "petrol" ? "petrol_car" : "diesel_car";
 }
 
@@ -60,7 +58,6 @@ export default function VehicleTable({ onSubmitSuccess }) {
   const [fuelType, setFuelType]       = useState("");
   const [quantity, setQuantity]       = useState("");
   const [month, setMonth]             = useState(currentMonth());
-
   const [submitting, setSubmitting]   = useState(false);
   const [submitted, setSubmitted]     = useState(false);
   const [submitError, setSubmitError] = useState(null);
@@ -125,10 +122,11 @@ export default function VehicleTable({ onSubmitSuccess }) {
             {vehicles.length === 0 && (
               <tr>
                 <td colSpan={5} className="vt-empty">
-                  No entries yet. Add a row below.
+                  No entries yet. Fill the row below and click + Add.
                 </td>
               </tr>
             )}
+
             {vehicles.map((v) => {
               const ft = mapVehicleFuelType(v.vehicleType, v.fuelType);
               const isDistRow = DISTANCE_BASED_TYPES.has(ft);
@@ -156,6 +154,7 @@ export default function VehicleTable({ onSubmitSuccess }) {
               );
             })}
 
+            {/* ── Inline Add Row ── */}
             <tr className="vt-add-row">
               <td>
                 <select
@@ -207,16 +206,19 @@ export default function VehicleTable({ onSubmitSuccess }) {
                   ))}
                 </select>
               </td>
-              <td></td>
+              {/* ── Add button at end of row ── */}
+              <td>
+                <button className="vt-add-btn-inline" onClick={handleAddRow}>
+                  + Add
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
 
+      {/* ── Footer: submit only ── */}
       <div className="vt-footer">
-        <button className="vt-add-btn" onClick={handleAddRow}>
-          + Add Row
-        </button>
         <div className="vt-footer-right">
           {submitError && <span className="vt-error">{submitError}</span>}
           <button
@@ -240,17 +242,8 @@ export default function VehicleTable({ onSubmitSuccess }) {
           gap: 8px;
           margin-bottom: 20px;
         }
-
-        .vt-header-icon {
-          font-size: 20px;
-          color: #2E7D64;
-        }
-
-        .vt-desc {
-          font-size: 13px;
-          color: #6B7280;
-          margin: 0;
-        }
+        .vt-header-icon { font-size: 18px; color: #2E7D64; }
+        .vt-desc { font-size: 13px; color: #6B7280; margin: 0; }
         .vt-desc strong { color: #1B4D3E; }
 
         .vt-table-wrap {
@@ -353,10 +346,23 @@ export default function VehicleTable({ onSubmitSuccess }) {
           white-space: nowrap;
         }
 
+        .vt-add-btn-inline {
+          padding: 7px 14px;
+          background: #1B4D3E;
+          color: white;
+          border: none;
+          border-radius: 7px;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background 0.15s;
+        }
+        .vt-add-btn-inline:hover { background: #2E7D64; }
+
         .vt-footer {
           display: flex;
-          justify-content: space-between;
-          align-items: center;
+          justify-content: flex-end;
           padding: 16px 0 0 0;
           margin-top: 16px;
         }
@@ -366,17 +372,6 @@ export default function VehicleTable({ onSubmitSuccess }) {
           align-items: center;
           gap: 12px;
         }
-
-        .vt-add-btn {
-          background: none;
-          border: none;
-          font-size: 14px;
-          font-weight: 500;
-          color: #2E7D64;
-          cursor: pointer;
-          padding: 8px 0;
-        }
-        .vt-add-btn:hover { text-decoration: underline; }
 
         .vt-error { font-size: 13px; color: #DC2626; }
 

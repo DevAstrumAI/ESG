@@ -187,6 +187,11 @@ export default function StationaryForm({ onSubmitSuccess }) {
                   ))}
                 </select>
               </td>
+              <td>
+                <button className="sf-add-btn-inline" onClick={handleAddRow}>
+                  + Add
+                </button>
+              </td>
               <td></td>
             </tr>
           </tbody>
@@ -194,9 +199,6 @@ export default function StationaryForm({ onSubmitSuccess }) {
       </div>
 
       <div className="sf-footer">
-        <button className="sf-add-btn" onClick={handleAddRow}>
-          + Add Row
-        </button>
         <div className="sf-footer-right">
           {submitError && <span className="sf-error">{submitError}</span>}
           <button
@@ -341,22 +343,14 @@ export default function StationaryForm({ onSubmitSuccess }) {
           margin-top: 16px;
         }
 
-        .sf-footer-right {
-          display: flex;
-          align-items: center;
-          gap: 12px;
+        .sf-footer { display: flex; justify-content: flex-end; padding: 16px 0 0 0; margin-top: 16px; }
+        .sf-footer-right { display: flex; align-items: center; gap: 12px; }
+        .sf-add-btn-inline {
+          padding: 7px 14px; background: #1B4D3E; color: white;
+          border: none; border-radius: 7px; font-size: 13px;
+          font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
-
-        .sf-add-btn {
-          background: none;
-          border: none;
-          font-size: 14px;
-          font-weight: 500;
-          color: #2E7D64;
-          cursor: pointer;
-          padding: 8px 0;
-        }
-        .sf-add-btn:hover { text-decoration: underline; }
+        .sf-add-btn-inline:hover { background: #2E7D64; }
 
         .sf-error { font-size: 13px; color: #DC2626; }
 
