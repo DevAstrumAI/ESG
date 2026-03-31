@@ -48,54 +48,53 @@ export default function TotalEmissionsPie() {
     { name: "Scope 2", value: scope2Kg, color: "#F97316" },
   ];
 
-  const formatValue = (value) => {
-    const tonnes = value / 1000;
-    return `${tonnes.toFixed(1)} tCO₂e`;
-  };
+  const formatValue = (value) => `${(value / 1000).toFixed(1)} tCO₂e`;
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
-      <PieChart>
-        <Pie
-          data={data}
-          cx="50%"
-          cy="50%"
-          innerRadius={60}
-          outerRadius={90}
-          paddingAngle={2}
-          dataKey="value"
-          label={false}
-        >
-          {data.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={entry.color} />
-          ))}
-        </Pie>
-        <Tooltip 
-          formatter={formatValue}
-          contentStyle={{ 
-            borderRadius: "8px", 
-            border: "1px solid #E5E7EB",
-            backgroundColor: "white",
-            padding: "8px 12px",
-            fontSize: "12px"
-          }}
-        />
-        <Legend 
-          layout="vertical"
-          align="right"
-          verticalAlign="middle"
-          formatter={(value, entry, index) => {
-            const item = data[index];
-            const percent = ((item.value / totalKg) * 100).toFixed(0);
-            return `${value}: ${percent}% (${formatValue(item.value)})`;
-          }}
-          wrapperStyle={{ 
-            fontSize: "13px", 
-            paddingLeft: "16px",
-            lineHeight: "28px"
-          }}
-        />
-      </PieChart>
-    </ResponsiveContainer>
+    <div style={{ width: "100%", height: "100%", minHeight: "280px" }}>
+      <ResponsiveContainer width="100%" height={280}>
+        <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={50}
+            outerRadius={90}
+            paddingAngle={2}
+            dataKey="value"
+            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+            labelLine={false}
+          >
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip 
+            formatter={formatValue}
+            contentStyle={{ 
+              borderRadius: "8px", 
+              border: "1px solid #E5E7EB",
+              backgroundColor: "white",
+              padding: "8px 12px",
+              fontSize: "12px"
+            }}
+          />
+          <Legend 
+            layout="horizontal"
+            align="center"
+            verticalAlign="bottom"
+            formatter={(value, entry, index) => {
+              const item = data[index];
+              const percent = ((item.value / totalKg) * 100).toFixed(0);
+              return `${value}: ${percent}% (${formatValue(item.value)})`;
+            }}
+            wrapperStyle={{ 
+              fontSize: "12px", 
+              paddingTop: "16px"
+            }}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

@@ -257,7 +257,7 @@ export default function DashboardPage() {
           <div className="pie-chart-wrapper">
             <TotalEmissionsPie />
           </div>
-          {hasData && (
+          {totalKg > 0 && (
             <div className="chart-insight">
               <BiTrendingUp />
               <span>
@@ -271,7 +271,6 @@ export default function DashboardPage() {
           )}
         </Card>
       </div>
-
       {/* Scope Breakdowns */}
       <div className="breakdown-grid">
         <ScopeBreakdown 
@@ -558,11 +557,12 @@ export default function DashboardPage() {
         }
 
         .chart-card {
-          background: white;
-          border-radius: 12px;
-          padding: 20px;
-          border: 1px solid #E5E7EB;
-        }
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #E5E7EB;
+        overflow: visible;
+      }
 
         .chart-card.large { min-height: 400px; }
 
@@ -596,12 +596,14 @@ export default function DashboardPage() {
 
         .chart-wrapper { height: 300px; width: 100%; }
 
-        .pie-chart-wrapper {
-          height: 200px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
+       .pie-chart-wrapper {
+        min-height: 320px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        overflow: visible;
+      }
 
         .chart-insight {
           display: flex;
