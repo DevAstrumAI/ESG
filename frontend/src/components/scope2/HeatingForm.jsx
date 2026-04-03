@@ -6,7 +6,7 @@ import { useAuthStore } from "../../store/authStore";
 
 const HEATING_COOLING_TYPES = [
   { label: "Steam / Hot Water", key: "steam_hot_water" },
-  { label: "UAE Average", key: "uae_average" },
+  { label: "Location Wise Average ", key: "uae_average" },
   { label: "District Cooling", key: "district_cooling" },
 ];
 

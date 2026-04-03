@@ -124,7 +124,6 @@ export const useEmissionStore = create((set, get) => ({
     try {
       const state = get();
 
-      // Get company location from companyStore
       const { useCompanyStore } = require('./companyStore');
       const companyStore = useCompanyStore.getState();
       const primaryLocation =
@@ -194,9 +193,7 @@ export const useEmissionStore = create((set, get) => ({
         loading: false,
       });
 
-      // Auto-refresh dashboard summary after submission
       await get().fetchSummary(token, year);
-
       return { success: true, results: data.results };
     } catch (error) {
       set({ error: error.message, loading: false });
@@ -240,15 +237,6 @@ export const useEmissionStore = create((set, get) => ({
           sourceType:    r.sourceType || 'solar_ppa',
           generationKwh: Number(r.consumption || 0),
         })),
-    
-        heating: state.scope2Heating.map((h) => ({
-          energyType:     h.energyType || 'steam_hot_water',
-          consumptionKwh: Number(h.consumption || 0),
-        })),
-        renewables: state.scope2Renewable.map((r) => ({
-          sourceType:    r.sourceType || 'solar_ppa',
-          generationKwh: Number(r.consumption || 0),
-        })),
       };
 
       const response = await fetch(`${API_URL}/api/emissions/scope2`, {
@@ -283,9 +271,7 @@ export const useEmissionStore = create((set, get) => ({
         loading: false,
       });
 
-      // Auto-refresh dashboard summary after submission
       await get().fetchSummary(token, year);
-
       return { success: true, results: data.results };
     } catch (error) {
       set({ error: error.message, loading: false });
@@ -293,7 +279,7 @@ export const useEmissionStore = create((set, get) => ({
     }
   },
 
-  // ─── Fetch Summary ────────────────────────────────────────────────────────
+  // ─── Fetch Summary - FIXED to include heating in location-based total ────
   fetchSummary: async (token, year) => {
     const resolvedYear = year || get().selectedYear;
     try {
@@ -314,29 +300,43 @@ export const useEmissionStore = create((set, get) => ({
 
       const result = await response.json();
 
+      // Extract values from backend response
+      const electricityLocation = result.scope2?.breakdown?.electricityLocation || 
+                                  result.scope2?.breakdown?.electricity || 0;
+      const electricityMarket = result.scope2?.breakdown?.electricityMarket || 
+                                result.scope2?.breakdown?.electricity || 0;
+      const heatingKg = result.scope2?.breakdown?.heating || 0;
+      
+      // IMPORTANT: Location-based total MUST include heating
+      // Market-based total typically does NOT include heating (unless certificates exist)
+      const locationBasedTotal = electricityLocation + heatingKg;
+      const marketBasedTotal = electricityMarket; // Heating only added if renewable certificates exist
+
       set({
         scope1Results: {
-          mobile:       { kgCO2e: result.scope1?.breakdown?.mobile       || 0 },
-          stationary:   { kgCO2e: result.scope1?.breakdown?.stationary   || 0 },
+          mobile:       { kgCO2e: result.scope1?.breakdown?.mobile || 0 },
+          stationary:   { kgCO2e: result.scope1?.breakdown?.stationary || 0 },
           refrigerants: { kgCO2e: result.scope1?.breakdown?.refrigerants || 0 },
-          fugitive:     { kgCO2e: result.scope1?.breakdown?.fugitive     || 0 },
-          total:        { kgCO2e: result.scope1?.totalKgCO2e             || 0 },
+          fugitive:     { kgCO2e: result.scope1?.breakdown?.fugitive || 0 },
+          total:        { kgCO2e: result.scope1?.totalKgCO2e || 0 },
         },
         scope2Results: {
           electricity: { 
-            locationBasedKgCO2e: result.scope2?.breakdown?.electricityLocation || result.scope2?.breakdown?.electricity || 0,
-            marketBasedKgCO2e: result.scope2?.breakdown?.electricityMarket || result.scope2?.breakdown?.electricity || 0,
+            locationBasedKgCO2e: electricityLocation,
+            marketBasedKgCO2e: electricityMarket,
           },
-          heating: { kgCO2e: result.scope2?.breakdown?.heating || 0 },
+          heating: { kgCO2e: heatingKg },
           renewables: { kgCO2e: result.scope2?.breakdown?.renewables || 0 },
-          locationBasedKgCO2e: result.scope2?.locationBasedKgCO2e || 0,
-          marketBasedKgCO2e: result.scope2?.marketBasedKgCO2e || 0,
+          // These are the corrected totals
+          locationBasedKgCO2e: locationBasedTotal,
+          marketBasedKgCO2e: marketBasedTotal,
         },
         selectedYear: resolvedYear,
       });
 
       return { success: true };
     } catch (error) {
+      console.error("Fetch summary error:", error);
       return { success: false, error: error.message };
     }
   },

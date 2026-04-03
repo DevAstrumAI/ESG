@@ -37,7 +37,7 @@ export default function UserGuide() {
         <div className="header-content">
           <BiLeaf className="header-leaf" />
           <h1>User Guide</h1>
-          <p>Everything you need to know about using Lumyna</p>
+          <p>Everything you need to know about using Lumyina</p>
         </div>
       </div>
 

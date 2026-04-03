@@ -1,494 +1,666 @@
 // src/pages/ReportsPage.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import ReportsOverview from "../components/reports/ReportsOverview";
-import { FiFileText, FiDownload, FiCalendar, FiFilter, FiBarChart2, FiMapPin } from "react-icons/fi";
+import ReportCharts from "../components/reports/ReportCharts";
+import TargetTracker from "../components/reports/TargetTracker";
+import { 
+  FiFileText, FiDownload, FiCalendar, FiFilter, FiBarChart2, 
+  FiMapPin, FiZap, FiTarget, FiClock, FiAlertCircle
+} from "react-icons/fi";
 import { BiLeaf } from "react-icons/bi";
 import Card from "../components/ui/Card";
 import { useCompanyStore } from "../store/companyStore";
 import { useAuthStore } from "../store/authStore";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
+  ResponsiveContainer, Cell
+} from 'recharts';
+import { reportService } from "../services/reportService";
 
 export default function ReportsPage() {
-  const [selectedPeriod, setSelectedPeriod] = useState("monthly");
+  const [selectedPeriod, setSelectedPeriod] = useState("yearly");
   const [selectedYear, setSelectedYear] = useState("2026");
   const [selectedCity, setSelectedCity] = useState("all");
   const [cities, setCities] = useState(["all"]);
-  
+  const [generatingAI, setGeneratingAI] = useState(false);
+  const [aiReport, setAiReport] = useState(null);
+  const [showAiReport, setShowAiReport] = useState(false);
+  const [reportError, setReportError] = useState(null);
+
+  const reportRef = useRef(null);
   const { company, fetchCompany } = useCompanyStore();
   const token = useAuthStore((s) => s.token);
+  const navigate = useNavigate();
 
-  // Fetch company data on mount
+  const [selectedMonth, setSelectedMonth] = useState("01"); // Default January
+  const [selectedQuarter, setSelectedQuarter] = useState("Q1");
+
   useEffect(() => {
-    if (token && !company) {
-      fetchCompany(token);
-    }
+    if (token && !company) fetchCompany(token);
   }, [token, company, fetchCompany]);
 
-  // Extract unique cities from company locations
   useEffect(() => {
-    if (company?.locations && company.locations.length > 0) {
+    if (company?.locations?.length > 0) {
       const uniqueCities = ["all", ...new Set(company.locations.map(loc => loc.city))];
       setCities(uniqueCities);
     }
   }, [company]);
 
+  const handleGenerateAIReport = async () => {
+    setGeneratingAI(true);
+    setReportError(null);
+    try {
+      let month = null;
+      
+      if (selectedPeriod === "monthly") {
+        if (!selectedMonth) {
+          setReportError("Please select a month");
+          setGeneratingAI(false);
+          return;
+        }
+        month = `${selectedYear}-${selectedMonth}`;
+      } 
+      else if (selectedPeriod === "quarterly") {
+        // Convert quarter to month (send first month of quarter)
+        const quarterMap = { "Q1": "01", "Q2": "04", "Q3": "07", "Q4": "10" };
+        month = `${selectedYear}-${quarterMap[selectedQuarter]}`;
+      }
+      
+      const baseYear = parseInt(selectedYear) - 1;
+      const result = await reportService.generateAIReport(
+        parseInt(selectedYear), 
+        month, 
+        baseYear
+      );
+      setAiReport(result);
+      setShowAiReport(true);
+    } catch (error) {
+      setReportError(error.message);
+      setTimeout(() => setReportError(null), 5000);
+    } finally {
+      setGeneratingAI(false);
+    }
+  };
+
+  const downloadPDF = async () => {
+    if (!aiReport || !reportRef.current) return;
+    const html2canvas = (await import("html2canvas")).default;
+    const { jsPDF } = await import("jspdf");
+    const element = reportRef.current;
+
+    const scrollable = element.querySelector(".ai-report-content");
+    const originalMaxHeight = scrollable?.style.maxHeight;
+    const originalOverflow = scrollable?.style.overflowY;
+    if (scrollable) {
+      scrollable.style.maxHeight = "none";
+      scrollable.style.overflowY = "visible";
+    }
+
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        foreignObjectRendering: false,
+        onclone: (clonedDoc) => {
+          clonedDoc.querySelectorAll("svg").forEach((svg) => {
+            svg.style.overflow = "visible";
+          });
+        },
+      });
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const imgWidth = pageWidth - margin * 2;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let yOffset = 0;
+      let remainingHeight = imgHeight;
+      while (remainingHeight > 0) {
+        const sliceHeight = Math.min(remainingHeight, pageHeight - margin * 2);
+        const srcY = (yOffset / imgHeight) * canvas.height;
+        const srcH = (sliceHeight / imgHeight) * canvas.height;
+        const sliceCanvas = document.createElement("canvas");
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = srcH;
+        sliceCanvas.getContext("2d").drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+        pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", margin, margin, imgWidth, sliceHeight);
+        remainingHeight -= sliceHeight;
+        yOffset += sliceHeight;
+        if (remainingHeight > 0) pdf.addPage();
+      }
+      pdf.save(`esg_report_${selectedYear}.pdf`);
+    } finally {
+      if (scrollable) {
+        scrollable.style.maxHeight = originalMaxHeight;
+        scrollable.style.overflowY = originalOverflow;
+      }
+    }
+  };
+
   return (
     <div className="reports-page">
-      {/* Header Section */}
+
+      {/* ── Header ── */}
       <div className="reports-header">
         <div className="header-left">
-          <div className="header-icon">
-            <FiFileText />
-          </div>
+          <div className="header-icon"><FiFileText /></div>
           <div>
             <h1>Emissions Reports</h1>
-            <p>Generate and download comprehensive emission reports</p>
+            <p>Generate AI-powered ESG reports with insights and recommendations</p>
           </div>
         </div>
-        
         <div className="header-actions">
-          <button className="export-all-btn">
-            <FiDownload /> Export All Data
+          <button onClick={handleGenerateAIReport} disabled={generatingAI} className="ai-report-btn">
+            {generatingAI ? <><FiZap className="spin" /> Generating...</> : <><FiZap /> Generate AI Report</>}
           </button>
+          <button
+            onClick={() => navigate("/reports/formal")}
+            className="px-4 py-2 bg-gray-800 text-white text-sm rounded hover:bg-gray-900 flex items-center gap-2"
+          >
+            <span>📄</span> Formal Report
+          </button>
+          {showAiReport && aiReport && (
+            <button onClick={downloadPDF} className="download-pdf-btn">
+              <FiDownload /> Download PDF
+            </button>
+          )}
+          <button className="export-all-btn"><FiDownload /> Export All Data</button>
         </div>
       </div>
 
-      {/* Filters Bar */}
+      {/* ── Error ── */}
+      {reportError && (
+        <div className="error-message"><FiAlertCircle /> {reportError}</div>
+      )}
+
+      {/* ── AI Report Card ── */}
+      {showAiReport && aiReport && (
+        <Card ref={reportRef} className="ai-report-card">
+          <div className="ai-report-header">
+            <div className="ai-report-title">
+              <FiZap className="ai-icon" />
+              <h3>AI-Powered ESG Report</h3>
+            </div>
+            <button className="close-btn" onClick={() => setShowAiReport(false)}>×</button>
+          </div>
+
+          <div className="ai-report-content">
+            <div className="report-metadata">
+              <span>🏢 {aiReport.meta?.company_name || "Company"}</span>
+              <span>📊 {aiReport.meta?.duration_label || aiReport.meta?.year}</span>
+              <span>🎯 Baseline: {aiReport.targets?.base_year || "N/A"}</span>
+              <span>📅 {aiReport.meta?.generated_at ? new Date(aiReport.meta.generated_at).toLocaleString() : new Date().toLocaleString()}</span>
+            </div>
+
+            <div className="total-emissions-banner">
+              <div className="total-value">{aiReport.breakdown?.combined_total_t?.toFixed(2) || 0}</div>
+              <div className="total-label">tonnes CO₂e</div>
+              <div className="total-sub">Total Emissions (Scope 1 + Scope 2)</div>
+            </div>
+
+            {aiReport.executive_summary && (
+              <div className="report-section highlight">
+                <h4>📋 Executive Summary</h4>
+                <p>{aiReport.executive_summary}</p>
+              </div>
+            )}
+
+            <div className="dual-summary">
+              <div className="scope-card">
+                <h4>Scope 1 — Direct Emissions</h4>
+                <div className="scope-value">{aiReport.breakdown?.scope1?.total_t?.toFixed(2) || 0} tCO₂e</div>
+                <div className="scope-percent">
+                  {((aiReport.breakdown?.scope1?.total_kg || 0) / (aiReport.breakdown?.combined_total_kg || 1) * 100).toFixed(0)}% of total
+                </div>
+              </div>
+              <div className="scope-card">
+                <h4>Scope 2 — Indirect Emissions</h4>
+                <div className="scope-value">{aiReport.breakdown?.scope2?.total_location_t?.toFixed(2) || 0} tCO₂e</div>
+                <div className="scope-percent">
+                  {((aiReport.breakdown?.scope2?.total_location_kg || 0) / (aiReport.breakdown?.combined_total_kg || 1) * 100).toFixed(0)}% of total
+                </div>
+              </div>
+            </div>
+
+            {/* Carbon Score */}
+            {aiReport.carbon_score && (
+              <div className="carbon-score-card">
+                <div className="score-header">
+                  <h4>🌱 Carbon Performance Score</h4>
+                  <span className={`score-badge ${aiReport.carbon_score.zone?.toLowerCase().replace(' ', '-')}`}>
+                    {aiReport.carbon_score.zone}
+                  </span>
+                </div>
+                <div className="score-ring">
+                  <svg width="120" height="120" viewBox="0 0 120 120">
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="#E5E7EB" strokeWidth="8" />
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="50"
+                      fill="none"
+                      stroke={aiReport.carbon_score.zone_color || "#22c55e"}
+                      strokeWidth="8"
+                      strokeDasharray={`${2 * Math.PI * 50 * (aiReport.carbon_score.score / 100)} ${2 * Math.PI * 50}`}
+                      strokeDashoffset="0"
+                      strokeLinecap="round"
+                      transform="rotate(-90 60 60)"
+                      style={{ transition: 'stroke-dasharray 0.5s' }}
+                    />
+                    <text x="60" y="60" textAnchor="middle" dominantBaseline="middle" fontSize="20" fontWeight="700" fill="#1B4D3E">
+                      {aiReport.carbon_score.score}
+                    </text>
+                  </svg>
+                  <div className="score-legend">
+                    {aiReport.carbon_score.gauge_zones?.map((zone, i) => (
+                      <div key={i} className="legend-dot" style={{ backgroundColor: zone.color }} />
+                    ))}
+                  </div>
+                </div>
+                {aiReport.carbon_score_narrative && (
+                  <p className="score-narrative">{aiReport.carbon_score_narrative}</p>
+                )}
+              </div>
+            )}
+
+            {/* Financial Impact */}
+            {aiReport.financial && (
+              <div className="financial-dashboard">
+                <h4>💰 Financial Impact Dashboard</h4>
+                <div className="financial-grid">
+                  <div className="financial-card">
+                    <div className="label">Carbon Cost Exposure (mid)</div>
+                    <div className="value">${aiReport.financial.carbon_cost_exposure?.mid_usd?.toLocaleString()}</div>
+                    <div className="sub">per year at regional carbon price</div>
+                  </div>
+                  <div className="financial-card">
+                    <div className="label">Electricity Cost</div>
+                    <div className="value">${aiReport.financial.electricity_cost?.annual_cost_usd?.toLocaleString()}</div>
+                    <div className="sub">estimated annual</div>
+                  </div>
+                  <div className="financial-card highlight">
+                    <div className="label">Potential Annual Savings</div>
+                    <div className="value">${aiReport.financial.total_potential_annual_savings_usd?.toLocaleString()}</div>
+                    <div className="sub">from recommended actions</div>
+                  </div>
+                  <div className="financial-card">
+                    <div className="label">Total Estimated Capex</div>
+                    <div className="value">${aiReport.financial.total_estimated_capex_usd?.toLocaleString()}</div>
+                    <div className="sub">portfolio payback {aiReport.financial.portfolio_payback_years || '—'} years</div>
+                  </div>
+                </div>
+                {aiReport.financial_summary && (
+                  <p className="financial-narrative">{aiReport.financial_summary}</p>
+                )}
+              </div>
+            )}
+
+            {/* Savings vs. Capex Bar Chart */}
+            {aiReport.charts?.savings_bar && aiReport.charts.savings_bar.length > 0 && (
+              <div className="chart-container savings-chart">
+                <h4>📊 Annual Savings vs. Upfront Investment</h4>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={aiReport.charts.savings_bar} layout="vertical" margin={{ left: 20, right: 30 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" tickFormatter={(v) => `$${v.toLocaleString()}`} />
+                    <YAxis type="category" dataKey="title" width={150} tick={{ fontSize: 12 }} />
+                    <ReTooltip formatter={(value) => `$${value.toLocaleString()}`} />
+                    <Bar dataKey="saving_usd" name="Annual Saving" fill="#10B981" barSize={20} />
+                    <Bar dataKey="capex_usd" name="Upfront Capex" fill="#F59E0B" barSize={20} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="chart-note">* Payback = Capex ÷ Annual Saving (years)</div>
+              </div>
+            )}
+
+            {aiReport.breakdown?.scope1?.categories && (
+              <div className="report-section">
+                <h4>🏭 Scope 1: Direct Emissions</h4>
+                {aiReport.scope1_summary && <p className="section-summary">{aiReport.scope1_summary}</p>}
+                <div className="breakdown-list">
+                  {Object.entries(aiReport.breakdown.scope1.categories).map(([name, data]) => (
+                    <div key={name} className="breakdown-item">
+                      <span className="breakdown-name">{name}</span>
+                      <span className="breakdown-value">{data.t?.toFixed(2) || 0} tCO₂e</span>
+                      <span className="breakdown-percent">
+                        {((data.kg || 0) / (aiReport.breakdown.scope1.total_kg || 1) * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {aiReport.breakdown?.scope2?.categories && (
+              <div className="report-section">
+                <h4>⚡ Scope 2: Indirect Emissions</h4>
+                {aiReport.scope2_summary && <p className="section-summary">{aiReport.scope2_summary}</p>}
+                <div className="breakdown-list">
+                  {Object.entries(aiReport.breakdown.scope2.categories).map(([name, data]) => (
+                    <div key={name} className="breakdown-item">
+                      <span className="breakdown-name">{name}</span>
+                      <span className="breakdown-value">{data.t?.toFixed(2) || 0} tCO₂e</span>
+                      <span className="breakdown-percent">
+                        {((data.kg || 0) / (aiReport.breakdown.scope2.total_location_kg || 1) * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {aiReport.charts && <ReportCharts charts={aiReport.charts} />}
+
+            {aiReport.recommendations?.length > 0 && (
+              <div className="report-section">
+                <h4>💡 AI-Generated Recommendations</h4>
+                <p className="section-subtitle">Prioritized by estimated emission reduction impact</p>
+                {aiReport.recommendations.map((rec, idx) => (
+                  <div key={idx} className="recommendation-card">
+                    <div className="rec-header">
+                      <span className="rec-number">{idx + 1}</span>
+                      <span className="rec-title">{rec.title}</span>
+                      <span className={`rec-effort rec-effort-${rec.effort?.toLowerCase()}`}>
+                        {rec.effort || "Medium"} Effort
+                      </span>
+                    </div>
+                    <p className="rec-description">{rec.description}</p>
+                    <div className="rec-footer">
+                      <span className="rec-reduction">📉 Estimated Reduction: {rec.estimated_reduction_tco2e} tCO₂e</span>
+                      <span className="rec-category">📌 {rec.category || "General"}</span>
+                    </div>
+                    {rec.justification && (
+                      <div className="rec-justification"><small>💭 {rec.justification}</small></div>
+                    )}
+                    {rec.financial && (
+                      <div className="rec-financial">
+                        <span>💰 Annual saving: ${rec.financial.annual_saving_usd?.toLocaleString()}</span>
+                        <span>🏦 Capex: ${rec.financial.estimated_capex_usd?.toLocaleString()}</span>
+                        <span>⏱️ Payback: {rec.financial.payback_years || '—'} years</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {aiReport.targets && aiReport.milestones && (
+              <TargetTracker
+                targets={aiReport.targets}
+                milestones={aiReport.milestones}
+                currentTotalT={aiReport.breakdown?.combined_total_t}
+              />
+            )}
+
+            {aiReport.quarterly_steps?.length > 0 && (
+              <div className="report-section">
+                <h4>📅 Quarterly Action Plan</h4>
+                <p className="section-subtitle">Required reduction milestones to reach 2030 target</p>
+                <div className="quarterly-grid">
+                  {aiReport.quarterly_steps.slice(0, 8).map((step, idx) => (
+                    <div key={idx} className="quarterly-item">
+                      <div className="quarter-period">{step.period}</div>
+                      <div className="quarter-target">Target: <strong>{step.target_kg?.toFixed(2) || 0} tCO₂e</strong></div>
+                      <div className="quarter-reduction">↓ {step.reduction_from_prev_kg?.toFixed(2) || 0} tCO₂e</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="ai-report-footer">
+            <div className="report-meta">
+              <span>✅ Based on actual emissions data</span>
+              <span>🤖 AI-generated insights</span>
+              <span>📊 GHG Protocol compliant</span>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Filters Bar ── */}
       <Card className="filters-card">
         <div className="filters-grid">
           <div className="filter-group">
-            <label>
-              <FiMapPin className="filter-icon" />
-              City
-            </label>
-            <select 
-              value={selectedCity} 
-              onChange={(e) => setSelectedCity(e.target.value)}
-              className="filter-select"
-            >
-              {cities.map(city => (
-                <option key={city} value={city}>
-                  {city === 'all' ? 'All Cities' : city}
-                </option>
-              ))}
+            <label><FiMapPin className="filter-icon" /> City</label>
+            <select value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} className="filter-select">
+              {cities.map(city => <option key={city} value={city}>{city === "all" ? "All Cities" : city}</option>)}
             </select>
           </div>
-
           <div className="filter-group">
-            <label>
-              <FiCalendar className="filter-icon" />
-              Report Period
-            </label>
-            <select 
-              value={selectedPeriod} 
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="filter-select"
-            >
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
+            <label><FiCalendar className="filter-icon" /> Report Period</label>
+            <select value={selectedPeriod} onChange={(e) => setSelectedPeriod(e.target.value)} className="filter-select">
               <option value="yearly">Yearly</option>
-              <option value="custom">Custom Range</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="monthly">Monthly</option>
             </select>
           </div>
+          
+          {/* ✅ MONTH SELECTOR - Now properly inside the filters bar */}
+          {selectedPeriod === "monthly" && (
+            <div className="filter-group">
+              <label><FiCalendar className="filter-icon" /> Month</label>
+              <select 
+                value={selectedMonth} 
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="filter-select"
+              >
+                <option value="01">January</option>
+                <option value="02">February</option>
+                <option value="03">March</option>
+                <option value="04">April</option>
+                <option value="05">May</option>
+                <option value="06">June</option>
+                <option value="07">July</option>
+                <option value="08">August</option>
+                <option value="09">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+            </div>
+          )}
+
+          {/* ✅ QUARTER SELECTOR - Now properly inside the filters bar */}
+          {selectedPeriod === "quarterly" && (
+            <div className="filter-group">
+              <label><FiCalendar className="filter-icon" /> Quarter</label>
+              <select 
+                value={selectedQuarter} 
+                onChange={(e) => setSelectedQuarter(e.target.value)}
+                className="filter-select"
+              >
+                <option value="Q1">Q1 (Jan-Mar)</option>
+                <option value="Q2">Q2 (Apr-Jun)</option>
+                <option value="Q3">Q3 (Jul-Sep)</option>
+                <option value="Q4">Q4 (Oct-Dec)</option>
+              </select>
+            </div>
+          )}
 
           <div className="filter-group">
-            <label>
-              <FiBarChart2 className="filter-icon" />
-              Year
-            </label>
-            <select 
-              value={selectedYear} 
-              onChange={(e) => setSelectedYear(e.target.value)}
-              className="filter-select"
-            >
+            <label><FiBarChart2 className="filter-icon" /> Year</label>
+            <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="filter-select">
               <option value="2026">2026</option>
               <option value="2025">2025</option>
               <option value="2024">2024</option>
               <option value="2023">2023</option>
             </select>
           </div>
-
-          <button className="filter-btn">
+          <button className="filter-btn" onClick={() => setShowAiReport(false)}>
             <FiFilter /> Apply Filters
           </button>
         </div>
-
         <div className="quick-stats">
           <div className="quick-stat">
             <BiLeaf className="stat-icon" />
-            <div>
-              <span className="stat-label">Total Reports</span>
-              <span className="stat-value">12</span>
-            </div>
+            <div><span className="stat-label">Reports Available</span><span className="stat-value">12</span></div>
           </div>
           <div className="stat-divider"></div>
           <div className="quick-stat">
-            <FiFileText className="stat-icon" />
-            <div>
-              <span className="stat-label">Generated</span>
-              <span className="stat-value">8</span>
-            </div>
+            <FiTarget className="stat-icon" />
+            <div><span className="stat-label">SBTi Target</span><span className="stat-value">42% by 2030</span></div>
           </div>
           <div className="stat-divider"></div>
           <div className="quick-stat">
-            <FiDownload className="stat-icon" />
-            <div>
-              <span className="stat-label">Downloads</span>
-              <span className="stat-value">24</span>
-            </div>
+            <FiClock className="stat-icon" />
+            <div><span className="stat-label">AI Reports</span><span className="stat-value">AI-Powered</span></div>
           </div>
         </div>
       </Card>
 
-      {/* Reports Overview - Pass company data */}
-      <ReportsOverview 
-        selectedCity={selectedCity} 
-        company={company}
-      />
+      {/* ── Reports Overview ── */}
+      <ReportsOverview selectedCity={selectedCity} company={company} />
 
-      {/* Report Templates Section */}
+      {/* ── Report Templates ── */}
       <Card className="templates-card">
         <h3>Report Templates</h3>
         <p className="templates-subtitle">Quickly generate standardized reports</p>
-        
         <div className="templates-grid">
           <div className="template-item">
             <div className="template-icon">📊</div>
-            <div className="template-content">
-              <h4>ESG Summary Report</h4>
-              <p>High-level overview for stakeholders</p>
-            </div>
-            <button className="generate-btn">Generate</button>
+            <div className="template-content"><h4>ESG Summary Report</h4><p>High-level overview for stakeholders</p></div>
+            <button className="generate-btn" onClick={handleGenerateAIReport}>Generate</button>
           </div>
-
           <div className="template-item">
             <div className="template-icon">📈</div>
-            <div className="template-content">
-              <h4>Detailed Emissions Report</h4>
-              <p>Scope-by-scope breakdown with trends</p>
-            </div>
-            <button className="generate-btn">Generate</button>
+            <div className="template-content"><h4>Detailed Emissions Report</h4><p>Scope-by-scope breakdown with trends</p></div>
+            <button className="generate-btn" onClick={handleGenerateAIReport}>Generate</button>
           </div>
-
           <div className="template-item">
             <div className="template-icon">🌍</div>
-            <div className="template-content">
-              <h4>Regulatory Compliance Report</h4>
-              <p>Ready for submission to authorities</p>
-            </div>
-            <button className="generate-btn">Generate</button>
+            <div className="template-content"><h4>Regulatory Compliance Report</h4><p>Ready for submission to authorities</p></div>
+            <button className="generate-btn" onClick={handleGenerateAIReport}>Generate</button>
           </div>
         </div>
       </Card>
 
       <style jsx>{`
-        .reports-page {
-          padding: 24px;
-          max-width: 1400px;
-          margin: 0 auto;
-        }
-
-        .reports-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 24px;
-          flex-wrap: wrap;
-          gap: 16px;
-        }
-
-        .header-left {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-        }
-
-        .header-icon {
-          width: 48px;
-          height: 48px;
-          background: #F8FAF8;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 24px;
-          color: #2E7D64;
-          border: 1px solid #E5E7EB;
-        }
-
-        .header-left h1 {
-          font-size: 28px;
-          font-weight: 700;
-          color: #1B4D3E;
-          margin: 0 0 4px;
-        }
-
-        .header-left p {
-          color: #4A5568;
-          margin: 0;
-        }
-
-        .export-all-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 24px;
-          background: #2E7D64;
-          color: white;
-          border: none;
-          border-radius: 30px;
-          font-weight: 600;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .export-all-btn:hover {
-          background: #1B4D3E;
-          transform: translateY(-1px);
-        }
-
-        .filters-card {
-          background: white;
-          border-radius: 12px;
-          padding: 24px;
-          margin-bottom: 24px;
-          border: 1px solid #E5E7EB;
-        }
-
-        .filters-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr 1fr auto;
-          gap: 16px;
-          margin-bottom: 20px;
-        }
-
-        .filter-group {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .filter-group label {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 12px;
-          font-weight: 600;
-          color: #4A5568;
-          text-transform: uppercase;
-          letter-spacing: 0.3px;
-        }
-
-        .filter-icon {
-          color: #2E7D64;
-        }
-
-        .filter-select {
-          padding: 12px 16px;
-          border: 1px solid #E5E7EB;
-          border-radius: 8px;
-          font-size: 14px;
-          color: #1F2937;
-          background: white;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .filter-select:hover, .filter-select:focus {
-          border-color: #2E7D64;
-          outline: none;
-        }
-
-        .filter-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 24px;
-          background: #F8FAF8;
-          border: 1px solid #E5E7EB;
-          border-radius: 8px;
-          color: #374151;
-          font-weight: 600;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          align-self: flex-end;
-        }
-
-        .filter-btn:hover {
-          background: #E5E7EB;
-          border-color: #2E7D64;
-        }
-
-        .quick-stats {
-          display: flex;
-          align-items: center;
-          justify-content: space-around;
-          padding-top: 20px;
-          border-top: 1px solid #E5E7EB;
-        }
-
-        .quick-stat {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .stat-icon {
-          font-size: 24px;
-          color: #2E7D64;
-        }
-
-        .stat-label {
-          display: block;
-          font-size: 12px;
-          color: #6B7280;
-          margin-bottom: 2px;
-        }
-
-        .stat-value {
-          display: block;
-          font-size: 20px;
-          font-weight: 700;
-          color: #1B4D3E;
-        }
-
-        .stat-divider {
-          width: 1px;
-          height: 40px;
-          background: #E5E7EB;
-        }
-
-        .templates-card {
-          background: white;
-          border-radius: 12px;
-          padding: 24px;
-          margin-top: 24px;
-          border: 1px solid #E5E7EB;
-        }
-
-        .templates-card h3 {
-          font-size: 18px;
-          font-weight: 600;
-          color: #1B4D3E;
-          margin: 0 0 4px;
-        }
-
-        .templates-subtitle {
-          color: #6B7280;
-          font-size: 14px;
-          margin: 0 0 20px;
-        }
-
-        .templates-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 16px;
-        }
-
-        .template-item {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          padding: 16px;
-          background: #F9FAFB;
-          border-radius: 12px;
-          border: 1px solid #E5E7EB;
-          transition: all 0.2s ease;
-        }
-
-        .template-item:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-          border-color: #2E7D64;
-        }
-
-        .template-icon {
-          font-size: 32px;
-        }
-
-        .template-content {
-          flex: 1;
-        }
-
-        .template-content h4 {
-          font-size: 15px;
-          font-weight: 600;
-          color: #1B4D3E;
-          margin: 0 0 4px;
-        }
-
-        .template-content p {
-          font-size: 12px;
-          color: #6B7280;
-          margin: 0;
-        }
-
-        .generate-btn {
-          padding: 8px 16px;
-          background: white;
-          border: 1px solid #2E7D64;
-          border-radius: 30px;
-          color: #2E7D64;
-          font-weight: 600;
-          font-size: 12px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          white-space: nowrap;
-        }
-
-        .generate-btn:hover {
-          background: #2E7D64;
-          color: white;
-        }
-
-        @media (max-width: 1024px) {
-          .templates-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-        }
-
+        .reports-page { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        .reports-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-icon { width: 48px; height: 48px; background: #F8FAF8; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #2E7D64; border: 1px solid #E5E7EB; }
+        .header-left h1 { font-size: 28px; font-weight: 700; color: #1B4D3E; margin: 0 0 4px; }
+        .header-left p { color: #4A5568; margin: 0; }
+        .header-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .ai-report-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: linear-gradient(135deg, #8B5CF6, #6D28D9); color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
+        .download-pdf-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #2E7D64; color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
+        .export-all-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #2E7D64; color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
+        .export-all-btn:hover, .download-pdf-btn:hover { background: #1B4D3E; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
+        .error-message { background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+        .ai-report-card { margin-bottom: 24px; padding: 24px; border: 1px solid #E5E7EB; border-radius: 12px; background: white; }
+        .ai-report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #8B5CF6; }
+        .ai-report-title { display: flex; align-items: center; gap: 8px; }
+        .ai-icon { font-size: 20px; color: #8B5CF6; }
+        .ai-report-title h3 { margin: 0; font-size: 18px; font-weight: 600; color: #6D28D9; }
+        .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #9CA3AF; padding: 0 8px; }
+        .ai-report-content { max-height: 600px; overflow-y: auto; margin-bottom: 20px; }
+        .report-metadata { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px; background: #F8FAF8; border-radius: 8px; margin-bottom: 20px; font-size: 12px; color: #6B7280; }
+        .total-emissions-banner { text-align: center; padding: 24px; background: linear-gradient(135deg, #1B4D3E, #2E7D64); border-radius: 12px; margin-bottom: 24px; color: white; }
+        .total-value { font-size: 48px; font-weight: 700; }
+        .total-label { font-size: 14px; opacity: 0.9; }
+        .total-sub { font-size: 12px; opacity: 0.7; }
+        .dual-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .scope-card { background: #F8FAF8; border-radius: 12px; padding: 16px; text-align: center; border: 1px solid #E5E7EB; }
+        .scope-card h4 { margin: 0 0 8px; font-size: 14px; color: #6B7280; }
+        .scope-value { font-size: 24px; font-weight: 700; color: #1B4D3E; }
+        .scope-percent { font-size: 12px; color: #2E7D64; margin-top: 4px; }
+        .report-section { margin-bottom: 24px; }
+        .report-section.highlight { background: #F0FDF4; padding: 16px; border-radius: 12px; border-left: 4px solid #10B981; }
+        .report-section h4 { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 12px; }
+        .section-summary, .section-subtitle { color: #4B5563; font-size: 14px; margin-bottom: 12px; }
+        .breakdown-list { background: white; border-radius: 8px; border: 1px solid #E5E7EB; overflow: hidden; }
+        .breakdown-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #F3F4F6; }
+        .breakdown-item:last-child { border-bottom: none; }
+        .breakdown-name { font-weight: 500; color: #374151; }
+        .breakdown-value { font-weight: 600; color: #1B4D3E; }
+        .breakdown-percent { font-size: 12px; color: #6B7280; background: #F3F4F6; padding: 2px 8px; border-radius: 20px; }
+        .recommendation-card { background: white; border-radius: 8px; padding: 16px; margin-bottom: 12px; border: 1px solid #E5E7EB; }
+        .rec-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+        .rec-number { width: 24px; height: 24px; background: #8B5CF6; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+        .rec-title { font-weight: 600; color: #1B4D3E; flex: 1; }
+        .rec-effort { font-size: 11px; padding: 2px 10px; border-radius: 20px; }
+        .rec-effort-low { background: #D1FAE5; color: #065F46; }
+        .rec-effort-medium { background: #FEF3C7; color: #92400E; }
+        .rec-effort-high { background: #FEE2E2; color: #991B1B; }
+        .rec-description { font-size: 13px; color: #4A5568; margin-bottom: 12px; line-height: 1.5; }
+        .rec-footer { display: flex; gap: 16px; font-size: 12px; color: #6B7280; margin-bottom: 8px; }
+        .rec-justification { padding-top: 8px; border-top: 1px solid #F3F4F6; color: #6B7280; }
+        .quarterly-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 12px; }
+        .quarterly-item { background: white; border-radius: 8px; padding: 12px; border: 1px solid #E5E7EB; text-align: center; }
+        .quarter-period { font-weight: 600; color: #2E7D64; margin-bottom: 6px; }
+        .quarter-target { font-size: 13px; color: #1B4D3E; }
+        .quarter-reduction { font-size: 11px; color: #10B981; margin-top: 4px; }
+        .ai-report-footer { padding-top: 16px; border-top: 1px solid #E5E7EB; }
+        .report-meta { display: flex; justify-content: center; gap: 24px; font-size: 12px; color: #6B7280; flex-wrap: wrap; }
+        .filters-card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 24px; border: 1px solid #E5E7EB; }
+        .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
+        .filter-group { display: flex; flex-direction: column; gap: 8px; }
+        .filter-group label { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #4A5568; text-transform: uppercase; }
+        .filter-icon { color: #2E7D64; }
+        .filter-select { padding: 12px 16px; border: 1px solid #E5E7EB; border-radius: 8px; font-size: 14px; background: white; cursor: pointer; }
+        .filter-select:focus { border-color: #2E7D64; outline: none; }
+        .filter-btn { display: flex; align-items: center; gap: 8px; padding: 12px 24px; background: #F8FAF8; border: 1px solid #E5E7EB; border-radius: 8px; color: #374151; font-weight: 600; cursor: pointer; align-self: flex-end; }
+        .filter-btn:hover { background: #E5E7EB; border-color: #2E7D64; }
+        .quick-stats { display: flex; align-items: center; justify-content: space-around; padding-top: 20px; border-top: 1px solid #E5E7EB; }
+        .quick-stat { display: flex; align-items: center; gap: 12px; }
+        .stat-icon { font-size: 24px; color: #2E7D64; }
+        .stat-label { display: block; font-size: 12px; color: #6B7280; margin-bottom: 2px; }
+        .stat-value { display: block; font-size: 20px; font-weight: 700; color: #1B4D3E; }
+        .stat-divider { width: 1px; height: 40px; background: #E5E7EB; }
+        .templates-card { background: white; border-radius: 12px; padding: 24px; margin-top: 24px; border: 1px solid #E5E7EB; }
+        .templates-card h3 { font-size: 18px; font-weight: 600; color: #1B4D3E; margin: 0 0 4px; }
+        .templates-subtitle { color: #6B7280; font-size: 14px; margin: 0 0 20px; }
+        .templates-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .template-item { display: flex; align-items: center; gap: 16px; padding: 16px; background: #F9FAFB; border-radius: 12px; border: 1px solid #E5E7EB; transition: all 0.2s ease; }
+        .template-item:hover { transform: translateY(-2px); border-color: #2E7D64; }
+        .template-icon { font-size: 32px; }
+        .template-content { flex: 1; }
+        .template-content h4 { font-size: 15px; font-weight: 600; color: #1B4D3E; margin: 0 0 4px; }
+        .template-content p { font-size: 12px; color: #6B7280; margin: 0; }
+        .generate-btn { padding: 8px 16px; background: white; border: 1px solid #2E7D64; border-radius: 30px; color: #2E7D64; font-weight: 600; font-size: 12px; cursor: pointer; }
+        .generate-btn:hover { background: #2E7D64; color: white; }
+        @media (max-width: 1024px) { .templates-grid { grid-template-columns: repeat(2, 1fr); } }
         @media (max-width: 768px) {
-          .reports-page {
-            padding: 16px;
-          }
-
-          .filters-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .filter-btn {
-            align-self: stretch;
-          }
-
-          .quick-stats {
-            flex-direction: column;
-            gap: 16px;
-          }
-
-          .stat-divider {
-            width: 80%;
-            height: 1px;
-          }
-
-          .templates-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .template-item {
-            flex-wrap: wrap;
-          }
-
-          .header-left {
-            flex-direction: column;
-            text-align: center;
-          }
-
-          .reports-header {
-            flex-direction: column;
-            text-align: center;
-          }
+          .reports-page { padding: 16px; }
+          .filters-grid { grid-template-columns: 1fr; }
+          .filter-btn { align-self: stretch; }
+          .quick-stats { flex-direction: column; gap: 16px; }
+          .stat-divider { width: 80%; height: 1px; }
+          .templates-grid { grid-template-columns: 1fr; }
+          .dual-summary { grid-template-columns: 1fr; }
+          .quarterly-grid { grid-template-columns: 1fr; }
         }
+        .carbon-score-card { background: #F9FAFB; border-radius: 12px; padding: 20px; margin-bottom: 24px; border: 1px solid #E5E7EB; }
+        .score-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .score-badge { padding: 4px 12px; border-radius: 30px; font-size: 12px; font-weight: 600; }
+        .score-badge.climate-leader { background: #D1FAE5; color: #065F46; }
+        .score-badge.on-track { background: #FEF3C7; color: #92400E; }
+        .score-badge.needs-attention { background: #FEE2E2; color: #991B1B; }
+        .score-badge.high-risk { background: #FEE2E2; color: #991B1B; }
+        .score-badge.critical { background: #7f1d1d20; color: #7f1d1d; }
+        .score-ring { display: flex; flex-direction: column; align-items: center; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 2px; display: inline-block; margin: 0 4px; }
+        .score-narrative { margin-top: 12px; font-size: 13px; color: #4B5563; line-height: 1.5; }
+        .financial-dashboard { background: #F8FAF8; border-radius: 12px; padding: 20px; margin-bottom: 24px; border: 1px solid #E5E7EB; }
+        .financial-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 16px 0; }
+        .financial-card { background: white; border-radius: 10px; padding: 16px; text-align: center; border: 1px solid #E5E7EB; }
+        .financial-card.highlight { border-left: 3px solid #10B981; background: #F0FDF4; }
+        .financial-card .label { font-size: 12px; color: #6B7280; margin-bottom: 8px; }
+        .financial-card .value { font-size: 24px; font-weight: 700; color: #1B4D3E; }
+        .financial-card .sub { font-size: 11px; color: #9CA3AF; margin-top: 6px; }
+        .financial-narrative { font-size: 13px; color: #4B5563; margin-top: 12px; padding-top: 12px; border-top: 1px solid #E5E7EB; }
+        .savings-chart { margin-bottom: 24px; }
+        .chart-note { margin-top: 12px; padding: 8px 12px; background: #F8FAF8; border-radius: 6px; font-size: 11px; color: #6B7280; text-align: center; }
+        .rec-financial { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; padding-top: 8px; border-top: 1px solid #F3F4F6; font-size: 12px; color: #4B5563; }
       `}</style>
     </div>
   );

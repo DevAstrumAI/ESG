@@ -4,15 +4,35 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { useEmissionStore } from "../../../store/emissionStore";
 import { FiBarChart2 } from "react-icons/fi";
 
-export default function TotalEmissionsPie() {
+export default function TotalEmissionsPie({ data }) {
+  // Always call hooks at the top level (unconditionally)
   const scope1Results = useEmissionStore((s) => s.scope1Results);
   const scope2Results = useEmissionStore((s) => s.scope2Results);
+  
+  // Determine which data to use
+  let chartData = data;
+  
+  // If no data prop provided, use store data as fallback
+  if (!chartData || chartData.length === 0) {
+    const scope1Kg = scope1Results?.total?.kgCO2e || 0;
+    const scope2Kg = scope2Results?.locationBasedKgCO2e || 0;
+    
+    if (scope1Kg === 0 && scope2Kg === 0) {
+      chartData = [];
+    } else {
+      chartData = [
+        { name: "Scope 1", value: scope1Kg / 1000, color: "#3B82F6" },
+        { name: "Scope 2", value: scope2Kg / 1000, color: "#F97316" },
+      ];
+    }
+  }
 
-  const scope1Kg = scope1Results?.total?.kgCO2e || 0;
-  const scope2Kg = scope2Results?.total?.kgCO2e || 0;
-  const totalKg = scope1Kg + scope2Kg;
-
+<<<<<<< Updated upstream
   if (totalKg === 0) {
+=======
+  // If no data, show empty state
+  if (!chartData || chartData.length === 0 || chartData.every(d => d.value === 0)) {
+>>>>>>> Stashed changes
     return (
       <div className="empty-chart" style={{ minHeight: 300, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
         <FiBarChart2 size={48} style={{ opacity: 0.5 }} />
@@ -22,18 +42,16 @@ export default function TotalEmissionsPie() {
     );
   }
 
-  const data = [
-    { name: "Scope 1", value: scope1Kg, color: "#3B82F6" },
-    { name: "Scope 2", value: scope2Kg, color: "#F97316" },
-  ];
-
-  const formatValue = (value) => `${(value / 1000).toFixed(1)} tCO₂e`;
+  const totalValue = chartData.reduce((sum, item) => sum + item.value, 0);
+  
+  const formatValue = (value) => `${value.toFixed(1)} tCO₂e`;
 
   // Calculate percentages
   const scope1Percent = ((scope1Kg / totalKg) * 100).toFixed(0);
   const scope2Percent = ((scope2Kg / totalKg) * 100).toFixed(0);
 
   return (
+<<<<<<< Updated upstream
     <div style={{ width: "100%" }}>
       {/* Pie Chart */}
       <div style={{ width: "100%", height: 300, position: "relative" }}>
@@ -88,6 +106,52 @@ export default function TotalEmissionsPie() {
           </div>
         </div>
       </div>
+=======
+    <div style={{ width: "100%", height: "100%", minHeight: "280px" }}>
+      <ResponsiveContainer width="100%" height={280}>
+        <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+          <Pie
+            data={chartData}
+            cx="50%"
+            cy="50%"
+            innerRadius={50}
+            outerRadius={90}
+            paddingAngle={2}
+            dataKey="value"
+            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+            labelLine={false}
+          >
+            {chartData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip 
+            formatter={formatValue}
+            contentStyle={{ 
+              borderRadius: "8px", 
+              border: "1px solid #E5E7EB",
+              backgroundColor: "white",
+              padding: "8px 12px",
+              fontSize: "12px"
+            }}
+          />
+          <Legend 
+            layout="horizontal"
+            align="center"
+            verticalAlign="bottom"
+            formatter={(value, entry, index) => {
+              const item = chartData[index];
+              const percent = ((item.value / totalValue) * 100).toFixed(1);
+              return `${value}: ${percent}% (${formatValue(item.value)})`;
+            }}
+            wrapperStyle={{ 
+              fontSize: "12px", 
+              paddingTop: "16px"
+            }}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+>>>>>>> Stashed changes
     </div>
   );
 }
