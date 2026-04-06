@@ -1,9 +1,10 @@
 // src/components/ui/Card.jsx
-import React from "react";
+import React, { forwardRef } from "react";
 
-export default function Card({ children, className = "", style = {} }) {
+const Card = forwardRef(({ children, className = "", style = {} }, ref) => {
   return (
     <div
+      ref={ref}
       className={`card ${className}`}
       style={{
         background: "white",
@@ -22,4 +23,6 @@ export default function Card({ children, className = "", style = {} }) {
       {children}
     </div>
   );
-}
+});
+
+export default Card;

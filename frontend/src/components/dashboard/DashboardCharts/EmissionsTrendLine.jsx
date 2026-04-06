@@ -25,7 +25,7 @@ export default function EmissionsTrendLine() {
   // until monthly-level history is available from the backend.
   const chartData = useMemo(() => {
     const scope1Tonnes = (scope1Results?.total?.kgCO2e || 0) / 1000;
-    const scope2Tonnes = (scope2Results?.total?.kgCO2e || 0) / 1000;
+    const scope2Tonnes = (scope2Results?.locationBasedKgCO2e || 0) / 1000;
 
     const currentMonth = new Date().getMonth(); // 0-indexed
 

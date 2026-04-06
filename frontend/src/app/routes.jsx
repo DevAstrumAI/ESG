@@ -20,6 +20,7 @@ import TermsOfServicePage from "../pages/TermsOfServicePage"; // Correct import
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { useCompanyStore } from "../store/companyStore";
+import FormalReportPage from "../pages/FormalReportPage";
 
 export default function AppRoutes() {
   const { loggedIn } = useAuthStore();
@@ -81,6 +82,16 @@ export default function AppRoutes() {
           </AppLayout>
         }
       />
+
+      <Route 
+       path="/reports/formal" 
+       element={
+        <AppLayout>
+          <FormalReportPage  />
+        </AppLayout>
+        }
+      />
+
 
       <Route
         path="/settings"

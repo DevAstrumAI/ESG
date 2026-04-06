@@ -9,7 +9,7 @@ export default function TotalEmissionsPie() {
   const scope2Results = useEmissionStore((s) => s.scope2Results);
 
   const scope1Kg = scope1Results?.total?.kgCO2e || 0;
-  const scope2Kg = scope2Results?.total?.kgCO2e || 0;
+  const scope2Kg = scope2Results?.locationBasedKgCO2e || 0;
   const totalKg = scope1Kg + scope2Kg;
 
   // If no data, show empty state

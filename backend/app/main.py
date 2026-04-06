@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 import os
 
-from .routes import auth, companies, emissions, reports, settings, admin
+from app.routes import predictions
+from .routes import auth, companies, emissions,  reports, formal_report, settings, admin
 from .utils.firebase import initialize_firebase
 
 # Load environment variables
@@ -37,7 +38,7 @@ _origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o for o in _origins if o],  # Filter out empty strings
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],  # Filter out empty strings
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,8 +51,10 @@ app.include_router(auth.router,      prefix="/api/auth",      tags=["Auth"])
 app.include_router(companies.router, prefix="/api/companies", tags=["Companies"])
 app.include_router(emissions.router, prefix="/api/emissions", tags=["Emissions"])
 app.include_router(reports.router,   prefix="/api/reports",   tags=["Reports"])
+app.include_router(formal_report.router, prefix="/api/formal-report", tags=["Formal Report"])
 app.include_router(settings.router,  prefix="/api/settings",  tags=["Settings"])
 app.include_router(admin.router,     prefix="/api/admin",     tags=["Admin"])
+app.include_router(predictions.router, prefix="/api")
 
 print(f"Routes registered: {[r.path for r in app.routes]}")
 

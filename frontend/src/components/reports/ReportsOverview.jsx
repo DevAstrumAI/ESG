@@ -20,7 +20,6 @@ export default function ReportsOverview({ selectedCity = "all", company }) {
 
   // Get company locations from store
   const companyLocations = company?.locations || [];
-  const getCityName = (loc) => loc.city;
 
   // Generate reports based on actual data
   const generateReports = () => {

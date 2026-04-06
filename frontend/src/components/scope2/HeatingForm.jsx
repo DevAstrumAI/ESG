@@ -1,14 +1,37 @@
 // src/components/scope2/HeatingForm.jsx
 import React, { useState } from "react";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiSend, FiThermometer, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiSend, FiThermometer } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
+import { useCompanyStore } from "../../store/companyStore";
 
-const HEATING_COOLING_TYPES = [
-  { label: "Steam / Hot Water", key: "steam_hot_water" },
-  { label: "UAE Average", key: "uae_average" },
-  { label: "District Cooling", key: "district_cooling" },
-];
+// Get heating options based on company region
+const getHeatingOptions = (country) => {
+  const baseOptions = [
+    { label: "Steam / Hot Water", key: "steam_hot_water" },
+    { label: "District Cooling", key: "district_cooling" },
+  ];
+  
+  const countryLower = country?.toLowerCase() || "uae";
+  
+  // Only add average option for regions that have it
+  switch (countryLower) {
+    case 'uae':
+    case 'united arab emirates':
+      return [...baseOptions, { label: "UAE Average", key: "uae_average" }];
+    
+    case 'singapore':
+      return [...baseOptions, { label: "Singapore Average", key: "sg_average" }];
+    
+    case 'saudi arabia':
+    case 'ksa':
+      // No average option for Saudi Arabia
+      return baseOptions;
+    
+    default:
+      return baseOptions;
+  }
+};
 
 const MONTHS = [
   "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06",
@@ -28,8 +51,16 @@ export default function HeatingForm({ onSubmitSuccess }) {
   const deleteHeating = useEmissionStore((s) => s.deleteScope2Heating);
   const submitScope2 = useEmissionStore((s) => s.submitScope2);
   const token = useAuthStore((s) => s.token);
+  
+  // Get company location for region-specific options
+  const company = useCompanyStore((s) => s.company);
+  const primaryLocation = company?.locations?.find(loc => loc.isPrimary) || company?.locations?.[0];
+  const country = primaryLocation?.country || "uae";
+  
+  // Get region-specific heating options
+  const HEATING_COOLING_TYPES = getHeatingOptions(country);
 
-  const [energyTypeKey, setEnergyTypeKey] = useState("steam_hot_water");
+  const [energyTypeKey, setEnergyTypeKey] = useState(HEATING_COOLING_TYPES[0]?.key || "steam_hot_water");
   const [consumption, setConsumption] = useState("");
   const [month, setMonth] = useState(currentMonth());
 
@@ -84,8 +115,8 @@ export default function HeatingForm({ onSubmitSuccess }) {
               <th>Consumption (kWh)</th>
               <th>Month</th>
               <th></th>
-              </tr>
-            </thead>
+            </tr>
+          </thead>
           <tbody>
             {heating.length === 0 && (
               <tr>
@@ -157,7 +188,6 @@ export default function HeatingForm({ onSubmitSuccess }) {
                   + Add
                 </button>
               </td>
-              <td></td>
             </tr>
           </tbody>
         </table>
