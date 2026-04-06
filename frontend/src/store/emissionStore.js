@@ -1,7 +1,7 @@
 // src/store/emissionStore.js
 import { create } from 'zustand';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
 
 // Must match backend DISTANCE_BASED_TYPES exactly
 const DISTANCE_BASED_TYPES = new Set([

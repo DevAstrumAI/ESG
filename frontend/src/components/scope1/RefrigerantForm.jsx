@@ -5,17 +5,17 @@ import { FiTrash2, FiSend, FiWind, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const REFRIGERANT_TYPES = [
-  { label: "R-134a",  key: "r134a",  gwp: 1430 },
+  { label: "R-134a",  key: "r134a",  gwp: 1300 },
   { label: "R-410A",  key: "r410a",  gwp: 2088 },
-  { label: "R-22",    key: "r22",    gwp: 1810 },
-  { label: "R-404A",  key: "r404a",  gwp: 3922 },
-  { label: "R-407C",  key: "r407c",  gwp: 1774 },
-  { label: "R-32",    key: "r32",    gwp: 675  },
+  { label: "R-22",    key: "r22",    gwp: 1760 },
+  { label: "R-404A",  key: "r404a",  gwp: 3942.8 },
+  { label: "R-407C",  key: "r407c",  gwp: 1624.21 },
+  { label: "R-32",    key: "r32",    gwp: 67  },
   { label: "R-507",   key: "r507",   gwp: 3985 },
   { label: "SF6",     key: "sf6",    gwp: 23500},
-  { label: "HFC-23",  key: "hfc23",  gwp: 14800},
-  { label: "PFC-14",  key: "pfc14",  gwp: 7390 },
-  { label: "PFC-116", key: "pfc116", gwp: 12200},
+  { label: "HFC-23",  key: "hfc23",  gwp: 12400},
+  { label: "PFC-14",  key: "pfc14",  gwp: 6630 },
+  { label: "PFC-116", key: "pfc116", gwp: 11100},
 ];
 
 const MONTHS = [

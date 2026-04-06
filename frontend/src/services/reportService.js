@@ -1,7 +1,7 @@
 // frontend/src/services/reportService.js
 import { useAuthStore } from "../store/authStore";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
 export const reportService = {
   /**
