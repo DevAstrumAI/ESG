@@ -17,12 +17,13 @@ export default function Scope2Summary() {
     locationBased: scope2Results.locationBasedKgCO2e || 0,
     marketBased: scope2Results.marketBasedKgCO2e || 0,
   } : {
-    // Live estimates (before submission)
+    // Live estimates before submission
     electricityLocation: electricity.reduce((sum, e) => {
-      const factor = e.certificateType === "grid_average" ? 0.428 : 0.428;
+      const factor = 0.428;
       return sum + (Number(e.consumption) * factor);
     }, 0),
     electricityMarket: electricity.reduce((sum, e) => {
+      // Market-based: 0 for renewable certificates, grid factor for grid average
       const factor = e.certificateType === "grid_average" ? 0.428 : 0;
       return sum + (Number(e.consumption) * factor);
     }, 0),
@@ -92,7 +93,7 @@ export default function Scope2Summary() {
             </div>
           </div>
 
-          {/* Category Breakdown */}
+          {/* Category Breakdown Grid */}
           <div className="ss-grid">
             {/* Electricity Card */}
             <div className="ss-card">
@@ -105,7 +106,7 @@ export default function Scope2Summary() {
               <div className="ss-card-value">{fmt(totals.electricityLocation)} kg</div>
               <div className="ss-card-count">{electricity.length} entries</div>
               
-              {/* Electricity Dual Breakdown */}
+              {/* Electricity Dual Breakdown - Shows both location and market values */}
               <div className="dual-breakdown">
                 <div className="dual-row">
                   <span className="dual-name">Location:</span>
