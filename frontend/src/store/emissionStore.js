@@ -53,6 +53,24 @@ export const useEmissionStore = create((set, get) => ({
   loading:           false,
   error:             null,
 
+  // ─── Reset All Emission Data ─────────────────────────────────────────────
+  reset: () =>
+    set({
+      scope1Vehicles:    [],
+      scope1Stationary:  [],
+      scope1Refrigerants:[],
+      scope1Fugitive:    [],
+      scope2Electricity: [],
+      scope2Heating:     [],
+      scope2Renewable:   [],
+      scope1Results:     null,
+      scope2Results:     null,
+      scope2Total:       0,
+      selectedYear:      new Date().getFullYear(),
+      loading:           false,
+      error:             null,
+    }),
+
   // ─── Scope 1 Actions ──────────────────────────────────────────────────────
   addScope1Vehicle: (vehicle) =>
     set((state) => ({ scope1Vehicles: [...state.scope1Vehicles, vehicle] })),
@@ -303,8 +321,7 @@ export const useEmissionStore = create((set, get) => ({
       // Extract values from backend response
       const electricityLocation = result.scope2?.breakdown?.electricityLocation || 
                                   result.scope2?.breakdown?.electricity || 0;
-      const electricityMarket = result.scope2?.breakdown?.electricityMarket || 
-                                result.scope2?.breakdown?.electricity || 0;
+      const electricityMarket = result.scope2?.breakdown?.electricityMarket || 0;
       const heatingKg = result.scope2?.breakdown?.heating || 0;
       
       // IMPORTANT: Location-based total MUST include heating

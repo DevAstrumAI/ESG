@@ -8,6 +8,9 @@ import {
 } from "firebase/auth";
 import { authAPI } from "../services/api";
 import { persist } from "zustand/middleware";
+import { useCompanyStore } from "./companyStore";
+import { useEmissionStore } from "./emissionStore";
+import { useSettingsStore } from "./settingsStore";
 
 export const useAuthStore = create(
   persist(
@@ -26,7 +29,7 @@ export const useAuthStore = create(
           await authAPI.register(email, password, displayName);
           const userCredential = await signInWithEmailAndPassword(auth, email, password);
           const token = await userCredential.user.getIdToken();
-          const { user } = await authAPI.me(token);
+          const { user } = await authAPI.getMe(token);
           set({ user, token, loggedIn: true, loading: false });
           return { success: true };
         } catch (error) {
@@ -57,9 +60,30 @@ export const useAuthStore = create(
           const { token } = get();
           if (token) await authAPI.logout(token);
           await signOut(auth);
+          
+          // Clear all user-specific data from other stores
+          useCompanyStore.getState().reset();
+          useEmissionStore.getState().reset();
+          useSettingsStore.getState().resetSettings();
+          
+          // 🔥 CRITICAL: Clear persisted storage to prevent rehydration with old data
+          localStorage.removeItem("auth-storage");
+          
           set({ user: null, token: null, loggedIn: false, loading: false, error: null });
         } catch (error) {
+          console.error("Logout error:", error);
           await signOut(auth);
+          
+          // Still clear other stores even if logout fails
+          try {
+            useCompanyStore.getState().reset();
+            useEmissionStore.getState().reset();
+            useSettingsStore.getState().resetSettings();
+            localStorage.removeItem("auth-storage");
+          } catch (e) {
+            console.error('Error clearing stores on logout:', e);
+          }
+          
           set({ user: null, token: null, loggedIn: false, loading: false });
         }
       },

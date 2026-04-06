@@ -164,6 +164,11 @@ export default function ElectricityForm({ onSubmitSuccess }) {
                   ))}
                 </select>
               </td>
+              <td>
+                <button className="el-add-btn-inline" onClick={handleAddRow}>
+                  + Add
+                </button>
+              </td>
               <td></td>
             </tr>
           </tbody>
@@ -171,9 +176,6 @@ export default function ElectricityForm({ onSubmitSuccess }) {
       </div>
 
       <div className="el-footer">
-        <button className="el-add-btn" onClick={handleAddRow}>
-          + Add Row
-        </button>
         <div className="el-footer-right">
           {submitError && <span className="el-error">{submitError}</span>}
           <button
@@ -187,7 +189,6 @@ export default function ElectricityForm({ onSubmitSuccess }) {
           </button>
         </div>
       </div>
-
       <style jsx>{`
         .el-wrap { width: 100%; }
 
@@ -319,31 +320,14 @@ export default function ElectricityForm({ onSubmitSuccess }) {
           white-space: nowrap;
         }
 
-        .el-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 16px 0 0 0;
-          margin-top: 16px;
+        .el-footer { display: flex; justify-content: flex-end; padding: 16px 0 0 0; margin-top: 16px; }
+        .el-footer-right { display: flex; align-items: center; gap: 12px; }
+        .el-add-btn-inline {
+          padding: 7px 14px; background: #1B4D3E; color: white;
+          border: none; border-radius: 7px; font-size: 13px;
+          font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
-
-        .el-footer-right {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .el-add-btn {
-          background: none;
-          border: none;
-          font-size: 14px;
-          font-weight: 500;
-          color: #2E7D64;
-          cursor: pointer;
-          padding: 8px 0;
-        }
-        .el-add-btn:hover { text-decoration: underline; }
-
+        .el-add-btn-inline:hover { background: #2E7D64; }
         .el-error { font-size: 13px; color: #DC2626; }
 
         .el-submit-btn {

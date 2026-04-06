@@ -22,6 +22,7 @@ import { BiLeaf, BiTrendingUp } from "react-icons/bi";
 import ScopeBreakdown from "../components/dashboard/ScopeBreakdown";
 import EmissionsTrendLine from "../components/dashboard/DashboardCharts/EmissionsTrendLine";
 import TotalEmissionsPie from "../components/dashboard/DashboardCharts/TotalEmissionsPie";
+import PredictionsPanel from "../components/dashboard/PredictionsPanel"; // ← ADD THIS IMPORT
 import { useAuthStore } from "../store/authStore";
 import { useEmissionStore } from "../store/emissionStore";
 import Card from "../components/ui/Card";
@@ -59,10 +60,7 @@ export default function DashboardPage() {
   };
 
   // CORRECTED DATA MAPPING
-  // Scope 1: Use total.kgCO2e
   const scope1Kg = scope1Results?.total?.kgCO2e || 0;
-  
-  // Scope 2: locationBasedKgCO2e already includes electricity + heating
   const scope2Kg = scope2Results?.locationBasedKgCO2e || 0;
   const totalKg = scope1Kg + scope2Kg;
   const totalTonnes = totalKg / 1000;
@@ -70,17 +68,14 @@ export default function DashboardPage() {
   const scope1Tonnes = scope1Kg / 1000;
   const scope2Tonnes = scope2Kg / 1000;
 
-  // Individual components for breakdown display
   const electricityLocationKg = scope2Results?.electricity?.locationBasedKgCO2e || 0;
   const electricityMarketKg = scope2Results?.electricity?.marketBasedKgCO2e || 0;
   const heatingKg = scope2Results?.heating?.kgCO2e || 0;
   const renewablesKg = scope2Results?.renewables?.kgCO2e || 0;
   
-  // For display in Location vs Market card
-  const locationBasedKg = scope2Kg; // Already includes heating
+  const locationBasedKg = scope2Kg;
   const marketBasedKg = scope2Results?.marketBasedKgCO2e || 0;
 
-  // Scope 1 Breakdown
   const scope1Breakdown = [
     { 
       label: "Mobile Combustion", 
@@ -112,7 +107,6 @@ export default function DashboardPage() {
     },
   ];
 
-  // Scope 2 Breakdown
   const scope2Breakdown = [
     { 
       label: "Electricity (Location-based)", 
@@ -130,7 +124,6 @@ export default function DashboardPage() {
     },
   ];
 
-  // Data for TotalEmissionsPie donut chart
   const pieChartData = [
     { name: "Scope 1", value: scope1Kg / 1000, color: "#3B82F6" },
     { name: "Scope 2", value: scope2Kg / 1000, color: "#F97316" },
@@ -310,6 +303,11 @@ export default function DashboardPage() {
             </div>
           )}
         </Card>
+      </div>
+
+      {/* ─── PREDICTIONS PANEL ───────────────────────────────────────────── */}
+      <div style={{ marginTop: "24px" }}>
+        <PredictionsPanel currentYear={selectedYear} />
       </div>
 
       {/* Scope Breakdowns */}
@@ -665,19 +663,11 @@ export default function DashboardPage() {
         .chart-card {
           background: white;
           border-radius: 12px;
-<<<<<<< Updated upstream
-          padding: 10px;
-=======
           padding: 20px;
->>>>>>> Stashed changes
           border: 1px solid #E5E7EB;
           overflow: visible;
         }
 
-<<<<<<< Updated upstream
-        .chart-card.large {
-          min-height: 450px;
-=======
         .chart-card.large { 
           min-height: 400px; 
         }
@@ -687,7 +677,6 @@ export default function DashboardPage() {
           justify-content: space-between;
           align-items: center;
           margin-bottom: 16px;
->>>>>>> Stashed changes
         }
 
         .chart-header h3 {
@@ -724,12 +713,6 @@ export default function DashboardPage() {
           background: #F97316; 
         }
 
-<<<<<<< Updated upstream
-        .chart-wrapper { height: 350px; width: 100%; }
-
-       .pie-chart-wrapper {
-          min-height: 340px;
-=======
         .chart-wrapper { 
           height: 300px; 
           width: 100%; 
@@ -737,17 +720,12 @@ export default function DashboardPage() {
 
         .pie-chart-wrapper {
           min-height: 320px;
->>>>>>> Stashed changes
           display: flex;
           align-items: center;
           justify-content: center;
           width: 100%;
           overflow: visible;
-<<<<<<< Updated upstream
-      }
-=======
         }
->>>>>>> Stashed changes
 
         .chart-insight {
           display: flex;

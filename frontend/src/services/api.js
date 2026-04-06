@@ -1,134 +1,216 @@
 // src/services/api.js
-const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-// ─── Helper ────────────────────────────────────────────────────────────────
+// Helper to get token from localStorage or auth store
+const getToken = () => {
+  // Try to get from localStorage first
+  const token = localStorage.getItem('token');
+  if (token) return token;
+  
+  // Fallback: try to get from auth store if available
+  try {
+    const { useAuthStore } = require('../store/authStore');
+    return useAuthStore.getState().token;
+  } catch {
+    return null;
+  }
+};
 
-async function request(endpoint, options = {}) {
-  const { token, ...rest } = options;
-
+// Generic request handler
+const request = async (endpoint, options = {}) => {
+  const token = options.token || getToken();
+  
   const headers = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...rest.headers,
+    'Content-Type': 'application/json',
+    ...options.headers,
   };
-
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
-    ...rest,
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
     headers,
   });
-
+  
   const data = await response.json();
-
+  
   if (!response.ok) {
-    throw new Error(data.detail || "Something went wrong");
+    throw new Error(data.detail || data.message || `Request failed: ${response.status}`);
   }
-
+  
   return data;
-}
+};
 
-// ─── Auth ───────────────────────────────────────────────────────────────────
-
+// Auth API
 export const authAPI = {
-  register: (email, password, displayName) =>
-    request("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ email, password, displayName }),
-    }),
-
-  login: (token) =>
-    request("/api/auth/login", {
-      method: "POST",
-      token,
-      body: JSON.stringify({ idToken:token }),
-    }),
-
-  me: (token) =>
-    request("/api/auth/me", { token }),
-
-  logout: (token) =>
-    request("/api/auth/logout", {
-      method: "POST",
-      token,
-    }),
-};
-
-// ─── Company ─────────────────────────────────────────────────────────────────
-
-export const companyAPI = {
-  create: (token, companyData) =>
-    request("/api/companies", {
-      method: "POST",
-      token,
-      body: JSON.stringify(companyData),
-    }),
-
-  getMe: (token) =>
-    request("/api/companies/me", { token }),
-
-  updateMe: (token, companyData) =>
-    request("/api/companies/me", {
-      method: "PUT",
-      token,
-      body: JSON.stringify(companyData),
-    }),
-};
-
-// ─── Emissions ───────────────────────────────────────────────────────────────
-
-export const emissionsAPI = {
-  submitScope1: (token, data) =>
-    request("/api/emissions/scope1", {
-      method: "POST",
-      token,
-      body: JSON.stringify(data),
-    }),
-
-  submitScope2: (token, data) =>
-    request("/api/emissions/scope2", {
-      method: "POST",
-      token,
-      body: JSON.stringify(data),
-    }),
-
-  getSummary: (token, year) =>
-  request(`/api/emissions/summary?year=${year}`, { token }),
-};
-
-// ─── Settings ────────────────────────────────────────────────────────────────
-
-export const settingsAPI = {
-  get: (token) =>
-    request("/api/settings", { token }),
-
-  update: (token, settings) =>
-    request("/api/settings", {
-      method: "PUT",
-      token,
-      body: JSON.stringify(settings),
-    }),
-};
-
-// ─── Admin ───────────────────────────────────────────────────────────────────
-
-export const adminAPI = {
-  getCities: (token, region = "middle-east", country = "uae") =>
-    request(`/api/admin/cities?region=${region}&country=${country}`, { token }),
-
-  getFactors: (token, params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return request(`/api/admin/factors?${query}`, { token });
+  login: async (idToken) => {
+    return request('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ idToken }),
+    });
   },
-
-  createFactor: (token, factor) =>
-    request("/api/admin/factors", {
-      method: "POST",
+  
+  register: async (email, password, name) => {
+    return request('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, displayName: name }),
+    });
+  },
+  
+  getMe: async (token) => {
+    return request('/api/auth/me', { token });
+  },
+  
+  logout: async (token) => {
+    return request('/api/auth/logout', {
+      method: 'POST',
       token,
-      body: JSON.stringify(factor),
-    }),
+    });
+  },
+};
 
-  deleteFactor: (token, factorId) =>
-    request(`/api/admin/factors/${factorId}`, {
-      method: "DELETE",
+// Company API
+export const companyAPI = {
+  getMe: async (token) => {
+    return request('/api/companies/me', { token });
+  },
+  
+  create: async (token, companyData) => {
+    return request('/api/companies', {
+      method: 'POST',
+      body: JSON.stringify(companyData),
       token,
-    }),
+    });
+  },
+  
+  updateMe: async (token, companyData) => {
+    return request('/api/companies/me', {
+      method: 'PUT',
+      body: JSON.stringify(companyData),
+      token,
+    });
+  },
+  
+  // ─── NEW: Save SBTi Targets ─────────────────────────────────────────────
+  saveTargets: async (token, targetsData) => {
+    return request('/api/companies/targets', {
+      method: 'PUT',
+      body: JSON.stringify(targetsData),
+      token,
+    });
+  },
+  
+  // Get targets (if separate endpoint exists)
+  getTargets: async (token) => {
+    return request('/api/companies/targets', { token });
+  },
+};
+
+// Emissions API
+export const emissionsAPI = {
+  submitScope1: async (token, data) => {
+    return request('/api/emissions/scope1', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+  
+  submitScope2: async (token, data) => {
+    return request('/api/emissions/scope2', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+  
+  getSummary: async (token, year) => {
+    return request(`/api/emissions/summary?year=${year}`, { token });
+  },
+  
+  getFactors: async (token, country, city) => {
+    return request(`/api/emissions/factors/${country}/${city}`, { token });
+  },
+  
+  getAvailableLocations: async (token) => {
+    return request('/api/emissions/available-locations', { token });
+  },
+};
+
+// Reports API
+export const reportsAPI = {
+  generate: async (token, year, month = null, baseYear = null) => {
+    const body = { year };
+    if (month) body.month = month;
+    if (baseYear) body.base_year = baseYear;
+    
+    return request('/api/reports/generate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+  
+  generateFormal: async (token, data) => {
+    return request('/api/formal-report/generate-formal', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+};
+
+// Settings API
+export const settingsAPI = {
+  get: async (token) => {
+    return request('/api/settings', { token });
+  },
+  
+  update: async (token, settingsData) => {
+    return request('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settingsData),
+      token,
+    });
+  },
+};
+
+// Admin API (for emission factor management)
+export const adminAPI = {
+  getCities: async (token) => {
+    return request('/api/admin/cities', { token });
+  },
+  
+  getFactors: async (token, params) => {
+    const queryString = new URLSearchParams(params).toString();
+    return request(`/api/admin/factors${queryString ? `?${queryString}` : ''}`, { token });
+  },
+  
+  updateFactor: async (token, factorId, factorData) => {
+    return request(`/api/admin/factors/${factorId}`, {
+      method: 'PUT',
+      body: JSON.stringify(factorData),
+      token,
+    });
+  },
+  
+  createFactor: async (token, factorData) => {
+    return request('/api/admin/factors', {
+      method: 'POST',
+      body: JSON.stringify(factorData),
+      token,
+    });
+  },
+};
+
+// Export all APIs as default object
+export default {
+  authAPI,
+  companyAPI,
+  emissionsAPI,
+  reportsAPI,
+  settingsAPI,
+  adminAPI,
 };

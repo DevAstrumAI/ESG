@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 import os
 
-
+from app.routes import predictions
 from .routes import auth, companies, emissions,  reports, formal_report, settings, admin
 from .utils.firebase import initialize_firebase
 
@@ -54,6 +54,7 @@ app.include_router(reports.router,   prefix="/api/reports",   tags=["Reports"])
 app.include_router(formal_report.router, prefix="/api/formal-report", tags=["Formal Report"])
 app.include_router(settings.router,  prefix="/api/settings",  tags=["Settings"])
 app.include_router(admin.router,     prefix="/api/admin",     tags=["Admin"])
+app.include_router(predictions.router, prefix="/api")
 
 print(f"Routes registered: {[r.path for r in app.routes]}")
 

@@ -170,6 +170,11 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
                   {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </td>
+              <td>
+                <button className="rf-add-btn-inline" onClick={handleAddRow}>
+                  + Add
+                </button>
+              </td>
               <td></td>
             </tr>
           </tbody>
@@ -177,7 +182,6 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
       </div>
 
       <div className="rf-footer">
-        <button className="rf-add-btn" onClick={handleAddRow}>+ Add Row</button>
         <div className="rf-footer-right">
           {submitError && <span className="rf-error">{submitError}</span>}
           <button
@@ -275,19 +279,15 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
           display: flex; align-items: center; min-height: 33px; white-space: nowrap;
         }
 
-        .rf-footer {
-          display: flex; justify-content: space-between;
-          align-items: center; padding: 16px 0 0 0; margin-top: 16px;
-        }
+        .rf-footer { display: flex; justify-content: flex-end; padding: 16px 0 0 0; margin-top: 16px; }
         .rf-footer-right { display: flex; align-items: center; gap: 12px; }
-
-        .rf-add-btn {
-          background: none; border: none; font-size: 14px;
-          font-weight: 500; color: #2E7D64; cursor: pointer; padding: 8px 0;
+        .rf-add-btn-inline {
+          padding: 7px 14px; background: #1B4D3E; color: white;
+          border: none; border-radius: 7px; font-size: 13px;
+          font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
-        .rf-add-btn:hover { text-decoration: underline; }
-
-        .rf-error { font-size: 13px; color: #DC2626; }
+        .rf-add-btn-inline:hover { background: #2E7D64; }
+                .rf-error { font-size: 13px; color: #DC2626; }
 
         .rf-submit-btn {
           display: flex; align-items: center; gap: 8px;
