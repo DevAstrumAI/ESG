@@ -1,6 +1,6 @@
 // src/components/scope1/RefrigerantForm.jsx
 import React, { useState } from "react";
-import emissionsAPI from "../../services/api";
+import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiWind, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";

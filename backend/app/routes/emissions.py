@@ -203,10 +203,11 @@ async def get_scope1_data(
     for doc in docs:
         data = doc.to_dict()
         results = data.get("results", {})
+        raw_data = data.get("rawData", {})
 
-        # Extract entries from results
-        if "mobile" in results and "entries" in results["mobile"]:
-            for entry in results["mobile"]["entries"]:
+        # Prefer rawData for form hydration; fallback to computed results entries.
+        mobile_entries = raw_data.get("mobile") or ((results.get("mobile") or {}).get("entries") or [])
+        for entry in mobile_entries:
                 result["mobile"].append({
                     "id": f"{doc.id}_mobile_{len(result['mobile'])}",
                     "fuelType": entry.get("fuelType", ""),
@@ -216,8 +217,8 @@ async def get_scope1_data(
                     "kgCO2e": entry.get("kgCO2e", 0)
                 })
 
-        if "stationary" in results and "entries" in results["stationary"]:
-            for entry in results["stationary"]["entries"]:
+        stationary_entries = raw_data.get("stationary") or ((results.get("stationary") or {}).get("entries") or [])
+        for entry in stationary_entries:
                 result["stationary"].append({
                     "id": f"{doc.id}_stationary_{len(result['stationary'])}",
                     "fuelType": entry.get("fuelType", ""),
@@ -227,22 +228,23 @@ async def get_scope1_data(
                     "kgCO2e": entry.get("kgCO2e", 0)
                 })
 
-        if "refrigerants" in results and "entries" in results["refrigerants"]:
-            for entry in results["refrigerants"]["entries"]:
+        refrigerant_entries = raw_data.get("refrigerants") or ((results.get("refrigerants") or {}).get("entries") or [])
+        for entry in refrigerant_entries:
                 result["refrigerants"].append({
                     "id": f"{doc.id}_refrigerants_{len(result['refrigerants'])}",
-                    "gasType": entry.get("gasType", ""),
-                    "chargeKg": entry.get("chargeKg", 0),
+                    "refrigerantType": entry.get("refrigerantType", entry.get("gasType", "")),
+                    "leakageKg": entry.get("leakageKg", entry.get("chargeKg", 0)),
                     "month": data.get("month", ""),
                     "kgCO2e": entry.get("kgCO2e", 0)
                 })
 
-        if "fugitive" in results and "entries" in results["fugitive"]:
-            for entry in results["fugitive"]["entries"]:
+        fugitive_entries = raw_data.get("fugitive") or ((results.get("fugitive") or {}).get("entries") or [])
+        for entry in fugitive_entries:
                 result["fugitive"].append({
                     "id": f"{doc.id}_fugitive_{len(result['fugitive'])}",
                     "sourceType": entry.get("sourceType", ""),
-                    "amount": entry.get("amount", 0),
+                    "amount": entry.get("amount", entry.get("emissionKg", 0)),
+                    "emissionKg": entry.get("emissionKg", entry.get("amount", 0)),
                     "unit": entry.get("unit", ""),
                     "month": data.get("month", ""),
                     "kgCO2e": entry.get("kgCO2e", 0)
@@ -280,10 +282,11 @@ async def get_scope2_data(
     for doc in docs:
         data = doc.to_dict()
         results = data.get("results", {})
+        raw_data = data.get("rawData", {})
 
-        # Extract entries from results
-        if "electricity" in results and "entries" in results["electricity"]:
-            for entry in results["electricity"]["entries"]:
+        # Prefer rawData for form hydration; fallback to computed results entries.
+        electricity_entries = raw_data.get("electricity") or ((results.get("electricity") or {}).get("entries") or [])
+        for entry in electricity_entries:
                 result["electricity"].append({
                     "id": f"{doc.id}_electricity_{len(result['electricity'])}",
                     "consumption": entry.get("consumptionKwh", 0),
@@ -294,8 +297,8 @@ async def get_scope2_data(
                     "kgCO2e": entry.get("kgCO2e", 0)
                 })
 
-        if "heating" in results and "entries" in results["heating"]:
-            for entry in results["heating"]["entries"]:
+        heating_entries = raw_data.get("heating") or ((results.get("heating") or {}).get("entries") or [])
+        for entry in heating_entries:
                 result["heating"].append({
                     "id": f"{doc.id}_heating_{len(result['heating'])}",
                     "energyType": entry.get("energyType", ""),
@@ -304,8 +307,8 @@ async def get_scope2_data(
                     "kgCO2e": entry.get("kgCO2e", 0)
                 })
 
-        if "renewables" in results and "entries" in results["renewables"]:
-            for entry in results["renewables"]["entries"]:
+        renewable_entries = raw_data.get("renewables") or ((results.get("renewables") or {}).get("entries") or [])
+        for entry in renewable_entries:
                 result["renewables"].append({
                     "id": f"{doc.id}_renewables_{len(result['renewables'])}",
                     "sourceType": entry.get("sourceType", ""),

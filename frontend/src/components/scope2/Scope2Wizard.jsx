@@ -8,7 +8,7 @@ import HeatingForm from "./HeatingForm";
 import RenewableForm from "./RenewableForm";
 import Scope2Summary from "./Scope2Summary";
 import { useAuthStore } from "../../store/authStore";
-import emissionsAPI from "../../services/api";
+import { emissionsAPI } from "../../services/api";
 import { FiZap, FiThermometer, FiSun, FiBarChart2 } from "react-icons/fi";
 
 export default function Scope2Wizard() {

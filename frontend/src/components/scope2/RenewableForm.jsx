@@ -1,6 +1,6 @@
 // src/components/scope2/RenewableForm.jsx
 import React, { useState } from "react";
-import emissionsAPI from "../../services/api";
+import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiSun, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";

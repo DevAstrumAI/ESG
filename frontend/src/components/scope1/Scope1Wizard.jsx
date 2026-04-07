@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useEmissionStore } from "../../store/emissionStore";
 import { useAuthStore } from "../../store/authStore";
-import emissionsAPI from "../../services/api";
+import { emissionsAPI } from "../../services/api";
 import { FiTruck, FiBriefcase, FiWind, FiAlertCircle, FiBarChart2 } from "react-icons/fi";
 import VehicleTable from "./VehicleTable";
 import StationaryForm from "./StationaryForm";

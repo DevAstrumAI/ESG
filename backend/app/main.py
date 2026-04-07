@@ -32,14 +32,16 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 _origins = [
     "http://localhost:3000",
-    'https://esg-frontend.onrender.com',
-    'https://esg-frontend-dev.onrender.com',
+    "http://localhost:3001",
+    "https://esg-frontend.onrender.com",
+    "https://esg-frontend-dev.onrender.com",
     os.getenv("FRONTEND_URL", ""),
-    ]
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", 'https://esg-frontend.onrender.com', 'https://esg-frontend-dev.onrender.com'],  # Filter out empty strings
+    # Keep explicit origins because credentials are enabled.
+    allow_origins=list({origin for origin in _origins if origin}),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

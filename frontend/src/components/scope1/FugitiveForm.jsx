@@ -1,6 +1,6 @@
 // src/components/scope1/FugitiveForm.jsx
 import React, { useState } from "react";
-import emissionsAPI from "../../services/api";
+import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiAlertCircle, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";

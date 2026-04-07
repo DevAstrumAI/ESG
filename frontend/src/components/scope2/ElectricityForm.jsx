@@ -1,6 +1,6 @@
 // src/components/scope2/ElectricityForm.jsx
 import React, { useState } from "react";
-import emissionsAPI from "../../services/api";
+import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiZap, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
