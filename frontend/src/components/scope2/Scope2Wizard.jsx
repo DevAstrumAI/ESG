@@ -8,6 +8,7 @@ import HeatingForm from "./HeatingForm";
 import RenewableForm from "./RenewableForm";
 import Scope2Summary from "./Scope2Summary";
 import { useAuthStore } from "../../store/authStore";
+import emissionsAPI from "../../services/api";
 import { FiZap, FiThermometer, FiSun, FiBarChart2 } from "react-icons/fi";
 
 export default function Scope2Wizard() {
@@ -42,20 +43,9 @@ export default function Scope2Wizard() {
       }
 
       try {
-        console.log('📡 Making API call to /api/emissions/scope2');
-        const response = await fetch('/api/emissions/scope2', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        console.log('Response status:', response.status);
-        console.log('Response ok:', response.ok);
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('✅ Received data:', data);
+        console.log('📡 Making API call to getScope2Data');
+        const data = await emissionsAPI.getScope2Data(token, selectedYear);
+        console.log('✅ Received data:', data);
 
           // Reset store to clear any existing data
           reset();
@@ -73,10 +63,6 @@ export default function Scope2Wizard() {
             console.log(`📝 Adding ${data.renewables.length} renewable entries`);
             data.renewables.forEach(entry => addScope2Renewable(entry));
           }
-        } else {
-          const errorText = await response.text();
-          console.error('❌ API call failed:', response.status, errorText);
-        }
       } catch (error) {
         console.error('❌ Error loading existing scope 2 data:', error);
       } finally {

@@ -1,15 +1,16 @@
 // src/components/scope1/Scope1Wizard.jsx
 import { useState, useEffect } from "react";
 import { useEmissionStore } from "../../store/emissionStore";
-import PrimaryButton from "../ui/PrimaryButton";
-import SecondaryButton from "../ui/SecondaryButton";
+import { useAuthStore } from "../../store/authStore";
+import emissionsAPI from "../../services/api";
+import { FiTruck, FiBriefcase, FiWind, FiAlertCircle, FiBarChart2 } from "react-icons/fi";
 import VehicleTable from "./VehicleTable";
 import StationaryForm from "./StationaryForm";
 import RefrigerantForm from "./RefrigerantForm";
 import FugitiveForm from "./FugitiveForm";
 import Scope1Summary from "./Scope1Summary";
-import { useAuthStore } from "../../store/authStore";
-import { FiTruck, FiBriefcase, FiWind, FiAlertCircle, FiBarChart2 } from "react-icons/fi";
+import PrimaryButton from "../ui/PrimaryButton";
+import SecondaryButton from "../ui/SecondaryButton";
 
 const VEHICLE_TYPE_BY_CODE = {
   petrol_car: "Car",
@@ -171,20 +172,9 @@ export default function Scope1Wizard() {
       }
 
       try {
-        console.log('📡 Making API call to /api/emissions/scope1');
-        const response = await fetch('/api/emissions/scope1', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        console.log('Response status:', response.status);
-        console.log('Response ok:', response.ok);
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('✅ Received data:', data);
+        console.log('📡 Making API call to getScope1Data');
+        const data = await emissionsAPI.getScope1Data(token, selectedYear);
+        console.log('✅ Received data:', data);
 
           // Reset store to clear any existing data
           reset();
@@ -206,10 +196,6 @@ export default function Scope1Wizard() {
             console.log(`📝 Adding ${data.fugitive.length} fugitive entries`);
             data.fugitive.forEach(entry => addScope1Fugitive(normalizeFugitiveEntry(entry)));
           }
-        } else {
-          const errorText = await response.text();
-          console.error('❌ API call failed:', response.status, errorText);
-        }
       } catch (error) {
         console.error('❌ Error loading existing scope 1 data:', error);
       } finally {

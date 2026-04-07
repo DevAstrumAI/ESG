@@ -126,6 +126,16 @@ export const emissionsAPI = {
     });
   },
 
+  getScope1Data: async (token, year) => {
+    const query = year ? `?year=${year}` : '';
+    return request(`/api/emissions/scope1${query}`, { token });
+  },
+
+  getScope2Data: async (token, year) => {
+    const query = year ? `?year=${year}` : '';
+    return request(`/api/emissions/scope2${query}`, { token });
+  },
+
   deleteScope1Entry: async (token, data) => {
     return request('/api/emissions/scope1', {
       method: 'DELETE',
