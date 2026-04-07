@@ -1,7 +1,8 @@
 // src/components/scope1/RefrigerantForm.jsx
 import React, { useState } from "react";
+import emissionsAPI from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiSend, FiWind, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiWind, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const REFRIGERANT_TYPES = [
@@ -34,15 +35,34 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
   const refrigerants    = useEmissionStore((s) => s.scope1Refrigerants);
   const addRefrigerant  = useEmissionStore((s) => s.addScope1Refrigerant);
   const deleteRefrigerant = useEmissionStore((s) => s.deleteScope1Refrigerant);
-  const submitScope1    = useEmissionStore((s) => s.submitScope1);
+  const selectedYear  = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+
+  const handleDeleteRefrigerant = async (id, month) => {
+    const deleted = refrigerants.find((r) => r.id === id);
+    if (!deleted) return;
+
+    const [year] = month ? month.split("-").map(Number) : [selectedYear];
+
+    try {
+      await emissionsAPI.deleteScope1Entry(token, {
+        year,
+        month,
+        category: "refrigerants",
+        entry: {
+          refrigerantType: deleted.refrigerantKey,
+          leakageKg: Number(deleted.leakageKg || 0),
+        },
+      });
+      deleteRefrigerant(id);
+    } catch (error) {
+      console.error("Failed to delete refrigerant entry:", error);
+    }
+  };
 
   const [refrigerantKey, setRefrigerantKey] = useState("");
   const [quantity, setQuantity]             = useState("");
   const [month, setMonth]                   = useState(currentMonth());
-  const [submitting, setSubmitting]         = useState(false);
-  const [submitted, setSubmitted]           = useState(false);
-  const [submitError, setSubmitError]       = useState(null);
 
   const selectedRefrigerant = REFRIGERANT_TYPES.find((r) => r.key === refrigerantKey);
 
@@ -59,21 +79,6 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
     setRefrigerantKey("");
     setQuantity("");
     setMonth(currentMonth());
-  };
-
-  const handleCalculateSubmit = async () => {
-    setSubmitting(true);
-    setSubmitError(null);
-    const monthStr = refrigerants[0]?.month || currentMonth();
-    const [yr, mo] = monthStr.split("-").map(Number);
-    const result = await submitScope1(token, yr, mo);
-    setSubmitting(false);
-    if (result.success) {
-      setSubmitted(true);
-      if (onSubmitSuccess) onSubmitSuccess();
-    } else {
-      setSubmitError(result.error || "Submission failed");
-    }
   };
 
   const co2ePreview = (leakageKg, gwp) =>
@@ -123,7 +128,7 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
                 </td>
                 <td>{r.month || "—"}</td>
                 <td>
-                  <button className="rf-delete" onClick={() => deleteRefrigerant(r.id)} title="Remove">
+                  <button className="rf-delete" onClick={() => handleDeleteRefrigerant(r.id, r.month)} title="Remove">
                     <FiTrash2 size={14} />
                   </button>
                 </td>
@@ -181,20 +186,6 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
         </table>
       </div>
 
-      <div className="rf-footer">
-        <div className="rf-footer-right">
-          {submitError && <span className="rf-error">{submitError}</span>}
-          <button
-            className={`rf-submit-btn ${submitted ? "submitted" : ""}`}
-            onClick={handleCalculateSubmit}
-            disabled={submitting || submitted || refrigerants.length === 0}
-          >
-            {submitted ? "✅ Submitted!" : submitting ? "Calculating..." : (
-              <><FiSend size={14} /> Calculate & Submit</>
-            )}
-          </button>
-        </div>
-      </div>
 
       <style jsx>{`
         .rf-wrap { width: 100%; }

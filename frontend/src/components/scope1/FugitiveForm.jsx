@@ -1,7 +1,8 @@
 // src/components/scope1/FugitiveForm.jsx
 import React, { useState } from "react";
+import emissionsAPI from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiSend, FiAlertCircle, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiAlertCircle, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const SOURCE_TYPES = [
@@ -37,15 +38,34 @@ export default function FugitiveForm({ onSubmitSuccess }) {
   const fugitives    = useEmissionStore((s) => s.scope1Fugitive);
   const addFugitive  = useEmissionStore((s) => s.addScope1Fugitive);
   const deleteFugitive = useEmissionStore((s) => s.deleteScope1Fugitive);
-  const submitScope1 = useEmissionStore((s) => s.submitScope1);
+  const selectedYear = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+
+  const handleDeleteFugitive = async (id, month) => {
+    const deleted = fugitives.find((f) => f.id === id);
+    if (!deleted) return;
+
+    const [year] = month ? month.split("-").map(Number) : [selectedYear];
+
+    try {
+      await emissionsAPI.deleteScope1Entry(token, {
+        year,
+        month,
+        category: "fugitive",
+        entry: {
+          sourceType: deleted.sourceType || "methane",
+          emissionKg: Number(deleted.emissionKg || deleted.amount || 0),
+        },
+      });
+      deleteFugitive(id);
+    } catch (error) {
+      console.error("Failed to delete fugitive entry:", error);
+    }
+  };
 
   const [source, setSource]           = useState("");
   const [quantity, setQuantity]       = useState("");
   const [month, setMonth]             = useState(currentMonth());
-  const [submitting, setSubmitting]   = useState(false);
-  const [submitted, setSubmitted]     = useState(false);
-  const [submitError, setSubmitError] = useState(null);
 
   const selectedSource = SOURCE_TYPES.find((s) => s.label === source);
 
@@ -62,21 +82,6 @@ export default function FugitiveForm({ onSubmitSuccess }) {
     setSource("");
     setQuantity("");
     setMonth(currentMonth());
-  };
-
-  const handleCalculateSubmit = async () => {
-    setSubmitting(true);
-    setSubmitError(null);
-    const monthStr = fugitives[0]?.month || currentMonth();
-    const [yr, mo] = monthStr.split("-").map(Number);
-    const result = await submitScope1(token, yr, mo);
-    setSubmitting(false);
-    if (result.success) {
-      setSubmitted(true);
-      if (onSubmitSuccess) onSubmitSuccess();
-    } else {
-      setSubmitError(result.error || "Submission failed");
-    }
   };
 
   return (
@@ -119,7 +124,7 @@ export default function FugitiveForm({ onSubmitSuccess }) {
                 </td>
                 <td>{f.month || "—"}</td>
                 <td>
-                  <button className="fg-delete" onClick={() => deleteFugitive(f.id)} title="Remove">
+                  <button className="fg-delete" onClick={() => handleDeleteFugitive(f.id, f.month)} title="Remove">
                     <FiTrash2 size={14} />
                   </button>
                 </td>
@@ -170,20 +175,6 @@ export default function FugitiveForm({ onSubmitSuccess }) {
         </table>
       </div>
 
-      <div className="fg-footer">
-        <div className="fg-footer-right">
-          {submitError && <span className="fg-error">{submitError}</span>}
-          <button
-            className={`fg-submit-btn ${submitted ? "submitted" : ""}`}
-            onClick={handleCalculateSubmit}
-            disabled={submitting || submitted || fugitives.length === 0}
-          >
-            {submitted ? "✅ Submitted!" : submitting ? "Calculating..." : (
-              <><FiSend size={14} /> Calculate & Submit</>
-            )}
-          </button>
-        </div>
-      </div>
 
       <style jsx>{`
         .fg-wrap { width: 100%; }

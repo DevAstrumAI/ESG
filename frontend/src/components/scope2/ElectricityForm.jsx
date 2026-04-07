@@ -1,7 +1,8 @@
 // src/components/scope2/ElectricityForm.jsx
 import React, { useState } from "react";
+import emissionsAPI from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiSend, FiZap, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiZap, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const CERTIFICATE_TYPES = [
@@ -28,16 +29,36 @@ export default function ElectricityForm({ onSubmitSuccess }) {
   const electricity = useEmissionStore((s) => s.scope2Electricity || []);
   const addElectricity = useEmissionStore((s) => s.addScope2Electricity);
   const deleteElectricity = useEmissionStore((s) => s.deleteScope2Electricity);
-  const submitScope2 = useEmissionStore((s) => s.submitScope2);
+  const selectedYear = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+
+  const handleDeleteElectricity = async (id, month) => {
+    const deleted = electricity.find((e) => e.id === id);
+    if (!deleted) return;
+
+    const [year] = month ? month.split("-").map(Number) : [selectedYear];
+
+    try {
+      await emissionsAPI.deleteScope2Entry(token, {
+        year,
+        month,
+        category: "electricity",
+        entry: {
+          facilityName: deleted.facilityName || "Main Facility",
+          consumptionKwh: Number(deleted.consumption || deleted.kwh || 0),
+          method: deleted.method || (deleted.certificateType === "grid_average" ? "location" : "market"),
+          certificateType: deleted.certificateType || "grid_average",
+        },
+      });
+      deleteElectricity(id);
+    } catch (error) {
+      console.error("Failed to delete electricity entry:", error);
+    }
+  };
 
   const [consumption, setConsumption] = useState("");
   const [certificateKey, setCertificateKey] = useState("grid_average");
   const [month, setMonth] = useState(currentMonth());
-
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [submitError, setSubmitError] = useState(null);
 
   const selectedCertificate = CERTIFICATE_TYPES.find((c) => c.key === certificateKey);
 
@@ -61,21 +82,6 @@ export default function ElectricityForm({ onSubmitSuccess }) {
   setConsumption("");
   setMonth(currentMonth());
 };
-
-  const handleCalculateSubmit = async () => {
-    setSubmitting(true);
-    setSubmitError(null);
-    const monthStr = electricity[0]?.month || currentMonth();
-    const [yr, mo] = monthStr.split("-").map(Number);
-    const result = await submitScope2(token, yr, mo);
-    setSubmitting(false);
-    if (result.success) {
-      setSubmitted(true);
-      if (onSubmitSuccess) onSubmitSuccess();
-    } else {
-      setSubmitError(result.error || "Submission failed");
-    }
-  };
 
   return (
     <div className="el-wrap">
@@ -119,7 +125,7 @@ export default function ElectricityForm({ onSubmitSuccess }) {
                 <td>
                   <button
                     className="el-delete"
-                    onClick={() => deleteElectricity(e.id)}
+                    onClick={() => handleDeleteElectricity(e.id, e.month)}
                     title="Remove"
                   >
                     <FiTrash2 size={14} />
@@ -175,20 +181,6 @@ export default function ElectricityForm({ onSubmitSuccess }) {
         </table>
       </div>
 
-      <div className="el-footer">
-        <div className="el-footer-right">
-          {submitError && <span className="el-error">{submitError}</span>}
-          <button
-            className={`el-submit-btn ${submitted ? "submitted" : ""}`}
-            onClick={handleCalculateSubmit}
-            disabled={submitting || submitted || electricity.length === 0}
-          >
-            {submitted ? "✅ Submitted!" : submitting ? "Calculating..." : (
-              <><FiSend size={14} /> Calculate & Submit</>
-            )}
-          </button>
-        </div>
-      </div>
       <style jsx>{`
         .el-wrap { width: 100%; }
 

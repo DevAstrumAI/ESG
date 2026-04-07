@@ -1,5 +1,5 @@
 // src/components/scope2/Scope2Wizard.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useEmissionStore } from "../../store/emissionStore";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
@@ -7,22 +7,109 @@ import ElectricityForm from "./ElectricityForm";
 import HeatingForm from "./HeatingForm";
 import RenewableForm from "./RenewableForm";
 import Scope2Summary from "./Scope2Summary";
+import { useAuthStore } from "../../store/authStore";
 import { FiZap, FiThermometer, FiSun, FiBarChart2 } from "react-icons/fi";
 
 export default function Scope2Wizard() {
   const [currentStep, setCurrentStep] = useState(1);
   const [showSummary, setShowSummary] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const electricity = useEmissionStore((s) => s.scope2Electricity || []);
   const heating = useEmissionStore((s) => s.scope2Heating || []);
   const renewables = useEmissionStore((s) => s.scope2Renewable || []);
 
+  const addScope2Electricity = useEmissionStore((s) => s.addScope2Electricity);
+  const addScope2Heating = useEmissionStore((s) => s.addScope2Heating);
+  const addScope2Renewable = useEmissionStore((s) => s.addScope2Renewable);
+  const reset = useEmissionStore((s) => s.reset);
+  const submitScope2 = useEmissionStore((s) => s.submitScope2);
+  const selectedYear = useEmissionStore((s) => s.selectedYear);
+
+  const { token } = useAuthStore();
+
+  // Load existing scope 2 data on component mount
+  useEffect(() => {
+    const loadExistingData = async () => {
+      console.log('🔍 Loading existing scope 2 data...');
+      console.log('Token available:', !!token);
+
+      if (!token) {
+        console.log('❌ No token available, skipping data load');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        console.log('📡 Making API call to /api/emissions/scope2');
+        const response = await fetch('/api/emissions/scope2', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        console.log('Response status:', response.status);
+        console.log('Response ok:', response.ok);
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('✅ Received data:', data);
+
+          // Reset store to clear any existing data
+          reset();
+
+          // Populate the store with existing data
+          if (data.electricity && data.electricity.length > 0) {
+            console.log(`📝 Adding ${data.electricity.length} electricity entries`);
+            data.electricity.forEach(entry => addScope2Electricity(entry));
+          }
+          if (data.heating && data.heating.length > 0) {
+            console.log(`📝 Adding ${data.heating.length} heating entries`);
+            data.heating.forEach(entry => addScope2Heating(entry));
+          }
+          if (data.renewables && data.renewables.length > 0) {
+            console.log(`📝 Adding ${data.renewables.length} renewable entries`);
+            data.renewables.forEach(entry => addScope2Renewable(entry));
+          }
+        } else {
+          const errorText = await response.text();
+          console.error('❌ API call failed:', response.status, errorText);
+        }
+      } catch (error) {
+        console.error('❌ Error loading existing scope 2 data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadExistingData();
+  }, [token, addScope2Electricity, addScope2Heating, addScope2Renewable, reset]);
+
   const goToSummary = () => setShowSummary(true);
 
+  const submitScope2Step = async () => {
+    setSubmitting(true);
+    try {
+      const rows = currentStep === 1 ? electricity : currentStep === 2 ? heating : renewables;
+      const monthString = rows[0]?.month || `${selectedYear}-01`;
+      const [year, month] = monthString.split("-").map(Number);
+      const result = await submitScope2(token, year, month);
+      if (!result.success) {
+        console.error("Scope2 submit failed:", result.error);
+        return false;
+      }
+      return true;
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const steps = [
-    { id: 1, label: "Electricity", icon: <FiZap size={16} />, component: <ElectricityForm onSubmitSuccess={goToSummary} /> },
-    { id: 2, label: "Heating", icon: <FiThermometer size={16} />, component: <HeatingForm onSubmitSuccess={goToSummary} /> },
-    { id: 3, label: "Renewables", icon: <FiSun size={16} />, component: <RenewableForm onSubmitSuccess={goToSummary} /> },
+    { id: 1, label: "Electricity", icon: <FiZap size={16} />, component: <ElectricityForm /> },
+    { id: 2, label: "Heating", icon: <FiThermometer size={16} />, component: <HeatingForm /> },
+    { id: 3, label: "Renewables", icon: <FiSun size={16} />, component: <RenewableForm /> },
   ];
 
   const hasStepData = (stepId) => {
@@ -33,6 +120,40 @@ export default function Scope2Wizard() {
       default: return false;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="wizard-container">
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Loading your existing Scope 2 data...</p>
+        </div>
+        <style jsx>{`
+          .wizard-container { width: 100%; max-width: 1400px; margin: 0 auto; }
+          .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            gap: 16px;
+          }
+          .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #E5E7EB;
+            border-top: 3px solid #2E7D64;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   if (showSummary) {
     return (
@@ -92,14 +213,25 @@ export default function Scope2Wizard() {
         <div className="nav-right">
           {currentStep < steps.length ? (
             <PrimaryButton
-              onClick={() => setCurrentStep((s) => Math.min(steps.length, s + 1))}
+              onClick={async () => {
+                const success = await submitScope2Step();
+                if (success) setCurrentStep((s) => Math.min(steps.length, s + 1));
+              }}
+              disabled={submitting}
               className="nav-next"
             >
-              Next →
+              {submitting ? "Saving..." : "Next →"}
             </PrimaryButton>
           ) : (
-            <PrimaryButton onClick={goToSummary} className="nav-next">
-              View Summary →
+            <PrimaryButton
+              onClick={async () => {
+                const success = await submitScope2Step();
+                if (success) goToSummary();
+              }}
+              disabled={submitting}
+              className="nav-next"
+            >
+              {submitting ? "Saving..." : "View Summary →"}
             </PrimaryButton>
           )}
         </div>
