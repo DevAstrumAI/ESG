@@ -36,12 +36,15 @@ export default function RenewableForm({ onSubmitSuccess }) {
     const deleted = renewables.find((r) => r.id === id);
     if (!deleted) return;
 
-    const [year] = month ? month.split("-").map(Number) : [selectedYear];
+    const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
+    const [year] = effectiveMonth.includes("-")
+      ? effectiveMonth.split("-").map(Number)
+      : [selectedYear];
 
     try {
       await emissionsAPI.deleteScope2Entry(token, {
         year,
-        month,
+        month: effectiveMonth,
         category: "renewables",
         entry: {
           sourceType: deleted.sourceType,

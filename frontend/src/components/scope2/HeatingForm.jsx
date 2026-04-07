@@ -71,12 +71,15 @@ export default function HeatingForm({ onSubmitSuccess }) {
     const deleted = heating.find((h) => h.id === id);
     if (!deleted) return;
 
-    const [year] = month ? month.split("-").map(Number) : [selectedYear];
+    const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
+    const [year] = effectiveMonth.includes("-")
+      ? effectiveMonth.split("-").map(Number)
+      : [selectedYear];
 
     try {
       await emissionsAPI.deleteScope2Entry(token, {
         year,
-        month,
+        month: effectiveMonth,
         category: "heating",
         entry: {
           energyType: deleted.energyType,

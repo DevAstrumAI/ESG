@@ -108,7 +108,7 @@ def _remove_matching_entry(entries: list, entry: dict, match_func) -> tuple[list
 
 
 def _get_scope_doc(db, company_id: str, scope: str, year: int, month: str):
-    doc_id = month if month else f"{year}-annual"
+    doc_id = str(month) if month is not None and month != "" else f"{year}-annual"
     return db.collection("emissionData").document(company_id).collection(scope).document(doc_id)
 
 

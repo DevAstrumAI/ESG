@@ -151,7 +151,7 @@ export default function VehicleTable({ onSubmitSuccess }) {
                   <td>
                     <button
                       className="vt-delete"
-                      onClick={() => deleteVehicle(v.id)}
+                      onClick={() => handleDeleteVehicle(v.id, v.month)}
                       title="Remove"
                     >
                       <FiTrash2 size={14} />

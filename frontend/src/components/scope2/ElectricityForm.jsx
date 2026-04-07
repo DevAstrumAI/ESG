@@ -36,12 +36,15 @@ export default function ElectricityForm({ onSubmitSuccess }) {
     const deleted = electricity.find((e) => e.id === id);
     if (!deleted) return;
 
-    const [year] = month ? month.split("-").map(Number) : [selectedYear];
+    const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
+    const [year] = effectiveMonth.includes("-")
+      ? effectiveMonth.split("-").map(Number)
+      : [selectedYear];
 
     try {
       await emissionsAPI.deleteScope2Entry(token, {
         year,
-        month,
+        month: effectiveMonth,
         category: "electricity",
         entry: {
           facilityName: deleted.facilityName || "Main Facility",

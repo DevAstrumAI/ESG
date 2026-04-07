@@ -11,6 +11,7 @@ class CompanyCreate(BaseModel):
     industry: str
     employees: Optional[int] = None
     revenue: Optional[float] = None
+    region: Optional[str] = None
     fiscalYear: int = 2026
     locations: Optional[List[Location]] = []
 
@@ -19,5 +20,6 @@ class CompanyUpdate(BaseModel):
     industry: Optional[str] = None
     employees: Optional[int] = None
     revenue: Optional[float] = None
+    region: Optional[str] = None
     fiscalYear: Optional[int] = None
     locations: Optional[List[Location]] = None
