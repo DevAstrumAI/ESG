@@ -1,7 +1,8 @@
 // src/components/scope1/StationaryForm.jsx
 import React, { useState } from "react";
+import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiSend, FiBriefcase, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiBriefcase, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const EQUIPMENT_TYPES = [
@@ -41,17 +42,35 @@ export default function StationaryForm({ onSubmitSuccess }) {
   const entries        = useEmissionStore((s) => s.scope1Stationary);
   const addStationary  = useEmissionStore((s) => s.addScope1Stationary);
   const deleteStationary = useEmissionStore((s) => s.deleteScope1Stationary);
-  const submitScope1   = useEmissionStore((s) => s.submitScope1);
+  const selectedYear  = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+
+  const handleDeleteStationary = async (id, month) => {
+    const deleted = entries.find((e) => e.id === id);
+    if (!deleted) return;
+
+    const [year] = month ? month.split("-").map(Number) : [selectedYear];
+
+    try {
+      await emissionsAPI.deleteScope1Entry(token, {
+        year,
+        month,
+        category: "stationary",
+        entry: {
+          fuelType: deleted.fuelType,
+          consumption: Number(deleted.consumption || 0),
+        },
+      });
+      deleteStationary(id);
+    } catch (error) {
+      console.error("Failed to delete stationary entry:", error);
+    }
+  };
 
   const [equipment, setEquipment] = useState("");
   const [fuelKey, setFuelKey]     = useState("");
   const [quantity, setQuantity]   = useState("");
   const [month, setMonth]         = useState(currentMonth());
-
-  const [submitting, setSubmitting]   = useState(false);
-  const [submitted, setSubmitted]     = useState(false);
-  const [submitError, setSubmitError] = useState(null);
 
   const selectedFuel = FUEL_TYPES.find((f) => f.key === fuelKey);
 
@@ -70,21 +89,6 @@ export default function StationaryForm({ onSubmitSuccess }) {
     setFuelKey("");
     setQuantity("");
     setMonth(currentMonth());
-  };
-
-  const handleCalculateSubmit = async () => {
-    setSubmitting(true);
-    setSubmitError(null);
-    const monthStr = entries[0]?.month || currentMonth();
-    const [yr, mo] = monthStr.split("-").map(Number);
-    const result = await submitScope1(token, yr, mo);
-    setSubmitting(false);
-    if (result.success) {
-      setSubmitted(true);
-      if (onSubmitSuccess) onSubmitSuccess();
-    } else {
-      setSubmitError(result.error || "Submission failed");
-    }
   };
 
   return (
@@ -127,7 +131,7 @@ export default function StationaryForm({ onSubmitSuccess }) {
                 <td>
                   <button
                     className="sf-delete"
-                    onClick={() => deleteStationary(e.id)}
+                    onClick={() => handleDeleteStationary(e.id, e.month)}
                     title="Remove"
                   >
                     <FiTrash2 size={14} />
@@ -198,20 +202,6 @@ export default function StationaryForm({ onSubmitSuccess }) {
         </table>
       </div>
 
-      <div className="sf-footer">
-        <div className="sf-footer-right">
-          {submitError && <span className="sf-error">{submitError}</span>}
-          <button
-            className={`sf-submit-btn ${submitted ? "submitted" : ""}`}
-            onClick={handleCalculateSubmit}
-            disabled={submitting || submitted || entries.length === 0}
-          >
-            {submitted ? "✅ Submitted!" : submitting ? "Calculating..." : (
-              <><FiSend size={14} /> Calculate & Submit</>
-            )}
-          </button>
-        </div>
-      </div>
 
       <style jsx>{`
         .sf-wrap { width: 100%; }

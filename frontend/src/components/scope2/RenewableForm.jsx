@@ -1,7 +1,8 @@
 // src/components/scope2/RenewableForm.jsx
 import React, { useState } from "react";
+import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiSend, FiSun, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiSun, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const RENEWABLE_TYPES = [
@@ -28,16 +29,38 @@ export default function RenewableForm({ onSubmitSuccess }) {
   const renewables = useEmissionStore((s) => s.scope2Renewable || []);
   const addRenewable = useEmissionStore((s) => s.addScope2Renewable);
   const deleteRenewable = useEmissionStore((s) => s.deleteScope2Renewable);
-  const submitScope2 = useEmissionStore((s) => s.submitScope2);
+  const selectedYear = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+
+  const handleDeleteRenewable = async (id, month) => {
+    const deleted = renewables.find((r) => r.id === id);
+    if (!deleted) return;
+
+    const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
+    const [year] = effectiveMonth.includes("-")
+      ? effectiveMonth.split("-").map(Number)
+      : [selectedYear];
+
+    try {
+      await emissionsAPI.deleteScope2Entry(token, {
+        year,
+        month: effectiveMonth,
+        category: "renewables",
+        entry: {
+          sourceType: deleted.sourceType,
+          generationKwh: Number(deleted.consumption || 0),
+        },
+      });
+      deleteRenewable(id);
+    } catch (error) {
+      console.error("Failed to delete renewable entry:", error);
+    }
+  };
 
   const [sourceTypeKey, setSourceTypeKey] = useState("solar_ppa");
   const [consumption, setConsumption] = useState("");
   const [month, setMonth] = useState(currentMonth());
 
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [submitError, setSubmitError] = useState(null);
 
   const selectedType = RENEWABLE_TYPES.find((t) => t.key === sourceTypeKey);
 
@@ -52,21 +75,6 @@ export default function RenewableForm({ onSubmitSuccess }) {
     });
     setConsumption("");
     setMonth(currentMonth());
-  };
-
-  const handleCalculateSubmit = async () => {
-    setSubmitting(true);
-    setSubmitError(null);
-    const monthStr = renewables[0]?.month || currentMonth();
-    const [yr, mo] = monthStr.split("-").map(Number);
-    const result = await submitScope2(token, yr, mo);
-    setSubmitting(false);
-    if (result.success) {
-      setSubmitted(true);
-      if (onSubmitSuccess) onSubmitSuccess();
-    } else {
-      setSubmitError(result.error || "Submission failed");
-    }
   };
 
   return (
@@ -109,7 +117,7 @@ export default function RenewableForm({ onSubmitSuccess }) {
                 <td>
                   <button
                     className="rw-delete"
-                    onClick={() => deleteRenewable(r.id)}
+                    onClick={() => handleDeleteRenewable(r.id, r.month)}
                     title="Remove"
                   >
                     <FiTrash2 size={14} />
@@ -165,20 +173,6 @@ export default function RenewableForm({ onSubmitSuccess }) {
         </table>
       </div>
 
-      <div className="rw-footer">
-        <div className="rw-footer-right">
-          {submitError && <span className="rw-error">{submitError}</span>}
-          <button
-            className={`rw-submit-btn ${submitted ? "submitted" : ""}`}
-            onClick={handleCalculateSubmit}
-            disabled={submitting || submitted || renewables.length === 0}
-          >
-            {submitted ? "✅ Submitted!" : submitting ? "Calculating..." : (
-              <><FiSend size={14} /> Calculate & Submit</>
-            )}
-          </button>
-        </div>
-      </div>
 
       <style jsx>{`
         .rw-wrap { width: 100%; }

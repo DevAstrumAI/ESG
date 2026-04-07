@@ -33,8 +33,8 @@ app = FastAPI(
 _origins = [
     "http://localhost:3000",
     "http://localhost:3001",
-    "https://esg-project-app.vercel.app",
-    "https://esg-frontend-x7hy.onrender.com",
+    "https://esg-frontend.onrender.com",
+    "https://esg-frontend-dev.onrender.com",
     os.getenv("FRONTEND_URL", ""),
 ]
 

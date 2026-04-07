@@ -1,7 +1,8 @@
 // src/components/scope1/VehicleTable.jsx
 import React, { useState } from "react";
+import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiSend, FiTruck } from "react-icons/fi";
+import { FiTrash2, FiTruck } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const DISTANCE_BASED_TYPES = new Set([
@@ -51,16 +52,37 @@ export default function VehicleTable({ onSubmitSuccess }) {
   const vehicles      = useEmissionStore((s) => s.scope1Vehicles);
   const addVehicle    = useEmissionStore((s) => s.addScope1Vehicle);
   const deleteVehicle = useEmissionStore((s) => s.deleteScope1Vehicle);
-  const submitScope1  = useEmissionStore((s) => s.submitScope1);
+  const selectedYear  = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+
+  const handleDeleteVehicle = async (id, month) => {
+    const deleted = vehicles.find((v) => v.id === id);
+    if (!deleted) return;
+
+    const fuelType = mapVehicleFuelType(deleted.vehicleType, deleted.fuelType);
+    const entry = DISTANCE_BASED_TYPES.has(fuelType)
+      ? { fuelType, distanceKm: Number(deleted.km || 0) }
+      : { fuelType, litresConsumed: Number(deleted.litres || 0) };
+
+    const [year] = month ? month.split("-").map(Number) : [selectedYear];
+
+    try {
+      await emissionsAPI.deleteScope1Entry(token, {
+        year,
+        month,
+        category: "mobile",
+        entry,
+      });
+      deleteVehicle(id);
+    } catch (error) {
+      console.error("Failed to delete vehicle entry:", error);
+    }
+  };
 
   const [vehicleType, setVehicleType] = useState("");
   const [fuelType, setFuelType]       = useState("");
   const [quantity, setQuantity]       = useState("");
   const [month, setMonth]             = useState(currentMonth());
-  const [submitting, setSubmitting]   = useState(false);
-  const [submitted, setSubmitted]     = useState(false);
-  const [submitError, setSubmitError] = useState(null);
 
   const mappedFuelType = vehicleType && fuelType
     ? mapVehicleFuelType(vehicleType, fuelType)
@@ -81,21 +103,6 @@ export default function VehicleTable({ onSubmitSuccess }) {
     setFuelType("");
     setQuantity("");
     setMonth(currentMonth());
-  };
-
-  const handleCalculateSubmit = async () => {
-    setSubmitting(true);
-    setSubmitError(null);
-    const monthStr = vehicles[0]?.month || currentMonth();
-    const [yr, mo] = monthStr.split("-").map(Number);
-    const result = await submitScope1(token, yr, mo);
-    setSubmitting(false);
-    if (result.success) {
-      setSubmitted(true);
-      if (onSubmitSuccess) onSubmitSuccess();
-    } else {
-      setSubmitError(result.error || "Submission failed");
-    }
   };
 
   return (
@@ -144,7 +151,7 @@ export default function VehicleTable({ onSubmitSuccess }) {
                   <td>
                     <button
                       className="vt-delete"
-                      onClick={() => deleteVehicle(v.id)}
+                      onClick={() => handleDeleteVehicle(v.id, v.month)}
                       title="Remove"
                     >
                       <FiTrash2 size={14} />
@@ -218,20 +225,6 @@ export default function VehicleTable({ onSubmitSuccess }) {
       </div>
 
       {/* ── Footer: submit only ── */}
-      <div className="vt-footer">
-        <div className="vt-footer-right">
-          {submitError && <span className="vt-error">{submitError}</span>}
-          <button
-            className={`vt-submit-btn ${submitted ? "submitted" : ""}`}
-            onClick={handleCalculateSubmit}
-            disabled={submitting || submitted || vehicles.length === 0}
-          >
-            {submitted ? "✅ Submitted!" : submitting ? "Calculating..." : (
-              <><FiSend size={14} /> Calculate & Submit</>
-            )}
-          </button>
-        </div>
-      </div>
 
       <style jsx>{`
         .vt-wrap { width: 100%; }

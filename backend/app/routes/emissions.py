@@ -25,6 +25,93 @@ def _append_agent_log(hypothesisId: str, location: str, message: str, data: dict
 router = APIRouter(tags=["Emissions"])
 
 
+def _normalize_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return float(value)
+    normalized = str(value).strip()
+    if normalized.replace('.', '', 1).isdigit():
+        try:
+            return float(normalized)
+        except ValueError:
+            return normalized.lower()
+    return normalized.lower()
+
+
+def _values_equal(a, b):
+    return _normalize_value(a) == _normalize_value(b)
+
+
+def _match_scope1_entry(candidate: dict, entry: dict, category: str) -> bool:
+    if category == "mobile":
+        if not _values_equal(candidate.get("fuelType"), entry.get("fuelType")):
+            return False
+        if "distanceKm" in candidate or "distanceKm" in entry:
+            return _values_equal(candidate.get("distanceKm"), entry.get("distanceKm"))
+        return _values_equal(candidate.get("litresConsumed"), entry.get("litresConsumed"))
+
+    if category == "stationary":
+        return (
+            _values_equal(candidate.get("fuelType"), entry.get("fuelType")) and
+            _values_equal(candidate.get("consumption"), entry.get("consumption"))
+        )
+
+    if category == "refrigerants":
+        return (
+            _values_equal(candidate.get("refrigerantType"), entry.get("refrigerantType")) and
+            _values_equal(candidate.get("leakageKg"), entry.get("leakageKg"))
+        )
+
+    if category == "fugitive":
+        return (
+            _values_equal(candidate.get("sourceType"), entry.get("sourceType")) and
+            _values_equal(candidate.get("emissionKg"), entry.get("emissionKg"))
+        )
+
+    return False
+
+
+def _match_scope2_entry(candidate: dict, entry: dict, category: str) -> bool:
+    if category == "electricity":
+        return (
+            _values_equal(candidate.get("facilityName"), entry.get("facilityName")) and
+            _values_equal(candidate.get("consumptionKwh"), entry.get("consumptionKwh")) and
+            _values_equal(candidate.get("method"), entry.get("method")) and
+            _values_equal(candidate.get("certificateType"), entry.get("certificateType"))
+        )
+
+    if category == "heating":
+        return (
+            _values_equal(candidate.get("energyType"), entry.get("energyType")) and
+            _values_equal(candidate.get("consumptionKwh"), entry.get("consumptionKwh"))
+        )
+
+    if category == "renewables":
+        return (
+            _values_equal(candidate.get("sourceType"), entry.get("sourceType")) and
+            _values_equal(candidate.get("generationKwh"), entry.get("generationKwh"))
+        )
+
+    return False
+
+
+def _remove_matching_entry(entries: list, entry: dict, match_func) -> tuple[list, bool]:
+    for index, candidate in enumerate(entries or []):
+        if match_func(candidate, entry):
+            updated = list(entries)
+            updated.pop(index)
+            return updated, True
+    return entries, False
+
+
+def _get_scope_doc(db, company_id: str, scope: str, year: int, month: str):
+    doc_id = str(month) if month is not None and month != "" else f"{year}-annual"
+    return db.collection("emissionData").document(company_id).collection(scope).document(doc_id)
+
+
 def get_company_and_location(uid: str):
     """Helper to fetch companyId and primary location for the current user."""
     db = get_db()
@@ -86,31 +173,151 @@ async def get_city_factors(
     }
 
 
-@router.get("/test-factors")
-async def test_factors():
+@router.get("/scope1")
+async def get_scope1_data(
+    year: int = None,
+    current_user: dict = Depends(get_current_user),
+):
     """
-    Quick test to see if factors are accessible
+    Get existing Scope 1 data for the current user.
+    Returns data organized by category for form pre-population.
     """
-    try:
-        # Try to fetch Saudi factors
-        factors = get_emission_factors("middle-east", "saudi-arabia", "riyadh", "scope1")
-        
-        # Check if we got any factors
-        has_factors = bool(factors)
-        sample_keys = list(factors.keys())[:5] if factors else []
-        
-        return {
-            "status": "success",
-            "has_factors": has_factors,
-            "sample_keys": sample_keys,
-            "total_factors": len(factors) if factors else 0,
-            "note": "If sample_keys is empty, data may not be loaded yet"
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+    company_id, _, _ = get_company_and_location(current_user.get("uid"))
+    db = get_db()
+
+    # Default to current year if not specified
+    target_year = year or datetime.utcnow().year
+
+    # Fetch all scope1 documents for the year
+    docs = db.collection("emissionData").document(company_id).collection("scope1").where("year", "==", target_year).stream()
+
+    # Organize data by category
+    result = {
+        "year": target_year,
+        "mobile": [],
+        "stationary": [],
+        "refrigerants": [],
+        "fugitive": []
+    }
+
+    for doc in docs:
+        data = doc.to_dict()
+        results = data.get("results", {})
+        raw_data = data.get("rawData", {})
+
+        # Prefer rawData for form hydration; fallback to computed results entries.
+        mobile_entries = raw_data.get("mobile") or ((results.get("mobile") or {}).get("entries") or [])
+        for entry in mobile_entries:
+                result["mobile"].append({
+                    "id": f"{doc.id}_mobile_{len(result['mobile'])}",
+                    "fuelType": entry.get("fuelType", ""),
+                    "distanceKm": entry.get("distanceKm"),
+                    "litresConsumed": entry.get("litresConsumed"),
+                    "month": data.get("month", ""),
+                    "kgCO2e": entry.get("kgCO2e", 0)
+                })
+
+        stationary_entries = raw_data.get("stationary") or ((results.get("stationary") or {}).get("entries") or [])
+        for entry in stationary_entries:
+                result["stationary"].append({
+                    "id": f"{doc.id}_stationary_{len(result['stationary'])}",
+                    "fuelType": entry.get("fuelType", ""),
+                    "consumption": entry.get("consumption", 0),
+                    "unit": entry.get("unit", ""),
+                    "month": data.get("month", ""),
+                    "kgCO2e": entry.get("kgCO2e", 0)
+                })
+
+        refrigerant_entries = raw_data.get("refrigerants") or ((results.get("refrigerants") or {}).get("entries") or [])
+        for entry in refrigerant_entries:
+                result["refrigerants"].append({
+                    "id": f"{doc.id}_refrigerants_{len(result['refrigerants'])}",
+                    "refrigerantType": entry.get("refrigerantType", entry.get("gasType", "")),
+                    "leakageKg": entry.get("leakageKg", entry.get("chargeKg", 0)),
+                    "month": data.get("month", ""),
+                    "kgCO2e": entry.get("kgCO2e", 0)
+                })
+
+        fugitive_entries = raw_data.get("fugitive") or ((results.get("fugitive") or {}).get("entries") or [])
+        for entry in fugitive_entries:
+                result["fugitive"].append({
+                    "id": f"{doc.id}_fugitive_{len(result['fugitive'])}",
+                    "sourceType": entry.get("sourceType", ""),
+                    "amount": entry.get("amount", entry.get("emissionKg", 0)),
+                    "emissionKg": entry.get("emissionKg", entry.get("amount", 0)),
+                    "unit": entry.get("unit", ""),
+                    "month": data.get("month", ""),
+                    "kgCO2e": entry.get("kgCO2e", 0)
+                })
+
+    return result
+
+
+@router.get("/scope2")
+async def get_scope2_data(
+    year: int = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Get existing Scope 2 data for the current user.
+    Returns data organized by category for form pre-population.
+    """
+    company_id, _, _ = get_company_and_location(current_user.get("uid"))
+    db = get_db()
+
+    # Default to current year if not specified
+    target_year = year or datetime.utcnow().year
+
+    # Fetch all scope2 documents for the year
+    docs = db.collection("emissionData").document(company_id).collection("scope2").where("year", "==", target_year).stream()
+
+    # Organize data by category
+    result = {
+        "year": target_year,
+        "electricity": [],
+        "heating": [],
+        "renewables": []
+    }
+
+    for doc in docs:
+        data = doc.to_dict()
+        results = data.get("results", {})
+        raw_data = data.get("rawData", {})
+
+        # Prefer rawData for form hydration; fallback to computed results entries.
+        electricity_entries = raw_data.get("electricity") or ((results.get("electricity") or {}).get("entries") or [])
+        for entry in electricity_entries:
+                result["electricity"].append({
+                    "id": f"{doc.id}_electricity_{len(result['electricity'])}",
+                    "consumption": entry.get("consumptionKwh", 0),
+                    "certificateType": entry.get("certificateType", "grid_average"),
+                    "certificateLabel": entry.get("certificateLabel", "Grid Average"),
+                    "method": entry.get("method", "location"),
+                    "month": data.get("month", ""),
+                    "kgCO2e": entry.get("kgCO2e", 0)
+                })
+
+        heating_entries = raw_data.get("heating") or ((results.get("heating") or {}).get("entries") or [])
+        for entry in heating_entries:
+                result["heating"].append({
+                    "id": f"{doc.id}_heating_{len(result['heating'])}",
+                    "energyType": entry.get("energyType", ""),
+                    "consumption": entry.get("consumptionKwh", 0),
+                    "month": data.get("month", ""),
+                    "kgCO2e": entry.get("kgCO2e", 0)
+                })
+
+        renewable_entries = raw_data.get("renewables") or ((results.get("renewables") or {}).get("entries") or [])
+        for entry in renewable_entries:
+                result["renewables"].append({
+                    "id": f"{doc.id}_renewables_{len(result['renewables'])}",
+                    "sourceType": entry.get("sourceType", ""),
+                    "consumption": entry.get("generationKwh", 0),
+                    "month": data.get("month", ""),
+                    "kgCO2e": entry.get("kgCO2e", 0)
+                })
+
+    return result
 
 
 @router.post("/scope1")
@@ -291,6 +498,143 @@ async def save_scope2(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save Scope 2 data: {str(e)}")
+
+
+@router.delete("/scope1")
+async def delete_scope1_entry(
+    body: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    db = get_db()
+    uid = current_user.get("uid")
+
+    try:
+        company_id, company_data, primary_location = get_company_and_location(uid)
+        year = body.get("year", company_data.get("basicInfo", {}).get("fiscalYear", datetime.utcnow().year))
+        month = body.get("month")
+        category = body.get("category")
+        entry = body.get("entry") or {}
+
+        if category not in ["mobile", "stationary", "refrigerants", "fugitive"]:
+            raise HTTPException(status_code=400, detail="Invalid Scope 1 category")
+
+        doc_ref = _get_scope_doc(db, company_id, "scope1", year, month)
+        doc = doc_ref.get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Scope 1 data not found")
+
+        data = doc.to_dict()
+        raw_data = data.get("rawData", {})
+        rows = raw_data.get(category, []) or []
+
+        updated_rows, removed = _remove_matching_entry(rows, entry, lambda candidate, target: _match_scope1_entry(candidate, target, category))
+        if not removed:
+            raise HTTPException(status_code=404, detail="No matching Scope 1 entry found")
+
+        raw_data[category] = updated_rows
+        payload = {
+            "year": year,
+            "month": month,
+            "region": data.get("region", "middle-east"),
+            "country": data.get("country", "uae"),
+            "city": data.get("city", "dubai"),
+            "mobile": raw_data.get("mobile", []),
+            "stationary": raw_data.get("stationary", []),
+            "refrigerants": raw_data.get("refrigerants", []),
+            "fugitive": raw_data.get("fugitive", []),
+        }
+
+        results = calculate_scope1(payload, payload["region"], payload["country"], payload["city"])
+
+        doc_ref.set({
+            "companyId": company_id,
+            "year": year,
+            "month": month,
+            "region": payload.get("region"),
+            "country": payload.get("country"),
+            "city": payload.get("city"),
+            "rawData": raw_data,
+            "results": results,
+            "savedAt": datetime.utcnow().isoformat(),
+        })
+
+        return {
+            "message": "Scope 1 entry deleted successfully.",
+            "results": results,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete Scope 1 entry: {str(e)}")
+
+
+@router.delete("/scope2")
+async def delete_scope2_entry(
+    body: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    db = get_db()
+    uid = current_user.get("uid")
+
+    try:
+        company_id, company_data, primary_location = get_company_and_location(uid)
+        year = body.get("year", company_data.get("basicInfo", {}).get("fiscalYear", datetime.utcnow().year))
+        month = body.get("month")
+        category = body.get("category")
+        entry = body.get("entry") or {}
+
+        if category not in ["electricity", "heating", "renewables"]:
+            raise HTTPException(status_code=400, detail="Invalid Scope 2 category")
+
+        doc_ref = _get_scope_doc(db, company_id, "scope2", year, month)
+        doc = doc_ref.get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Scope 2 data not found")
+
+        data = doc.to_dict()
+        raw_data = data.get("rawData", {})
+        rows = raw_data.get(category, []) or []
+
+        updated_rows, removed = _remove_matching_entry(rows, entry, lambda candidate, target: _match_scope2_entry(candidate, target, category))
+        if not removed:
+            raise HTTPException(status_code=404, detail="No matching Scope 2 entry found")
+
+        raw_data[category] = updated_rows
+        payload = {
+            "year": year,
+            "month": month,
+            "region": data.get("region", "middle-east"),
+            "country": data.get("country", "uae"),
+            "city": data.get("city", "dubai"),
+            "electricity": raw_data.get("electricity", []),
+            "heating": raw_data.get("heating", []),
+            "renewables": raw_data.get("renewables", []),
+        }
+
+        results = calculate_scope2(payload, payload["region"], payload["country"], payload["city"])
+
+        doc_ref.set({
+            "companyId": company_id,
+            "year": year,
+            "month": month,
+            "region": payload.get("region"),
+            "country": payload.get("country"),
+            "city": payload.get("city"),
+            "rawData": raw_data,
+            "results": results,
+            "savedAt": datetime.utcnow().isoformat(),
+        })
+
+        return {
+            "message": "Scope 2 entry deleted successfully.",
+            "results": results,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete Scope 2 entry: {str(e)}")
 
 
 @router.get("/summary")

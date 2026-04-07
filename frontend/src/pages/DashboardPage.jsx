@@ -22,7 +22,6 @@ import { BiLeaf, BiTrendingUp } from "react-icons/bi";
 import ScopeBreakdown from "../components/dashboard/ScopeBreakdown";
 import EmissionsTrendLine from "../components/dashboard/DashboardCharts/EmissionsTrendLine";
 import TotalEmissionsPie from "../components/dashboard/DashboardCharts/TotalEmissionsPie";
-import PredictionsPanel from "../components/dashboard/PredictionsPanel"; // ← ADD THIS IMPORT
 import { useAuthStore } from "../store/authStore";
 import { useEmissionStore } from "../store/emissionStore";
 import Card from "../components/ui/Card";
@@ -303,11 +302,6 @@ export default function DashboardPage() {
             </div>
           )}
         </Card>
-      </div>
-
-      {/* ─── PREDICTIONS PANEL ───────────────────────────────────────────── */}
-      <div style={{ marginTop: "24px" }}>
-        <PredictionsPanel currentYear={selectedYear} />
       </div>
 
       {/* Scope Breakdowns */}

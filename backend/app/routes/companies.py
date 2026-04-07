@@ -43,6 +43,7 @@ async def create_company(
                 "industry": company_data.industry,
                 "employees": company_data.employees,
                 "revenue": company_data.revenue,
+                "region": company_data.region,
                 "fiscalYear": company_data.fiscalYear,
             },
             "locations": [loc.dict() for loc in company_data.locations],
@@ -152,6 +153,8 @@ async def update_my_company(
             update_data["basicInfo.employees"] = company_data.employees
         if company_data.revenue is not None:
             update_data["basicInfo.revenue"] = company_data.revenue
+        if company_data.region is not None:
+            update_data["basicInfo.region"] = company_data.region
         if company_data.fiscalYear is not None:
             update_data["basicInfo.fiscalYear"] = company_data.fiscalYear
         if company_data.locations is not None:
