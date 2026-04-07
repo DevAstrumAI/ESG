@@ -32,13 +32,14 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 _origins = [
     "http://localhost:3000",
-    "https://esg-project-app.vercel.app",
+    'https://esg-frontend.onrender.com',
+    'https://esg-frontend-dev.onrender.com',
     os.getenv("FRONTEND_URL", ""),
-]
+    ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],  # Filter out empty strings
+    allow_origins=["http://localhost:3000", "http://localhost:3001", 'https://esg-frontend.onrender.com', 'https://esg-frontend-dev.onrender.com'],  # Filter out empty strings
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
