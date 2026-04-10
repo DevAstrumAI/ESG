@@ -136,8 +136,126 @@ export const useEmissionStore = create((set, get) => ({
       scope2Renewable: state.scope2Renewable.filter((r) => r.id !== id),
     })),
 
+
+// ─── Replace entire arrays (prevents duplicates) ─────────────────────────────
+setScope1Vehicles: (vehicles) =>
+  set({ scope1Vehicles: vehicles }),
+
+setScope1Stationary: (stationary) =>
+  set({ scope1Stationary: stationary }),
+
+setScope1Refrigerants: (refrigerants) =>
+  set({ scope1Refrigerants: refrigerants }),
+
+setScope1Fugitive: (fugitive) =>
+  set({ scope1Fugitive: fugitive }),
+
+setScope2Electricity: (electricity) =>
+  set({ scope2Electricity: electricity }),
+
+setScope2Heating: (heating) =>
+  set({ scope2Heating: heating }),
+
+setScope2Renewable: (renewable) =>
+  set({ scope2Renewable: renewable }),
+
+// ─── Load Scope 1 Data from API (replaces existing data) ────────────────────
+loadScope1Data: async (token, year) => {
+  try {
+    const response = await fetch(`${API_URL}/api/emissions/scope1?year=${year}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      
+      // Transform mobile data
+      const mobileData = (data.mobile || []).map(item => ({
+        id: item.id || Date.now() + Math.random(),
+        vehicleType: item.fuelType?.replace('_car', '').replace('_truck', '').replace('_van', '') || '',
+        fuelType: item.fuelType?.includes('diesel') ? 'diesel' : 'petrol',
+        litres: item.litresConsumed || 0,
+        km: item.distanceKm || 0,
+      }));
+      
+      // Transform stationary data
+      const stationaryData = (data.stationary || []).map(item => ({
+        id: item.id || Date.now() + Math.random(),
+        fuelType: item.fuelType,
+        consumption: item.consumption || 0,
+      }));
+      
+      // Transform refrigerant data
+      const refrigerantData = (data.refrigerants || []).map(item => ({
+        id: item.id || Date.now() + Math.random(),
+        refrigerantKey: item.refrigerantType,
+        leakageKg: item.leakageKg || 0,
+      }));
+      
+      // Transform fugitive data
+      const fugitiveData = (data.fugitive || []).map(item => ({
+        id: item.id || Date.now() + Math.random(),
+        sourceType: item.sourceType,
+        amount: item.amount || item.emissionKg || 0,
+      }));
+      
+      // ✅ REPLACE instead of APPEND
+      set({
+        scope1Vehicles: mobileData,
+        scope1Stationary: stationaryData,
+        scope1Refrigerants: refrigerantData,
+        scope1Fugitive: fugitiveData,
+      });
+    }
+  } catch (error) {
+    console.error("Error loading Scope 1 data:", error);
+  }
+},
+
+// ─── Load Scope 2 Data from API (replaces existing data) ────────────────────
+loadScope2Data: async (token, year) => {
+  try {
+    const response = await fetch(`${API_URL}/api/emissions/scope2?year=${year}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      
+      // Transform electricity data
+      const electricityData = (data.electricity || []).map(item => ({
+        id: item.id || Date.now() + Math.random(),
+        facilityName: item.facilityName || 'Main Facility',
+        consumption: item.consumption || 0,
+        certificateType: item.certificateType || 'grid_average',
+      }));
+      
+      // Transform heating data
+      const heatingData = (data.heating || []).map(item => ({
+        id: item.id || Date.now() + Math.random(),
+        energyType: item.energyType,
+        consumption: item.consumption || 0,
+      }));
+      
+      // Transform renewable data
+      const renewableData = (data.renewables || []).map(item => ({
+        id: item.id || Date.now() + Math.random(),
+        sourceType: item.sourceType,
+        consumption: item.consumption || 0,
+      }));
+      
+      // ✅ REPLACE instead of APPEND
+      set({
+        scope2Electricity: electricityData,
+        scope2Heating: heatingData,
+        scope2Renewable: renewableData,
+      });
+    }
+  } catch (error) {
+    console.error("Error loading Scope 2 data:", error);
+  }
+},
+
   // ─── Submit Scope 1 ───────────────────────────────────────────────────────
-  submitScope1: async (token, year, month) => {
+  submitScope1: async (token, year, monthString) => {
     set({ loading: true, error: null });
     try {
       const state = get();
@@ -154,7 +272,7 @@ export const useEmissionStore = create((set, get) => ({
 
       const payload = {
         year,
-        month,
+        month: monthString,
         region,
         country,
         city,
@@ -220,7 +338,7 @@ export const useEmissionStore = create((set, get) => ({
   },
 
   // ─── Submit Scope 2 ───────────────────────────────────────────────────────
-  submitScope2: async (token, year, month) => {
+  submitScope2: async (token, year, monthString) => {
     set({ loading: true, error: null });
     try {
       const state = get();
@@ -237,7 +355,7 @@ export const useEmissionStore = create((set, get) => ({
 
       const payload = {
         year,
-        month,
+        month: monthString,
         region,
         country,
         city,
@@ -297,7 +415,7 @@ export const useEmissionStore = create((set, get) => ({
     }
   },
 
-  // ─── Fetch Summary - FIXED to include heating in location-based total ────
+  // ─── Fetch Summary - FIXED with months count ──────────────────────────────
   fetchSummary: async (token, year) => {
     const resolvedYear = year || get().selectedYear;
     try {
@@ -319,16 +437,37 @@ export const useEmissionStore = create((set, get) => ({
       const result = await response.json();
 
       // Extract values from backend response
-      const electricityLocation = result.scope2?.breakdown?.electricityLocation || 
-                                  result.scope2?.breakdown?.electricity || 0;
+      const electricityLocation = result.scope2?.breakdown?.electricity || 
+                                  result.scope2?.breakdown?.electricityLocation || 0;
       const electricityMarket = result.scope2?.breakdown?.electricityMarket || 0;
       const heatingKg = result.scope2?.breakdown?.heating || 0;
       
       // IMPORTANT: Location-based total MUST include heating
-      // Market-based total typically does NOT include heating (unless certificates exist)
       const locationBasedTotal = electricityLocation + heatingKg;
-      const marketBasedTotal = electricityMarket; // Heating only added if renewable certificates exist
+      const marketBasedTotal = electricityMarket;
 
+      // Calculate months with data - fetch from month-status endpoint or use fallback
+      let monthsCount = 0;
+      try {
+        const monthStatusResponse = await fetch(`${API_URL}/api/emissions/month-status?year=${resolvedYear}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (monthStatusResponse.ok) {
+          const monthStatus = await monthStatusResponse.json();
+          monthsCount = Object.values(monthStatus).filter(s => s !== "none").length;
+        } else {
+          // Fallback: check if any data exists
+          if (result.scope1?.totalKgCO2e > 0 || result.scope2?.locationBasedKgCO2e > 0) {
+            monthsCount = 1;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch month status:", err);
+        // Fallback: check if any data exists
+        if (result.scope1?.totalKgCO2e > 0 || result.scope2?.locationBasedKgCO2e > 0) {
+          monthsCount = 1;
+        }
+      }
       set({
         scope1Results: {
           mobile:       { kgCO2e: result.scope1?.breakdown?.mobile || 0 },
@@ -336,6 +475,7 @@ export const useEmissionStore = create((set, get) => ({
           refrigerants: { kgCO2e: result.scope1?.breakdown?.refrigerants || 0 },
           fugitive:     { kgCO2e: result.scope1?.breakdown?.fugitive || 0 },
           total:        { kgCO2e: result.scope1?.totalKgCO2e || 0 },
+          monthsCount: monthsCount,
         },
         scope2Results: {
           electricity: { 
@@ -344,9 +484,9 @@ export const useEmissionStore = create((set, get) => ({
           },
           heating: { kgCO2e: heatingKg },
           renewables: { kgCO2e: result.scope2?.breakdown?.renewables || 0 },
-          // These are the corrected totals
           locationBasedKgCO2e: locationBasedTotal,
           marketBasedKgCO2e: marketBasedTotal,
+          monthsCount: monthsCount,
         },
         selectedYear: resolvedYear,
       });

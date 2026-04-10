@@ -6,15 +6,20 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 export const useCompanyStore = create((set, get) => ({
   company: null,
-  targets: null,  // ← ADDED: Store SBTi targets separately
+  targets: null,
   loading: false,
   error: null,
+  isInitialized: false, // ✅ ADDED: Track if initial load completed
 
-  fetchCompany: async (token) => {
-    // Don't fetch if already loading
+  fetchCompany: async (token, forceRefresh = false) => {
+    // ✅ FIX: Skip if already loading OR already have company and not forcing refresh
     if (get().loading) return;
+    if (get().company && !forceRefresh && get().isInitialized) {
+      console.log("Using cached company data");
+      return { success: true, company: get().company };
+    }
 
-    console.log("fetchCompany called with token:", token ? "Token exists" : "No token");
+    console.log("fetchCompany called, forceRefresh:", forceRefresh);
 
     set({ loading: true, error: null });
 
@@ -23,22 +28,22 @@ export const useCompanyStore = create((set, get) => ({
       console.log("Company data received:", data);
       set({ 
         company: data.company, 
-        targets: data.company?.targets || null,  // ← ADDED: Extract targets from company
+        targets: data.company?.targets || null,
         loading: false, 
-        error: null 
+        error: null,
+        isInitialized: true
       });
       return { success: true, company: data.company };
     } catch (error) {
       console.error("Fetch company error:", error);
 
-      // If backend says "No company found", treat as normal for new users
       if (error.message && error.message.toLowerCase().includes("no company found")) {
         console.log("No company found for this user");
-        set({ company: null, targets: null, loading: false, error: null });
+        set({ company: null, targets: null, loading: false, error: null, isInitialized: true });
         return { success: false, company: null };
       }
 
-      set({ company: null, targets: null, loading: false, error: error.message });
+      set({ company: null, targets: null, loading: false, error: error.message, isInitialized: true });
       return { success: false, error: error.message };
     }
   },
@@ -48,13 +53,12 @@ export const useCompanyStore = create((set, get) => ({
 
     try {
       await companyAPI.create(token, companyData);
-
-      // After creating, fetch the full company payload
       const data = await companyAPI.getMe(token);
       set({ 
         company: data.company, 
-        targets: data.company?.targets || null,  // ← ADDED
-        loading: false 
+        targets: data.company?.targets || null,
+        loading: false,
+        isInitialized: true
       });
       return { success: true, company: data.company };
     } catch (error) {
@@ -69,12 +73,10 @@ export const useCompanyStore = create((set, get) => ({
 
     try {
       await companyAPI.updateMe(token, companyData);
-
-      // After updating, fetch the latest company payload
       const data = await companyAPI.getMe(token);
       set({ 
         company: data.company, 
-        targets: data.company?.targets || null,  // ← ADDED
+        targets: data.company?.targets || null,
         loading: false 
       });
       return { success: true, company: data.company };
@@ -85,16 +87,15 @@ export const useCompanyStore = create((set, get) => ({
     }
   },
 
-  // ─── Reset Company Data ────────────────────────────────────────────────
   reset: () =>
     set({
       company: null,
       targets: null,
       loading: false,
       error: null,
+      isInitialized: false,
     }),
 
-  // ─── NEW: Save SBTi Targets ─────────────────────────────────────────────
   saveTargets: async (token, payload) => {
     set({ loading: true, error: null });
     
@@ -114,12 +115,11 @@ export const useCompanyStore = create((set, get) => ({
         throw new Error(data.detail || "Failed to save targets.");
       }
       
-      // Merge targets into the existing company object in the store
       set((state) => ({
         company: state.company
           ? { ...state.company, targets: payload }
           : { targets: payload },
-        targets: payload,  // ← Store targets separately for easy access
+        targets: payload,
         loading: false,
         error: null,
       }));
