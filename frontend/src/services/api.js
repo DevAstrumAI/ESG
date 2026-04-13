@@ -93,7 +93,7 @@ export const companyAPI = {
     });
   },
   
-  // ─── NEW: Save SBTi Targets ─────────────────────────────────────────────
+ // Save targets
   saveTargets: async (token, targetsData) => {
     return request('/api/companies/targets', {
       method: 'PUT',
@@ -102,7 +102,7 @@ export const companyAPI = {
     });
   },
   
-  // Get targets (if separate endpoint exists)
+  // Get targets
   getTargets: async (token) => {
     return request('/api/companies/targets', { token });
   },

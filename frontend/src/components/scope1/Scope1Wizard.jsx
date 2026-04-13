@@ -213,8 +213,7 @@ export default function Scope1Wizard() {
     try {
       const rows = currentStep === 1 ? vehicles : currentStep === 2 ? stationary : currentStep === 3 ? refrigerants : fugitive;
       const monthString = rows[0]?.month || `${selectedYear}-01`;
-      const [year, month] = monthString.split("-").map(Number);
-      const result = await submitScope1(token, year, month);
+      const result = await submitScope1(token, selectedYear, monthString);
       if (!result.success) {
         console.error("Scope1 submit failed:", result.error);
         return false;

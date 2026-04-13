@@ -16,32 +16,62 @@ import {
   FiBarChart2,
   FiActivity,
   FiChevronDown,
-  FiRefreshCw
+  FiRefreshCw,
+  FiTrendingUp
 } from "react-icons/fi";
 import { BiLeaf, BiTrendingUp } from "react-icons/bi";
+import { useNavigate } from "react-router-dom";
 import ScopeBreakdown from "../components/dashboard/ScopeBreakdown";
-import EmissionsTrendLine from "../components/dashboard/DashboardCharts/EmissionsTrendLine";
 import TotalEmissionsPie from "../components/dashboard/DashboardCharts/TotalEmissionsPie";
+import StackedCategoryChart from "../components/dashboard/DashboardCharts/StackedCategoryChart";
+import DataCompletenessCalendar from "../components/dashboard/DataCompletenessCalendar";
 import { useAuthStore } from "../store/authStore";
 import { useEmissionStore } from "../store/emissionStore";
+import { useCompanyStore } from "../store/companyStore";
 import Card from "../components/ui/Card";
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   
   const token = useAuthStore((s) => s.token);
   const fetchSummary = useEmissionStore((s) => s.fetchSummary);
   const scope1Results = useEmissionStore((s) => s.scope1Results);
   const scope2Results = useEmissionStore((s) => s.scope2Results);
+  const company = useCompanyStore((s) => s.company);
+  const fetchCompany = useCompanyStore((s) => s.fetchCompany);
+  const targets = useCompanyStore((s) => s.targets);
+
+  // Initial data load on mount and when token changes
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (token && !initialLoadDone) {
+        console.log("Initial data load starting...");
+        
+        // Force fetch company data
+        await fetchCompany(token, true);
+        
+        // Fetch emission summary
+        await fetchSummary(token, selectedYear);
+        
+        setInitialLoadDone(true);
+        console.log("Initial data load complete");
+      }
+    };
+    
+    loadInitialData();
+  }, [token, fetchCompany, fetchSummary, selectedYear, initialLoadDone]);
 
   // Fetch data when year changes
   useEffect(() => {
-    if (token) {
+    if (token && initialLoadDone) {
+      console.log("Year changed, fetching summary for:", selectedYear);
       fetchSummary(token, selectedYear);
     }
-  }, [token, fetchSummary, selectedYear]);
+  }, [token, fetchSummary, selectedYear, initialLoadDone]);
 
   useEffect(() => {
     const currentYear = new Date().getFullYear();
@@ -52,17 +82,105 @@ export default function DashboardPage() {
     setAvailableYears(years);
   }, []);
 
+  const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
+
+  const [yoyTrend, setYoyTrend] = useState(null);
+  const [predictionTargetKg, setPredictionTargetKg] = useState(null);
+  const [monthsSubmitted, setMonthsSubmitted] = useState(0);
+  const [projectedYearEndT, setProjectedYearEndT] = useState(null);
+  const [predictionLoading, setPredictionLoading] = useState(false);
+
   const handleRefresh = async () => {
     setRefreshing(true);
+    await fetchCompany(token, true);
     await fetchSummary(token, selectedYear);
     setTimeout(() => setRefreshing(false), 500);
   };
+
+  useEffect(() => {
+    const loadPredictionMetrics = async () => {
+      if (!token) return;
+      setPredictionLoading(true);
+
+      try {
+        const response = await fetch(`${API_URL}/api/predictions?year=${selectedYear}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.detail || "Failed to load prediction metrics.");
+        }
+
+        const apiMonths = payload?.data_availability?.total_months || 0;
+        const hasData = (scope1Results?.total?.kgCO2e > 0) || (scope2Results?.total?.kgCO2e > 0);
+        const actualMonths = apiMonths > 0 ? apiMonths : (hasData ? 1 : 0);
+        
+        setMonthsSubmitted(actualMonths);
+
+        const yoyData = payload?.predictions?.yoy_trend?.data;
+        setYoyTrend(yoyData && typeof yoyData.avg_yoy_change_pct === "number" ? yoyData : null);
+
+        const onTrackData = payload?.predictions?.on_track_analysis?.data;
+        const trajectoryData = payload?.predictions?.target_trajectory?.data;
+        const yearEndData = payload?.predictions?.year_end_projection?.data;
+        const targetFromDataAvailability = payload?.data_availability?.target_total_kg;
+        
+        const targetKg = onTrackData?.this_year_target_kg || 
+                         trajectoryData?.target_total_kg || 
+                         targetFromDataAvailability || 
+                         null;
+        
+        setPredictionTargetKg(targetKg);
+        setProjectedYearEndT(yearEndData?.projected_annual_t || null);
+        
+      } catch (error) {
+        console.error("Predictions error:", error);
+        setYoyTrend(null);
+        setPredictionTargetKg(null);
+        setMonthsSubmitted(scope1Results?.total?.kgCO2e > 0 ? 1 : 0);
+        setProjectedYearEndT(null);
+      } finally {
+        setPredictionLoading(false);
+      }
+    };
+
+    loadPredictionMetrics();
+  }, [token, selectedYear, API_URL, scope1Results]);
 
   // CORRECTED DATA MAPPING
   const scope1Kg = scope1Results?.total?.kgCO2e || 0;
   const scope2Kg = scope2Results?.locationBasedKgCO2e || 0;
   const totalKg = scope1Kg + scope2Kg;
   const totalTonnes = totalKg / 1000;
+  
+  // Get target from company store or predictions
+  const targetFromCompany = targets?.annualTargetT || company?.targets?.annualTargetT;
+  const targetT = targetFromCompany || (predictionTargetKg ? predictionTargetKg / 1000 : null);
+  const budgetUsedPct = targetT > 0 ? Math.min((totalTonnes / targetT) * 100, 100) : null;
+  
+  // Determine status based on budget used
+  const getBudgetStatus = () => {
+    if (budgetUsedPct === null) return "no-target";
+    if (budgetUsedPct <= 100) return "on-track";
+    if (budgetUsedPct <= 115) return "at-risk";
+    return "off-track";
+  };
+  
+  const budgetStatus = getBudgetStatus();
+  
+  const getStatusColor = () => {
+    switch (budgetStatus) {
+      case "on-track": return { bg: "#D1FAE5", text: "#065F46", dot: "#10B981" };
+      case "at-risk": return { bg: "#FEF3C7", text: "#92400E", dot: "#F59E0B" };
+      case "off-track": return { bg: "#FEE2E2", text: "#991B1B", dot: "#EF4444" };
+      default: return { bg: "#F3F4F6", text: "#6B7280", dot: "#9CA3AF" };
+    }
+  };
+  
+  const statusColors = getStatusColor();
 
   const scope1Tonnes = scope1Kg / 1000;
   const scope2Tonnes = scope2Kg / 1000;
@@ -129,6 +247,27 @@ export default function DashboardPage() {
   ];
 
   const hasData = totalKg > 0;
+  
+  // Tooltip text for budget card
+  const getTooltipText = () => {
+    if (!targetT) return "Set an annual target to track your budget";
+    if (projectedYearEndT) {
+      return `At this rate you will emit ${projectedYearEndT.toFixed(1)} tCO₂e by December — your target is ${targetT.toFixed(1)} tCO₂e`;
+    }
+    return `Target: ${targetT.toFixed(1)} tCO₂e. Submit more data for projections.`;
+  };
+
+  // Debug logging
+  useEffect(() => {
+    console.log("Dashboard state:", {
+      hasTarget: !!targetT,
+      targetT,
+      budgetUsedPct,
+      monthsWithData: scope1Results?.monthsCount,
+      companyExists: !!company,
+      targetsExist: !!targets
+    });
+  }, [targetT, budgetUsedPct, scope1Results, company, targets]);
 
   return (
     <div className="dashboard-container">
@@ -161,75 +300,122 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI Row */}
-      <div className="kpi-row">
+      {/* Summary KPI Strip */}
+      <div className="summary-strip">
+        {/* Card 1: Total Scope 1 + 2 */}
         <div className="kpi-card">
           <div className="kpi-card-title">
             <span className="kpi-icon-wrap">
               <BiLeaf className="kpi-icon" />
             </span>
-            <span>Scope 1 Total</span>
+            <span>Total Scope 1 + 2</span>
           </div>
           <div className="kpi-value">
-            {hasData ? scope1Tonnes.toFixed(1) : "—"}
+            {hasData ? totalTonnes.toFixed(2) : "—"}
             <span className="kpi-unit"> tCO₂e</span>
           </div>
-          {hasData && scope1Kg > 0 && (
-            <div className="kpi-sub">
-              {((scope1Kg / totalKg) * 100).toFixed(1)}% of total emissions
-            </div>
-          )}
+          <div className="kpi-sub">Combined emissions for {selectedYear}</div>
         </div>
 
+        {/* Card 2: YoY Change */}
         <div className="kpi-card">
           <div className="kpi-card-title">
             <span className="kpi-icon-wrap">
-              <FiZap className="kpi-icon" />
+              <FiTrendingUp className="kpi-icon" />
             </span>
-            <span>Scope 2 Total (Location-based)</span>
+            <span>YoY Change</span>
           </div>
-          <div className="kpi-value">
-            {hasData ? scope2Tonnes.toFixed(1) : "—"}
-            <span className="kpi-unit"> tCO₂e</span>
+          <div className={`yoy-value ${yoyTrend?.direction === 'decreasing' ? 'yoy-good' : 'yoy-bad'}`}>
+            {yoyTrend
+              ? `${yoyTrend.direction === 'decreasing' ? '↓' : '↑'} ${Math.abs(yoyTrend.avg_yoy_change_pct).toFixed(1)}%`
+              : 'N/A'}
           </div>
-          {hasData && scope2Kg > 0 && (
-            <div className="kpi-sub">
-              {((scope2Kg / totalKg) * 100).toFixed(1)}% of total emissions
-            </div>
-          )}
+          <div className="kpi-sub">
+            {yoyTrend
+              ? (yoyTrend.direction === 'decreasing'
+                  ? 'Emissions down from prior year'
+                  : 'Emissions up from prior year')
+              : 'No year-on-year data yet'}
+          </div>
         </div>
 
-        <div className="kpi-card">
+        {/* Card 3: Carbon Budget */}
+        <div className="kpi-card budget-card">
           <div className="kpi-card-title">
             <span className="kpi-icon-wrap">
               <FiTarget className="kpi-icon" />
             </span>
-            <span>Location vs Market</span>
+            <span>Carbon Budget</span>
           </div>
-          <div className="kpi-value">
-            {(locationBasedKg / 1000).toFixed(1)}
-            <span className="kpi-unit"> tCO₂e</span>
+          
+          {/* Budget Percentage with Tooltip */}
+          <div className="tooltip-container">
+            <div className="kpi-value">
+              {budgetUsedPct != null ? `${budgetUsedPct.toFixed(0)}%` : 'N/A'}
+            </div>
+            <div className="tooltip-text">{getTooltipText()}</div>
           </div>
+          
+          {/* Progress Bar */}
+          <div className="budget-progress-bar">
+            <div
+              className="budget-progress-fill"
+              style={{ width: `${budgetUsedPct != null ? budgetUsedPct : 0}%` }}
+            />
+          </div>
+          
+          {/* Projected Year-End Total */}
+          <div className="projected-section">
+            <div className="projected-label">
+              <FiTrendingUp size={12} />
+              <span>Projected Year-End</span>
+            </div>
+            <div className="projected-value">
+              {projectedYearEndT ? `${projectedYearEndT.toFixed(1)} tCO₂e` : '—'}
+            </div>
+          </div>
+          
+          {/* Status Indicator */}
+          <div className={`status-indicator ${budgetStatus}`} style={{ background: statusColors.bg, color: statusColors.text }}>
+            <span className="status-dot" style={{ background: statusColors.dot }}></span>
+            <span className="status-text">
+              {budgetStatus === "on-track" && "On Track"}
+              {budgetStatus === "at-risk" && "At Risk"}
+              {budgetStatus === "off-track" && "Off Track"}
+              {budgetStatus === "no-target" && "No Target Set"}
+            </span>
+          </div>
+          
+          {/* Target Display with Set Target Link */}
           <div className="kpi-sub">
-            <div>📍 Location-based: {(locationBasedKg / 1000).toFixed(1)} tCO₂e</div>
-            <div>📊 Market-based: {(marketBasedKg / 1000).toFixed(1)} tCO₂e</div>
-            {(locationBasedKg - marketBasedKg) > 0 && (
-              <div style={{ color: '#10B981', fontSize: '11px', marginTop: '6px' }}>
-                ✓ {((locationBasedKg - marketBasedKg) / 1000).toFixed(1)} tCO₂e reduction from renewable energy certificates
-              </div>
+            {targetT ? (
+              `of ${targetT.toFixed(1)} t target`
+            ) : (
+              <button 
+                onClick={() => navigate('/target-settings')}
+                className="set-target-link"
+              >
+                Set target in Settings →
+              </button>
             )}
           </div>
         </div>
 
+        {/* Card 4: Months with Data */}
         <div className="kpi-card">
           <div className="kpi-card-title">
             <span className="kpi-icon-wrap">
               <FiCalendar className="kpi-icon" />
             </span>
-            <span>Reporting Year</span>
+            <span>Months with Data</span>
           </div>
-          <div className="kpi-value kpi-year">{selectedYear}</div>
-          <div className="kpi-sub">Selected reporting period</div>
+          <div className="kpi-value">
+            {scope1Results?.monthsCount || scope2Results?.monthsCount || monthsSubmitted || 0}
+            <span className="kpi-unit"> months</span>
+          </div>
+          <div className="kpi-sub">
+            {(scope1Results?.monthsCount || monthsSubmitted) === 12 ? "Full year complete" : `${12 - ((scope1Results?.monthsCount || monthsSubmitted) || 0)} months remaining`}
+          </div>
         </div>
       </div>
 
@@ -263,22 +449,19 @@ export default function DashboardPage() {
         )}
       </Card>
 
-      {/* Charts Grid */}
+      {/* Data Completeness Calendar */}
+      <div className="calendar-section">
+        <DataCompletenessCalendar year={selectedYear} />
+      </div>
+
+      {/* Charts Grid - Updated with Stacked Category Chart */}
       <div className="charts-grid">
         <Card className="chart-card large">
           <div className="chart-header">
-            <h3>Emissions Trend</h3>
-            <div className="chart-legend">
-              <span className="legend-item">
-                <span className="legend-dot scope1"></span>Scope 1
-              </span>
-              <span className="legend-item">
-                <span className="legend-dot scope2"></span>Scope 2
-              </span>
-            </div>
+            <h3>Monthly Emissions by Category</h3>
           </div>
           <div className="chart-wrapper">
-            <EmissionsTrendLine />
+            <StackedCategoryChart year={selectedYear} />
           </div>
         </Card>
 
@@ -511,9 +694,9 @@ export default function DashboardPage() {
           animation: spin 1s linear infinite;
         }
 
-        .kpi-row {
+        .summary-strip {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 20px;
           margin-bottom: 24px;
         }
@@ -571,14 +754,126 @@ export default function DashboardPage() {
           margin-left: 4px;
         }
 
-        .kpi-year {
-          font-size: 28px;
-        }
-
         .kpi-sub {
           margin-top: 8px;
           font-size: 12px;
           color: #6B7280;
+        }
+
+        .yoy-value {
+          font-size: 32px;
+          font-weight: 700;
+          margin: 12px 0 8px;
+        }
+
+        .yoy-good {
+          color: #047857;
+        }
+
+        .yoy-bad {
+          color: #B91C1C;
+        }
+
+        .budget-progress-bar {
+          width: 100%;
+          height: 10px;
+          background: #E5E7EB;
+          border-radius: 999px;
+          overflow: hidden;
+          margin: 12px 0 10px;
+        }
+
+        .budget-progress-fill {
+          height: 100%;
+          background: #2E7D64;
+          border-radius: 999px;
+          transition: width 0.35s ease;
+        }
+
+        .projected-section {
+          margin: 12px 0 8px;
+          padding: 8px 0;
+          border-top: 1px solid #E5E7EB;
+          border-bottom: 1px solid #E5E7EB;
+        }
+
+        .projected-label {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11px;
+          color: #6B7280;
+          margin-bottom: 4px;
+        }
+
+        .projected-value {
+          font-size: 16px;
+          font-weight: 700;
+          color: #1B4D3E;
+        }
+
+        .status-indicator {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin: 8px 0;
+          padding: 4px 8px;
+          border-radius: 20px;
+          width: fit-content;
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+        }
+
+        .tooltip-container {
+          position: relative;
+          display: inline-block;
+          cursor: help;
+        }
+
+        .tooltip-text {
+          visibility: hidden;
+          background-color: #1F2937;
+          color: white;
+          text-align: center;
+          border-radius: 6px;
+          padding: 6px 10px;
+          position: absolute;
+          z-index: 1;
+          bottom: 125%;
+          left: 50%;
+          transform: translateX(-50%);
+          white-space: nowrap;
+          font-size: 12px;
+          font-weight: normal;
+        }
+
+        .tooltip-container:hover .tooltip-text {
+          visibility: visible;
+        }
+
+        .set-target-link {
+          background: none;
+          border: none;
+          color: #2E7D64;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 600;
+          text-decoration: underline;
+          padding: 0;
+        }
+
+        .set-target-link:hover {
+          color: #1B4D3E;
+        }
+
+        .calendar-section {
+          margin-bottom: 24px;
         }
 
         .total-emissions-card {
@@ -663,7 +958,7 @@ export default function DashboardPage() {
         }
 
         .chart-card.large { 
-          min-height: 400px; 
+          min-height: 450px; 
         }
 
         .chart-header {
@@ -680,35 +975,8 @@ export default function DashboardPage() {
           margin: 0;
         }
 
-        .chart-legend { 
-          display: flex; 
-          gap: 16px; 
-        }
-
-        .legend-item {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 12px;
-          color: #4A5568;
-        }
-
-        .legend-dot { 
-          width: 10px; 
-          height: 10px; 
-          border-radius: 50%; 
-        }
-        
-        .legend-dot.scope1 { 
-          background: #3B82F6; 
-        }
-        
-        .legend-dot.scope2 { 
-          background: #F97316; 
-        }
-
         .chart-wrapper { 
-          height: 300px; 
+          height: 350px; 
           width: 100%; 
         }
 
@@ -877,7 +1145,7 @@ export default function DashboardPage() {
             align-items: flex-start;
           }
 
-          .kpi-row {
+          .summary-strip {
             grid-template-columns: 1fr;
           }
 

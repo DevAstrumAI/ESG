@@ -1,14 +1,16 @@
 // src/pages/Scope2Page.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { useEmissionStore } from "../store/emissionStore";
 import { useCompanyStore } from "../store/companyStore";
+import { normalizeScope2ElectricityEntry, normalizeScope2HeatingEntry, normalizeScope2RenewableEntry } from "../utils/emissionHydration";
 import ElectricityForm from "../components/scope2/ElectricityForm";
 import HeatingForm from "../components/scope2/HeatingForm";
 import RenewableForm from "../components/scope2/RenewableForm";
+import Scope2Summary from "../components/scope2/Scope2Summary";
 import Card from "../components/ui/Card";
-import { FiZap, FiThermometer, FiSun, FiCalendar, FiArrowLeft, FiSave, FiAlertCircle } from "react-icons/fi";
+import { FiZap, FiThermometer, FiSun, FiCalendar, FiArrowLeft, FiAlertCircle } from "react-icons/fi";
 
 export default function Scope2Page() {
   const navigate = useNavigate();
@@ -16,26 +18,27 @@ export default function Scope2Page() {
   const token = useAuthStore((s) => s.token);
   const { company, fetchCompany } = useCompanyStore();
   
-  // ✅ Get reset function from emissionStore
-  const resetEmissionData = useEmissionStore((s) => s.reset);
-  
-  // Get month from URL parameter or default to current month
   const urlMonth = searchParams.get("month");
   const defaultMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   
   const [selectedMonth, setSelectedMonth] = useState(urlMonth || defaultMonth);
-  const [activeTab, setActiveTab] = useState("electricity");
+  const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [loadingData, setLoadingData] = useState(true);
+  const [showSummary, setShowSummary] = useState(false);
+  
+  // ✅ Ref to track if data is already loaded for current month
+  const dataLoadedForMonth = useRef(null);
+  const isLoadingRef = useRef(false);
   
   // Get data from store
   const electricity = useEmissionStore((s) => s.scope2Electricity);
   const heating = useEmissionStore((s) => s.scope2Heating);
   const renewables = useEmissionStore((s) => s.scope2Renewable);
   
-  // ✅ Get setter methods to replace data (not append)
+  // Get store actions
   const setElectricity = useEmissionStore((s) => s.setScope2Electricity);
   const setHeating = useEmissionStore((s) => s.setScope2Heating);
   const setRenewables = useEmissionStore((s) => s.setScope2Renewable);
@@ -47,13 +50,9 @@ export default function Scope2Page() {
   const addRenewable = useEmissionStore((s) => s.addScope2Renewable);
   const deleteRenewable = useEmissionStore((s) => s.deleteScope2Renewable);
   const submitScope2 = useEmissionStore((s) => s.submitScope2);
+  const isSubmitting = useEmissionStore((s) => s.isSubmitting);
   
   const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
-  
-  // ✅ Clear emission data when component mounts (fresh start to prevent duplicates)
-  useEffect(() => {
-    resetEmissionData();
-  }, [resetEmissionData]);
   
   // Load company data
   useEffect(() => {
@@ -62,20 +61,33 @@ export default function Scope2Page() {
     }
   }, [token, company, fetchCompany]);
   
-  // ✅ Load existing data for the selected month/year
+  // Load Scope 2 data when month changes
   useEffect(() => {
     const loadScope2Data = async () => {
       if (!token) return;
       
+      // ✅ Prevent duplicate loading for same month
+      if (dataLoadedForMonth.current === selectedMonth && !isLoadingRef.current) {
+        console.log("Data already loaded for", selectedMonth, "- skipping");
+        setLoadingData(false);
+        return;
+      }
+      
+      // ✅ Prevent concurrent loads
+      if (isLoadingRef.current) {
+        console.log("Already loading data, skipping...");
+        return;
+      }
+      
+      isLoadingRef.current = true;
       setLoadingData(true);
       
       try {
-        // First, clear existing data to prevent duplicates
+        // Clear existing data to prevent duplicates
         setElectricity([]);
         setHeating([]);
         setRenewables([]);
         
-        // Then fetch fresh data
         const [year] = selectedMonth.split("-");
         const response = await fetch(`${API_URL}/api/emissions/scope2?year=${year}`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -84,47 +96,47 @@ export default function Scope2Page() {
         if (response.ok) {
           const data = await response.json();
           
-          // Transform electricity data with unique IDs
           const electricityData = (data.electricity || []).map((item, index) => ({
-            id: item.id || `${Date.now()}-${index}-${Math.random()}`,
+            id: item.id || `${Date.now()}-electricity-${index}-${Math.random()}`,
             facilityName: item.facilityName || 'Main Facility',
             consumption: item.consumption || 0,
             certificateType: item.certificateType || 'grid_average',
             month: item.month,
           }));
           
-          // Transform heating data
           const heatingData = (data.heating || []).map((item, index) => ({
-            id: item.id || `${Date.now()}-${index}-${Math.random()}`,
+            id: item.id || `${Date.now()}-heating-${index}-${Math.random()}`,
             energyType: item.energyType,
             consumption: item.consumption || 0,
             month: item.month,
           }));
           
-          // Transform renewable data
           const renewableData = (data.renewables || []).map((item, index) => ({
-            id: item.id || `${Date.now()}-${index}-${Math.random()}`,
+            id: item.id || `${Date.now()}-renewable-${index}-${Math.random()}`,
             sourceType: item.sourceType,
             consumption: item.consumption || 0,
             month: item.month,
           }));
           
-          // Set the data (replacing, not appending)
           setElectricity(electricityData);
           setHeating(heatingData);
           setRenewables(renewableData);
+          
+          // ✅ Mark this month as loaded
+          dataLoadedForMonth.current = selectedMonth;
         }
       } catch (error) {
         console.error("Error loading Scope 2 data:", error);
       } finally {
         setLoadingData(false);
+        isLoadingRef.current = false;
       }
     };
     
     loadScope2Data();
-  }, [token, selectedMonth, setElectricity, setHeating, setRenewables]);
+  }, [token, selectedMonth]);
   
-  // Generate month options (last 12 months + next 12 months)
+  // Generate month options
   const generateMonthOptions = () => {
     const options = [];
     const now = new Date();
@@ -140,67 +152,166 @@ export default function Scope2Page() {
   
   const monthOptions = generateMonthOptions();
   
-  // Update URL when month changes
   const handleMonthChange = (newMonth) => {
+    if (newMonth === selectedMonth) return;
     setSelectedMonth(newMonth);
+    // ✅ Reset loaded flag when month changes
+    dataLoadedForMonth.current = null;
     const url = new URL(window.location);
     url.searchParams.set('month', newMonth);
     window.history.replaceState({}, '', url);
   };
   
-  const handleSubmit = async () => {
+  const handleNext = () => {
+    if (currentStep < steps.length - 1) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+  
+  const handlePrevious = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+  
+  const handleBackToSteps = () => {
+    setShowSummary(false);
+    setSubmitSuccess(false);
+    setSubmitError(null);
+  };
+  
+  const handleCalculateAll = async () => {
     setSubmitting(true);
     setSubmitError(null);
     setSubmitSuccess(false);
     
     const [year, month] = selectedMonth.split("-");
+    
+    // ✅ Force reload data before calculation
+    dataLoadedForMonth.current = null;
+    
+    // Reload data
+    try {
+      const response = await fetch(`${API_URL}/api/emissions/scope2?year=${year}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        const electricityData = (data.electricity || []).map((item, index) => ({
+          id: item.id || `${Date.now()}-electricity-${index}-${Math.random()}`,
+          facilityName: item.facilityName || 'Main Facility',
+          consumption: item.consumption || 0,
+          certificateType: item.certificateType || 'grid_average',
+          month: item.month,
+        }));
+        
+        const heatingData = (data.heating || []).map((item, index) => ({
+          id: item.id || `${Date.now()}-heating-${index}-${Math.random()}`,
+          energyType: item.energyType,
+          consumption: item.consumption || 0,
+          month: item.month,
+        }));
+        
+        const renewableData = (data.renewables || []).map((item, index) => ({
+          id: item.id || `${Date.now()}-renewable-${index}-${Math.random()}`,
+          sourceType: item.sourceType,
+          consumption: item.consumption || 0,
+          month: item.month,
+        }));
+        
+        setElectricity(electricityData);
+        setHeating(heatingData);
+        setRenewables(renewableData);
+        dataLoadedForMonth.current = selectedMonth;
+      }
+    } catch (error) {
+      console.error("Error reloading data:", error);
+    }
+    
     const result = await submitScope2(token, parseInt(year), selectedMonth);
     
     setSubmitting(false);
     if (result.success) {
       setSubmitSuccess(true);
-      setTimeout(() => {
-        setSubmitSuccess(false);
-        navigate("/dashboard");
-      }, 1500);
+      setShowSummary(true);
     } else {
-      setSubmitError(result.error || "Submission failed. Please try again.");
+      setSubmitError(result.error || "Calculation failed. Please try again.");
     }
   };
   
-  const hasData = electricity.length > 0 || heating.length > 0 || renewables.length > 0;
-  
-  const tabs = [
-    { id: "electricity", label: "Electricity", icon: <FiZap size={16} />, count: electricity.length },
-    { id: "heating", label: "Heating & Cooling", icon: <FiThermometer size={16} />, count: heating.length },
-    { id: "renewables", label: "Renewable Energy", icon: <FiSun size={16} />, count: renewables.length },
+  const steps = [
+    { id: "electricity", label: "Electricity", icon: <FiZap />, count: electricity.length, component: (
+      <ElectricityForm entries={electricity} onAdd={addElectricity} onDelete={deleteElectricity} />
+    )},
+    { id: "heating", label: "Heating", icon: <FiThermometer />, count: heating.length, component: (
+      <HeatingForm entries={heating} onAdd={addHeating} onDelete={deleteHeating} />
+    )},
+    { id: "renewables", label: "Renewables", icon: <FiSun />, count: renewables.length, component: (
+      <RenewableForm entries={renewables} onAdd={addRenewable} onDelete={deleteRenewable} />
+    )},
   ];
   
   if (loadingData) {
     return (
-      <div className="loading-state">
-        <div className="spinner"></div>
-        <p>Loading your data...</p>
+      <div className="loading-skeleton">
+        <div className="skeleton-header"></div>
+        <div className="skeleton-tabs">
+          <div className="skeleton-tab"></div>
+          <div className="skeleton-tab"></div>
+          <div className="skeleton-tab"></div>
+        </div>
+        <div className="skeleton-table">
+          <div className="skeleton-row"></div>
+          <div className="skeleton-row"></div>
+        </div>
         <style jsx>{`
-          .loading-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 400px;
-          }
-          .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #E5E7EB;
-            border-top-color: #2E7D64;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-          }
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-          p { margin-top: 16px; color: #6B7280; }
+          .loading-skeleton { padding: 24px; max-width: 1400px; margin: 0 auto; }
+          .skeleton-header { height: 40px; width: 200px; background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px; margin-bottom: 24px; }
+          .skeleton-tabs { display: flex; gap: 12px; margin-bottom: 24px; }
+          .skeleton-tab { height: 40px; width: 120px; background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px; }
+          .skeleton-table { border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px; }
+          .skeleton-row { height: 50px; background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px; margin-bottom: 12px; }
+          @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        `}</style>
+      </div>
+    );
+  }
+  
+  if (showSummary) {
+    return (
+      <div className="scope2-page">
+        <div className="page-header">
+          <button onClick={handleBackToSteps} className="back-btn">
+            <FiArrowLeft /> Back to Entry
+          </button>
+          <h1>Scope 2 Emissions Summary</h1>
+          <p>Review your calculated emissions</p>
+        </div>
+        
+        <Scope2Summary />
+        
+        <div className="summary-actions">
+          <button onClick={handleBackToSteps} className="secondary-btn">
+            Edit Data
+          </button>
+          <button onClick={() => navigate("/dashboard")} className="primary-btn">
+            Go to Dashboard
+          </button>
+        </div>
+        <style jsx>{`
+          .scope2-page { padding: 24px; max-width: 1400px; margin: 0 auto; }
+          .page-header { margin-bottom: 24px; }
+          .back-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; color: #6B7280; cursor: pointer; margin-bottom: 16px; font-size: 14px; }
+          .back-btn:hover { color: #2E7D64; }
+          .page-header h1 { font-size: 28px; font-weight: 700; color: #1B4D3E; margin: 0 0 8px; }
+          .page-header p { color: #6B7280; margin: 0; }
+          .summary-actions { display: flex; gap: 12px; justify-content: center; margin-top: 24px; }
+          .secondary-btn { padding: 12px 24px; border: 1px solid #D1D5DB; border-radius: 8px; background: white; color: #374151; font-weight: 500; cursor: pointer; }
+          .secondary-btn:hover { border-color: #2E7D64; color: #2E7D64; }
+          .primary-btn { padding: 12px 24px; border: 1px solid #2E7D64; border-radius: 8px; background: #2E7D64; color: white; font-weight: 500; cursor: pointer; }
+          .primary-btn:hover { background: #1B4D3E; }
         `}</style>
       </div>
     );
@@ -217,7 +328,6 @@ export default function Scope2Page() {
       </div>
       
       <Card className="scope2-card">
-        {/* Month Selector */}
         <div className="month-selector-section">
           <div className="month-selector">
             <FiCalendar className="selector-icon" />
@@ -233,307 +343,77 @@ export default function Scope2Page() {
           </div>
         </div>
         
-        {/* Tab Navigation */}
-        <div className="tab-navigation">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              className={`tab-btn ${activeTab === tab.id ? "active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-              {tab.count > 0 && <span className="tab-count">{tab.count}</span>}
-            </button>
-          ))}
-        </div>
-        
-        {/* Tab Content */}
-        <div className="tab-content">
-          {activeTab === "electricity" && (
-            <ElectricityForm
-              entries={electricity}
-              onAdd={addElectricity}
-              onDelete={deleteElectricity}
-            />
-          )}
-          
-          {activeTab === "heating" && (
-            <HeatingForm
-              entries={heating}
-              onAdd={addHeating}
-              onDelete={deleteHeating}
-            />
-          )}
-          
-          {activeTab === "renewables" && (
-            <RenewableForm
-              entries={renewables}
-              onAdd={addRenewable}
-              onDelete={deleteRenewable}
-            />
-          )}
-        </div>
-        
-        {/* Submit Section */}
-        <div className="submit-section">
-          {submitError && (
-            <div className="error-message">
-              <FiAlertCircle /> {submitError}
-            </div>
-          )}
-          
-          {submitSuccess && (
-            <div className="success-message">
-              <FiSave /> Data submitted successfully! Redirecting to dashboard...
-            </div>
-          )}
-          
-          <button
-            className={`submit-btn ${hasData ? "" : "disabled"}`}
-            onClick={handleSubmit}
-            disabled={submitting || !hasData}
-          >
-            {submitting ? "Submitting..." : `Submit Scope 2 Data for ${new Date(selectedMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}`}
+        <div className="step-navigation">
+          <button onClick={handlePrevious} disabled={currentStep === 0} className="nav-btn previous-btn">
+            ← Previous
           </button>
           
-          {!hasData && (
-            <p className="no-data-hint">Add at least one entry before submitting</p>
+          <div className="step-indicators">
+            {steps.map((step, index) => (
+              <div key={step.id} className={`step-indicator ${currentStep === index ? "active" : ""} ${currentStep > index ? "completed" : ""}`}>
+                <span className="step-icon">{step.icon}</span>
+                <span className="step-label">{step.label}</span>
+                {step.count > 0 && <span className="step-count">{step.count}</span>}
+              </div>
+            ))}
+          </div>
+          
+          {currentStep < steps.length - 1 ? (
+            <button onClick={handleNext} className="nav-btn next-btn">Next →</button>
+          ) : (
+            <button onClick={handleCalculateAll} disabled={submitting} className="nav-btn calculate-btn">
+              {submitting ? "Calculating..." : "Calculate All →"}
+            </button>
           )}
         </div>
+        
+        <div className="step-content">
+          {steps[currentStep].component}
+        </div>
+        
+        {submitError && (
+          <div className="error-message">
+            <FiAlertCircle /> {submitError}
+          </div>
+        )}
       </Card>
       
       <style jsx>{`
-        .scope2-page {
-          padding: 24px;
-          max-width: 1400px;
-          margin: 0 auto;
-        }
-        
-        .loading-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 400px;
-        }
-        .spinner {
-          width: 40px;
-          height: 40px;
-          border: 3px solid #E5E7EB;
-          border-top-color: #2E7D64;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        .loading-state p { margin-top: 16px; color: #6B7280; }
-        
-        .page-header {
-          margin-bottom: 24px;
-        }
-        
-        .back-btn {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          background: none;
-          border: none;
-          color: #6B7280;
-          cursor: pointer;
-          margin-bottom: 16px;
-          font-size: 14px;
-        }
-        
-        .back-btn:hover {
-          color: #2E7D64;
-        }
-        
-        .page-header h1 {
-          font-size: 28px;
-          font-weight: 700;
-          color: #1B4D3E;
-          margin: 0 0 8px;
-        }
-        
-        .page-header p {
-          color: #6B7280;
-          margin: 0;
-        }
-        
-        .scope2-card {
-          padding: 24px;
-        }
-        
-        .month-selector-section {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding-bottom: 20px;
-          margin-bottom: 20px;
-          border-bottom: 1px solid #E5E7EB;
-          flex-wrap: wrap;
-          gap: 12px;
-        }
-        
-        .month-selector {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-        
-        .selector-icon {
-          color: #2E7D64;
-          font-size: 18px;
-        }
-        
-        .month-selector label {
-          font-size: 14px;
-          font-weight: 500;
-          color: #374151;
-        }
-        
-        .month-selector select {
-          padding: 8px 12px;
-          border: 1px solid #E5E7EB;
-          border-radius: 8px;
-          font-size: 14px;
-          background: white;
-          cursor: pointer;
-        }
-        
-        .month-selector select:focus {
-          outline: none;
-          border-color: #2E7D64;
-        }
-        
-        .month-hint {
-          font-size: 12px;
-          color: #6B7280;
-        }
-        
-        .tab-navigation {
-          display: flex;
-          gap: 8px;
-          margin-bottom: 24px;
-          border-bottom: 1px solid #E5E7EB;
-          flex-wrap: wrap;
-        }
-        
-        .tab-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 20px;
-          background: none;
-          border: none;
-          border-bottom: 2px solid transparent;
-          font-size: 14px;
-          font-weight: 500;
-          color: #6B7280;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        
-        .tab-btn:hover {
-          color: #2E7D64;
-        }
-        
-        .tab-btn.active {
-          color: #2E7D64;
-          border-bottom-color: #2E7D64;
-        }
-        
-        .tab-count {
-          background: #F3F4F6;
-          color: #6B7280;
-          font-size: 11px;
-          padding: 2px 6px;
-          border-radius: 10px;
-          margin-left: 4px;
-        }
-        
-        .tab-btn.active .tab-count {
-          background: #D1FAE5;
-          color: #065F46;
-        }
-        
-        .tab-content {
-          min-height: 400px;
-        }
-        
-        .submit-section {
-          margin-top: 24px;
-          padding-top: 20px;
-          border-top: 1px solid #E5E7EB;
-          text-align: center;
-        }
-        
-        .error-message {
-          background: #FEF2F2;
-          border: 1px solid #FECACA;
-          color: #DC2626;
-          padding: 12px;
-          border-radius: 8px;
-          margin-bottom: 16px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        
-        .success-message {
-          background: #D1FAE5;
-          border: 1px solid #10B981;
-          color: #065F46;
-          padding: 12px;
-          border-radius: 8px;
-          margin-bottom: 16px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        
-        .submit-btn {
-          background: #2E7D64;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          padding: 12px 24px;
-          font-size: 16px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-        
-        .submit-btn:hover:not(.disabled) {
-          background: #1B4D3E;
-        }
-        
-        .submit-btn.disabled {
-          background: #9CA3AF;
-          cursor: not-allowed;
-        }
-        
-        .no-data-hint {
-          margin-top: 12px;
-          font-size: 12px;
-          color: #9CA3AF;
-        }
-        
+        .scope2-page { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        .page-header { margin-bottom: 24px; }
+        .back-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; color: #6B7280; cursor: pointer; margin-bottom: 16px; font-size: 14px; }
+        .back-btn:hover { color: #2E7D64; }
+        .page-header h1 { font-size: 28px; font-weight: 700; color: #1B4D3E; margin: 0 0 8px; }
+        .page-header p { color: #6B7280; margin: 0; }
+        .scope2-card { background: white; border-radius: 12px; border: 1px solid #E5E7EB; overflow: hidden; }
+        .month-selector-section { padding: 24px 24px 0 24px; border-bottom: 1px solid #F3F4F6; }
+        .month-selector { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .month-selector label { font-weight: 500; color: #374151; }
+        .month-selector select { padding: 8px 12px; border: 1px solid #D1D5DB; border-radius: 6px; background: white; font-size: 14px; }
+        .month-hint { color: #6B7280; font-size: 14px; margin-bottom: 24px; }
+        .step-navigation { display: flex; align-items: center; justify-content: space-between; padding: 24px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB; }
+        .nav-btn { padding: 10px 20px; border: 1px solid #D1D5DB; border-radius: 8px; background: white; color: #374151; font-weight: 500; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+        .nav-btn:hover:not(:disabled) { border-color: #2E7D64; color: #2E7D64; }
+        .nav-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .calculate-btn { background: #2E7D64; color: white; border-color: #2E7D64; }
+        .calculate-btn:hover:not(:disabled) { background: #1B4D3E; border-color: #1B4D3E; }
+        .step-indicators { display: flex; align-items: center; gap: 16px; flex: 1; justify-content: center; }
+        .step-indicator { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 8px; background: white; border: 2px solid #E5E7EB; transition: all 0.2s; min-width: 120px; }
+        .step-indicator.active { border-color: #2E7D64; background: #F0F9F6; }
+        .step-indicator.completed { border-color: #10B981; background: #F0FDF4; }
+        .step-icon { font-size: 20px; }
+        .step-label { font-size: 12px; font-weight: 500; color: #6B7280; text-align: center; }
+        .step-indicator.active .step-label { color: #2E7D64; }
+        .step-indicator.completed .step-label { color: #10B981; }
+        .step-count { background: #2E7D64; color: white; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px; margin-top: 4px; }
+        .step-content { padding: 24px; }
+        .error-message { background: #FEF2F2; color: #DC2626; padding: 12px 16px; border-radius: 8px; margin: 0 24px 24px 24px; border: 1px solid #FECACA; display: flex; align-items: center; gap: 8px; }
         @media (max-width: 768px) {
-          .scope2-page {
-            padding: 16px;
-          }
-          
-          .tab-navigation {
-            flex-direction: column;
-            gap: 4px;
-          }
-          
-          .tab-btn {
-            justify-content: center;
-          }
+          .scope2-page { padding: 16px; }
+          .step-navigation { flex-direction: column; gap: 16px; }
+          .step-indicators { flex-wrap: wrap; gap: 8px; }
+          .step-indicator { min-width: 100px; padding: 8px 12px; }
+          .nav-btn { padding: 8px 16px; font-size: 14px; }
         }
       `}</style>
     </div>

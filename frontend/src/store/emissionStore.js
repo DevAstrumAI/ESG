@@ -1,5 +1,14 @@
 // src/store/emissionStore.js
 import { create } from 'zustand';
+import {
+  normalizeScope1MobileEntry,
+  normalizeScope1StationaryEntry,
+  normalizeScope1RefrigerantEntry,
+  normalizeScope1FugitiveEntry,
+  normalizeScope2ElectricityEntry,
+  normalizeScope2HeatingEntry,
+  normalizeScope2RenewableEntry,
+} from '../utils/emissionHydration';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
 
@@ -52,6 +61,7 @@ export const useEmissionStore = create((set, get) => ({
   selectedYear:      new Date().getFullYear(),
   loading:           false,
   error:             null,
+  isSubmitting:      false, // ✅ TC-014/016: Add submission guard flag
 
   // ─── Reset All Emission Data ─────────────────────────────────────────────
   reset: () =>
@@ -69,11 +79,18 @@ export const useEmissionStore = create((set, get) => ({
       selectedYear:      new Date().getFullYear(),
       loading:           false,
       error:             null,
+      isSubmitting:      false,
     }),
 
   // ─── Scope 1 Actions ──────────────────────────────────────────────────────
+  // ✅ TC-014: Add unique IDs when adding entries
   addScope1Vehicle: (vehicle) =>
-    set((state) => ({ scope1Vehicles: [...state.scope1Vehicles, vehicle] })),
+    set((state) => ({ 
+      scope1Vehicles: [...state.scope1Vehicles, { 
+        ...vehicle, 
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
+      }] 
+    })),
 
   updateScope1Vehicle: (updatedVehicle) =>
     set((state) => ({
@@ -82,181 +99,216 @@ export const useEmissionStore = create((set, get) => ({
       ),
     })),
 
+  // ✅ TC-015: Immutable delete (only removes specific entry)
   deleteScope1Vehicle: (id) =>
     set((state) => ({
-      scope1Vehicles: state.scope1Vehicles.filter((v) => v.id !== id),
+      scope1Vehicles: state.scope1Vehicles.filter((v) => v.id !== id)
     })),
 
+  // ✅ TC-014: Add unique IDs when adding entries
   addScope1Stationary: (entry) =>
-    set((state) => ({ scope1Stationary: [...state.scope1Stationary, entry] })),
+    set((state) => ({ 
+      scope1Stationary: [...state.scope1Stationary, { 
+        ...entry, 
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
+      }] 
+    })),
 
+  // ✅ TC-015: Immutable delete
   deleteScope1Stationary: (id) =>
     set((state) => ({
-      scope1Stationary: state.scope1Stationary.filter((e) => e.id !== id),
+      scope1Stationary: state.scope1Stationary.filter((e) => e.id !== id)
     })),
 
+  // ✅ TC-014: Add unique IDs when adding entries
   addScope1Refrigerant: (entry) =>
-    set((state) => ({ scope1Refrigerants: [...state.scope1Refrigerants, entry] })),
+    set((state) => ({ 
+      scope1Refrigerants: [...state.scope1Refrigerants, { 
+        ...entry, 
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
+      }] 
+    })),
 
+  // ✅ TC-015: Immutable delete
   deleteScope1Refrigerant: (id) =>
     set((state) => ({
-      scope1Refrigerants: state.scope1Refrigerants.filter((r) => r.id !== id),
+      scope1Refrigerants: state.scope1Refrigerants.filter((r) => r.id !== id)
     })),
 
+  // ✅ TC-014: Add unique IDs when adding entries
   addScope1Fugitive: (entry) =>
-    set((state) => ({ scope1Fugitive: [...state.scope1Fugitive, entry] })),
+    set((state) => ({ 
+      scope1Fugitive: [...state.scope1Fugitive, { 
+        ...entry, 
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
+      }] 
+    })),
 
+  // ✅ TC-015: Immutable delete
   deleteScope1Fugitive: (id) =>
     set((state) => ({
-      scope1Fugitive: state.scope1Fugitive.filter((f) => f.id !== id),
+      scope1Fugitive: state.scope1Fugitive.filter((f) => f.id !== id)
     })),
 
   // ─── Scope 2 Actions ──────────────────────────────────────────────────────
+  // ✅ TC-014: Add unique IDs when adding entries
   addScope2Electricity: (entry) =>
-    set((state) => ({ scope2Electricity: [...state.scope2Electricity, entry] })),
+    set((state) => ({ 
+      scope2Electricity: [...state.scope2Electricity, { 
+        ...entry, 
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
+      }] 
+    })),
 
+  // ✅ TC-015: Immutable delete
   deleteScope2Electricity: (id) =>
     set((state) => ({
-      scope2Electricity: state.scope2Electricity.filter((e) => e.id !== id),
+      scope2Electricity: state.scope2Electricity.filter((e) => e.id !== id)
     })),
 
+  // ✅ TC-014: Add unique IDs when adding entries
   addScope2Heating: (entry) =>
-    set((state) => ({ scope2Heating: [...state.scope2Heating, entry] })),
+    set((state) => ({ 
+      scope2Heating: [...state.scope2Heating, { 
+        ...entry, 
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
+      }] 
+    })),
 
+  // ✅ TC-015: Immutable delete
   deleteScope2Heating: (id) =>
     set((state) => ({
-      scope2Heating: state.scope2Heating.filter((h) => h.id !== id),
+      scope2Heating: state.scope2Heating.filter((h) => h.id !== id)
     })),
 
+  // ✅ TC-014: Add unique IDs when adding entries
   addScope2Renewable: (entry) =>
-    set((state) => ({ scope2Renewable: [...state.scope2Renewable, entry] })),
+    set((state) => ({ 
+      scope2Renewable: [...state.scope2Renewable, { 
+        ...entry, 
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
+      }] 
+    })),
 
+  // ✅ TC-015: Immutable delete
   deleteScope2Renewable: (id) =>
     set((state) => ({
-      scope2Renewable: state.scope2Renewable.filter((r) => r.id !== id),
+      scope2Renewable: state.scope2Renewable.filter((r) => r.id !== id)
     })),
 
+  // ─── Replace entire arrays (prevents duplicates) ─────────────────────────
+  setScope1Vehicles: (vehicles) =>
+    set({ scope1Vehicles: vehicles }),
 
-// ─── Replace entire arrays (prevents duplicates) ─────────────────────────────
-setScope1Vehicles: (vehicles) =>
-  set({ scope1Vehicles: vehicles }),
+  setScope1Stationary: (stationary) =>
+    set({ scope1Stationary: stationary }),
 
-setScope1Stationary: (stationary) =>
-  set({ scope1Stationary: stationary }),
+  setScope1Refrigerants: (refrigerants) =>
+    set({ scope1Refrigerants: refrigerants }),
 
-setScope1Refrigerants: (refrigerants) =>
-  set({ scope1Refrigerants: refrigerants }),
+  setScope1Fugitive: (fugitive) =>
+    set({ scope1Fugitive: fugitive }),
 
-setScope1Fugitive: (fugitive) =>
-  set({ scope1Fugitive: fugitive }),
+  setScope2Electricity: (electricity) =>
+    set({ scope2Electricity: electricity }),
 
-setScope2Electricity: (electricity) =>
-  set({ scope2Electricity: electricity }),
+  setScope2Heating: (heating) =>
+    set({ scope2Heating: heating }),
 
-setScope2Heating: (heating) =>
-  set({ scope2Heating: heating }),
+  setScope2Renewable: (renewable) =>
+    set({ scope2Renewable: renewable }),
 
-setScope2Renewable: (renewable) =>
-  set({ scope2Renewable: renewable }),
+  // ─── Load Scope 1 Data from API (replaces existing data) ────────────────────
+  loadScope1Data: async (token, year) => {
+    try {
+      const response = await fetch(`${API_URL}/api/emissions/scope1?year=${year}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-// ─── Load Scope 1 Data from API (replaces existing data) ────────────────────
-loadScope1Data: async (token, year) => {
-  try {
-    const response = await fetch(`${API_URL}/api/emissions/scope1?year=${year}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (response.ok) {
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to load Scope 1 data (${response.status})`);
+      }
+
       const data = await response.json();
-      
-      // Transform mobile data
-      const mobileData = (data.mobile || []).map(item => ({
-        id: item.id || Date.now() + Math.random(),
-        vehicleType: item.fuelType?.replace('_car', '').replace('_truck', '').replace('_van', '') || '',
-        fuelType: item.fuelType?.includes('diesel') ? 'diesel' : 'petrol',
-        litres: item.litresConsumed || 0,
-        km: item.distanceKm || 0,
-      }));
-      
-      // Transform stationary data
-      const stationaryData = (data.stationary || []).map(item => ({
-        id: item.id || Date.now() + Math.random(),
-        fuelType: item.fuelType,
-        consumption: item.consumption || 0,
-      }));
-      
-      // Transform refrigerant data
-      const refrigerantData = (data.refrigerants || []).map(item => ({
-        id: item.id || Date.now() + Math.random(),
-        refrigerantKey: item.refrigerantType,
-        leakageKg: item.leakageKg || 0,
-      }));
-      
-      // Transform fugitive data
-      const fugitiveData = (data.fugitive || []).map(item => ({
-        id: item.id || Date.now() + Math.random(),
-        sourceType: item.sourceType,
-        amount: item.amount || item.emissionKg || 0,
-      }));
-      
-      // ✅ REPLACE instead of APPEND
+
+      const mobileData = (data.mobile || []).map((item, index) =>
+        normalizeScope1MobileEntry(item, `${Date.now()}-mobile-${index}`)
+      );
+      const stationaryData = (data.stationary || []).map((item, index) =>
+        normalizeScope1StationaryEntry(item, `${Date.now()}-stationary-${index}`)
+      );
+      const refrigerantData = (data.refrigerants || []).map((item, index) =>
+        normalizeScope1RefrigerantEntry(item, `${Date.now()}-refrigerant-${index}`)
+      );
+      const fugitiveData = (data.fugitive || []).map((item, index) =>
+        normalizeScope1FugitiveEntry(item, `${Date.now()}-fugitive-${index}`)
+      );
+
       set({
         scope1Vehicles: mobileData,
         scope1Stationary: stationaryData,
         scope1Refrigerants: refrigerantData,
         scope1Fugitive: fugitiveData,
       });
-    }
-  } catch (error) {
-    console.error("Error loading Scope 1 data:", error);
-  }
-},
 
-// ─── Load Scope 2 Data from API (replaces existing data) ────────────────────
-loadScope2Data: async (token, year) => {
-  try {
-    const response = await fetch(`${API_URL}/api/emissions/scope2?year=${year}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (response.ok) {
+      return { success: true, data };
+    } catch (error) {
+      console.error("Failed to load Scope 1 data:", error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // ─── Load Scope 2 Data from API (replaces existing data) ────────────────────
+  loadScope2Data: async (token, year) => {
+    try {
+      const response = await fetch(`${API_URL}/api/emissions/scope2?year=${year}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to load Scope 2 data (${response.status})`);
+      }
+
       const data = await response.json();
-      
-      // Transform electricity data
-      const electricityData = (data.electricity || []).map(item => ({
-        id: item.id || Date.now() + Math.random(),
-        facilityName: item.facilityName || 'Main Facility',
-        consumption: item.consumption || 0,
-        certificateType: item.certificateType || 'grid_average',
-      }));
-      
-      // Transform heating data
-      const heatingData = (data.heating || []).map(item => ({
-        id: item.id || Date.now() + Math.random(),
-        energyType: item.energyType,
-        consumption: item.consumption || 0,
-      }));
-      
-      // Transform renewable data
-      const renewableData = (data.renewables || []).map(item => ({
-        id: item.id || Date.now() + Math.random(),
-        sourceType: item.sourceType,
-        consumption: item.consumption || 0,
-      }));
-      
-      // ✅ REPLACE instead of APPEND
+
+      const electricityData = (data.electricity || []).map((item, index) =>
+        normalizeScope2ElectricityEntry(item, `${Date.now()}-electricity-${index}`)
+      );
+      const heatingData = (data.heating || []).map((item, index) =>
+        normalizeScope2HeatingEntry(item, `${Date.now()}-heating-${index}`)
+      );
+      const renewableData = (data.renewables || []).map((item, index) =>
+        normalizeScope2RenewableEntry(item, `${Date.now()}-renewable-${index}`)
+      );
+
       set({
         scope2Electricity: electricityData,
         scope2Heating: heatingData,
         scope2Renewable: renewableData,
       });
+
+      return { success: true, data };
+    } catch (error) {
+      console.error("Failed to load Scope 2 data:", error);
+      return { success: false, error: error.message };
     }
-  } catch (error) {
-    console.error("Error loading Scope 2 data:", error);
-  }
-},
+  },
 
   // ─── Submit Scope 1 ───────────────────────────────────────────────────────
+  // ✅ TC-014/016: Add submission guard to prevent double submission
   submitScope1: async (token, year, monthString) => {
-    set({ loading: true, error: null });
+    const { isSubmitting } = get();
+    
+    // ✅ Prevent double submission
+    if (isSubmitting) {
+      console.log("Submission already in progress");
+      return { success: false, error: "Already submitting" };
+    }
+    
+    set({ isSubmitting: true, loading: true, error: null });
+    
     try {
       const state = get();
 
@@ -326,20 +378,31 @@ loadScope2Data: async (token, year) => {
           total:        { kgCO2e: data.results?.totalKgCO2e               || 0 },
         },
         selectedYear: year,
+        isSubmitting: false,
         loading: false,
       });
 
       await get().fetchSummary(token, year);
       return { success: true, results: data.results };
     } catch (error) {
-      set({ error: error.message, loading: false });
+      set({ error: error.message, loading: false, isSubmitting: false });
       return { success: false, error: error.message };
     }
   },
 
   // ─── Submit Scope 2 ───────────────────────────────────────────────────────
+  // ✅ TC-014/016: Add submission guard to prevent double submission
   submitScope2: async (token, year, monthString) => {
-    set({ loading: true, error: null });
+    const { isSubmitting } = get();
+    
+    // ✅ Prevent double submission
+    if (isSubmitting) {
+      console.log("Submission already in progress");
+      return { success: false, error: "Already submitting" };
+    }
+    
+    set({ isSubmitting: true, loading: true, error: null });
+    
     try {
       const state = get();
 
@@ -404,13 +467,14 @@ loadScope2Data: async (token, year) => {
         },
         scope2Total: data.results?.locationBasedKgCO2e || 0,
         selectedYear: year,
+        isSubmitting: false,
         loading: false,
       });
 
       await get().fetchSummary(token, year);
       return { success: true, results: data.results };
     } catch (error) {
-      set({ error: error.message, loading: false });
+      set({ error: error.message, loading: false, isSubmitting: false });
       return { success: false, error: error.message };
     }
   },
@@ -514,6 +578,7 @@ loadScope2Data: async (token, year) => {
       selectedYear:      new Date().getFullYear(),
       loading:           false,
       error:             null,
+      isSubmitting:      false,
     });
   },
 }));

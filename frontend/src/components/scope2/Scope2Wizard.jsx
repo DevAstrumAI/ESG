@@ -81,10 +81,8 @@ export default function Scope2Wizard() {
       const rows = currentStep === 1 ? electricity : currentStep === 2 ? heating : renewables;
       const rawMonth = rows[0]?.month ?? `${selectedYear}-01`;
       const monthString = typeof rawMonth === "string" ? rawMonth : String(rawMonth);
-      const [year, month] = monthString.includes("-")
-        ? monthString.split("-").map(Number)
-        : [selectedYear, 1];
-      const result = await submitScope2(token, year, month);
+      const correctedMonth = monthString.includes("-") ? monthString : `${selectedYear}-01`;
+      const result = await submitScope2(token, selectedYear, correctedMonth);
       if (!result.success) {
         console.error("Scope2 submit failed:", result.error);
         return false;
