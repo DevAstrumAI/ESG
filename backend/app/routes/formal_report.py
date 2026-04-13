@@ -1,4 +1,8 @@
 # backend/app/routes/formal_report.py
+from dotenv import load_dotenv
+load_dotenv()  # ✅ This loads your .env file
+
+from openai import OpenAI
 from fastapi import APIRouter, Depends, HTTPException
 from app.middleware.auth import get_current_user
 from app.utils.firebase import get_db
