@@ -1,5 +1,5 @@
 // src/components/company/CompanyWizard.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import CompanyInfoForm from "./CompanyInfoForm";
 import RegionSelector from "./RegionSelector";
 import IndustrySelector from "./IndustrySelector";
@@ -16,12 +16,17 @@ import { BiLeaf } from "react-icons/bi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useNavigate } from "react-router-dom";
+import { settingsAPI } from "../../services/api";
 
 export default function CompanyWizard() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loadingSubmit, setLoadingSubmit] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState("saved"); // saved, saving, error
+  const autoSaveTimer = useRef(null);
+  
   const [companyData, setCompanyData] = useState({
     name: "",
     description: "",
@@ -37,14 +42,81 @@ export default function CompanyWizard() {
   const token = useAuthStore((state) => state.token);
   const { user } = useAuthStore();
 
-  // Fetch company data when component mounts
-  useEffect(() => {
-    const loadCompany = async () => {
-      if (token) {
-        await fetchCompany(token);
+  const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
+
+  // ✅ TC-010 & TC-011: Parallel API calls + auto-save
+  const autoSave = useCallback(async (data) => {
+    if (!token || !company) return;
+    
+    setSaveStatus("saving");
+    
+    try {
+      const response = await fetch(`${API_URL}/api/companies/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          basicInfo: {
+            name: data.name,
+            description: data.description,
+            industry: data.industry,
+            employees: Number(data.employees),
+            revenue: Number(data.revenue),
+            region: data.region,
+          },
+          locations: data.locations,
+        }),
+      });
+      
+      if (response.ok) {
+        setSaveStatus("saved");
+        // Refresh company data in store
+        await fetchCompany(token, { force: true });
+      } else {
+        setSaveStatus("error");
       }
+    } catch (error) {
+      console.error("Auto-save failed:", error);
+      setSaveStatus("error");
+    }
+  }, [token, company, fetchCompany]);
+
+  // Handle field changes with auto-save
+  const updateField = (field, value) => {
+    setCompanyData((prev) => {
+      const updated = { ...prev, [field]: value };
+      
+      // Trigger auto-save after 1.5 seconds of inactivity
+      if (autoSaveTimer.current) {
+        clearTimeout(autoSaveTimer.current);
+      }
+      autoSaveTimer.current = setTimeout(() => {
+        autoSave(updated);
+      }, 1500);
+      
+      return updated;
+    });
+  };
+
+  // ✅ TC-010: Fetch company data with parallel API calls
+  useEffect(() => {
+    const loadData = async () => {
+      if (!token) return;
+      
+      setInitialLoading(true);
+      
+      // ✅ Parallel API calls instead of sequential
+      const [companyResult, settingsResult] = await Promise.all([
+        fetchCompany(token).catch(() => ({ success: false })),
+        settingsAPI.get(token).catch(() => ({}))
+      ]);
+      
+      setInitialLoading(false);
     };
-    loadCompany();
+    
+    loadData();
   }, [token, fetchCompany]);
 
   // If company exists, populate the wizard data
@@ -60,6 +132,7 @@ export default function CompanyWizard() {
         revenue: company.basicInfo?.revenue || "",
         locations: company.locations || [],
       });
+      setInitialLoading(false);
     }
   }, [company]);
 
@@ -74,22 +147,17 @@ export default function CompanyWizard() {
     { id: 8, label: "Summary", icon: "📋" },
   ];
 
-  function updateField(field, value) {
-    setCompanyData((prev) => ({ ...prev, [field]: value }));
-  }
-
   const handleUpdateCompany = async () => {
     setLoadingSubmit(true);
     setSubmitError(null);
     
-    // In CompanyWizard.jsx, in the nextStep function when creating company:
     const payload = {
       name: companyData.name,
       description: companyData.description,
       industry: companyData.industry,
       employees: Number(companyData.employees),
       revenue: Number(companyData.revenue),
-      region: companyData.region,  // ← Make sure this is included
+      region: companyData.region,
       fiscalYear: new Date().getFullYear(),
       locations: companyData.locations.map((loc) => ({
         city: loc.city || loc.name,
@@ -141,7 +209,6 @@ export default function CompanyWizard() {
     if (step < steps.length) {
       setStep((prev) => prev + 1);
     } else {
-      // Final step - create or update company
       if (company) {
         await handleUpdateCompany();
       } else {
@@ -168,10 +235,69 @@ export default function CompanyWizard() {
     }
   };
 
+  // ✅ TC-010: Loading skeleton with shimmer effect
+  if (initialLoading) {
+    return (
+      <div className="loading-skeleton">
+        <div className="skeleton-header"></div>
+        <div className="skeleton-field"></div>
+        <div className="skeleton-field"></div>
+        <div className="skeleton-field"></div>
+        <div className="skeleton-button"></div>
+        <style jsx>{`
+          .loading-skeleton {
+            background: white;
+            border-radius: 12px;
+            padding: 32px;
+            border: 1px solid #E5E7EB;
+          }
+          .skeleton-header {
+            height: 40px;
+            width: 60%;
+            background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+            margin-bottom: 24px;
+          }
+          .skeleton-field {
+            height: 70px;
+            background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+            margin-bottom: 16px;
+          }
+          .skeleton-button {
+            height: 48px;
+            width: 150px;
+            background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+            margin-top: 24px;
+            margin-left: auto;
+          }
+          @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   // If company exists, show summary view
   if (company && company.basicInfo?.name) {
     return (
       <div className="wizard-container">
+        {/* Auto-save status indicator */}
+        <div className="auto-save-status">
+          {saveStatus === "saving" && <span className="saving">💾 Saving...</span>}
+          {saveStatus === "saved" && <span className="saved">✓ All changes saved</span>}
+          {saveStatus === "error" && <span className="error">⚠️ Unable to save</span>}
+        </div>
+        
         <SetupSummary data={companyData} updateField={updateField} />
         <div className="summary-actions">
           {submitError && (
@@ -192,6 +318,17 @@ export default function CompanyWizard() {
             max-width: 900px;
             margin: 0 auto;
           }
+          .auto-save-status {
+            text-align: right;
+            font-size: 12px;
+            margin-bottom: 16px;
+            padding: 8px 12px;
+            background: #F9FAFB;
+            border-radius: 8px;
+          }
+          .saving { color: #F59E0B; }
+          .saved { color: #10B981; }
+          .error { color: #EF4444; }
           .summary-actions {
             margin-top: 24px;
             display: flex;
@@ -219,39 +356,15 @@ export default function CompanyWizard() {
     );
   }
 
-  // Show loading state while fetching company
-  if (loading && !company) {
-    return (
-      <div className="loading-container">
-        <div className="spinner"></div>
-        <p>Loading company data...</p>
-        <style jsx>{`
-          .loading-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 400px;
-          }
-          .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #E5E7EB;
-            border-top-color: #2E7D64;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-          }
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-          p { margin-top: 16px; color: #6B7280; }
-        `}</style>
-      </div>
-    );
-  }
-
   return (
     <div className="wizard-container">
+      {/* Auto-save status indicator */}
+      <div className="auto-save-status">
+        {saveStatus === "saving" && <span className="saving">💾 Saving...</span>}
+        {saveStatus === "saved" && <span className="saved">✓ All changes saved</span>}
+        {saveStatus === "error" && <span className="error">⚠️ Unable to save</span>}
+      </div>
+
       {/* Step Progress Header */}
       <div className="wizard-header">
         <div className="steps-progress">
@@ -313,6 +426,18 @@ export default function CompanyWizard() {
           max-width: 900px;
           margin: 0 auto;
         }
+
+        .auto-save-status {
+          text-align: right;
+          font-size: 12px;
+          margin-bottom: 16px;
+          padding: 8px 12px;
+          background: #F9FAFB;
+          border-radius: 8px;
+        }
+        .saving { color: #F59E0B; }
+        .saved { color: #10B981; }
+        .error { color: #EF4444; }
 
         .wizard-header {
           margin-bottom: 30px;

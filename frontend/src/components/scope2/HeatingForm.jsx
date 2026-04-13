@@ -1,12 +1,27 @@
 // src/components/scope2/HeatingForm.jsx
-import React, { useState } from "react";
-import { emissionsAPI } from "../../services/api";
-import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiThermometer } from "react-icons/fi";
-import { useAuthStore } from "../../store/authStore";
+import React, { useState, useEffect } from "react";
 import { useCompanyStore } from "../../store/companyStore";
+import { FiTrash2, FiSend, FiThermometer } from "react-icons/fi";
+import { useAuthStore } from "../../store/authStore";
+import { useEmissionStore } from "../../store/emissionStore";
 
-// Get heating options based on company region
+// Get default heating type based on company country
+const getDefaultHeatingType = (country) => {
+  const countryLower = country?.toLowerCase() || "";
+  
+  if (countryLower === "uae" || countryLower === "united arab emirates") {
+    return "uae_average";
+  }
+  if (countryLower === "singapore") {
+    return "sg_average";
+  }
+  if (countryLower === "saudi arabia" || countryLower === "ksa") {
+    return "sa_average";
+  }
+  return "steam_hot_water";
+};
+
+// Get heating options based on region
 const getHeatingOptions = (country) => {
   const baseOptions = [
     { label: "Steam / Hot Water", key: "steam_hot_water" },
@@ -15,20 +30,15 @@ const getHeatingOptions = (country) => {
   
   const countryLower = country?.toLowerCase() || "uae";
   
-  // Only add average option for regions that have it
   switch (countryLower) {
     case 'uae':
     case 'united arab emirates':
       return [...baseOptions, { label: "UAE Average", key: "uae_average" }];
-    
     case 'singapore':
       return [...baseOptions, { label: "Singapore Average", key: "sg_average" }];
-    
     case 'saudi arabia':
     case 'ksa':
-      // No average option for Saudi Arabia
       return baseOptions;
-    
     default:
       return baseOptions;
   }
@@ -46,63 +56,49 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function HeatingForm({ onSubmitSuccess }) {
-  const heating = useEmissionStore((s) => s.scope2Heating || []);
-  const addHeating = useEmissionStore((s) => s.addScope2Heating);
-  const deleteHeating = useEmissionStore((s) => s.deleteScope2Heating);
-  const selectedYear = useEmissionStore((s) => s.selectedYear);
+export default function HeatingForm({ entries, onAdd, onDelete }) {
   const token = useAuthStore((s) => s.token);
-  
-  // Get company location for region-specific options
-  const company = useCompanyStore((s) => s.company);
+  const { company } = useCompanyStore();
   const primaryLocation = company?.locations?.find(loc => loc.isPrimary) || company?.locations?.[0];
   const country = primaryLocation?.country || "uae";
   
-  // Get region-specific heating options
-  const HEATING_COOLING_TYPES = getHeatingOptions(country);
-
-  const [energyTypeKey, setEnergyTypeKey] = useState(HEATING_COOLING_TYPES[0]?.key || "steam_hot_water");
+  const heatingOptions = getHeatingOptions(country);
+  const defaultType = getDefaultHeatingType(country);
+  
+  const [energyType, setEnergyType] = useState(defaultType);
   const [consumption, setConsumption] = useState("");
   const [month, setMonth] = useState(currentMonth());
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // ✅ TC-020: Reset default when country changes
+  useEffect(() => {
+    setEnergyType(getDefaultHeatingType(country));
+  }, [country]);
 
-  const selectedType = HEATING_COOLING_TYPES.find((t) => t.key === energyTypeKey);
-
-  const handleDeleteHeating = async (id, month) => {
-    const deleted = heating.find((h) => h.id === id);
-    if (!deleted) return;
-
-    const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
-    const [year] = effectiveMonth.includes("-")
-      ? effectiveMonth.split("-").map(Number)
-      : [selectedYear];
-
-    try {
-      await emissionsAPI.deleteScope2Entry(token, {
-        year,
-        month: effectiveMonth,
-        category: "heating",
-        entry: {
-          energyType: deleted.energyType,
-          consumptionKwh: Number(deleted.consumption || 0),
-        },
-      });
-      deleteHeating(id);
-    } catch (error) {
-      console.error("Failed to delete heating entry:", error);
+  const handleAddRow = async () => {
+    if (!energyType || !consumption || Number(consumption) <= 0) {
+      alert("Please fill in all fields");
+      return;
     }
-  };
-
-  const handleAddRow = () => {
-    if (!consumption || Number(consumption) <= 0) return;
-    addHeating({
+    
+    const newEntry = {
       id: Date.now(),
-      energyType: energyTypeKey,
-      energyTypeLabel: selectedType?.label,
+      energyType,
+      energyTypeLabel: heatingOptions.find(opt => opt.key === energyType)?.label,
       consumption: Number(consumption),
       month,
-    });
+    };
+    
+    onAdd(newEntry);
+    
+    // Reset form
     setConsumption("");
     setMonth(currentMonth());
+    // Keep the same energy type (don't reset)
+  };
+
+  const handleDelete = async (id) => {
+    onDelete(id);
   };
 
   return (
@@ -125,27 +121,29 @@ export default function HeatingForm({ onSubmitSuccess }) {
             </tr>
           </thead>
           <tbody>
-            {heating.length === 0 && (
+            {(!entries || entries.length === 0) && (
               <tr>
                 <td colSpan={4} className="ht-empty">
                   No entries yet. Add a row below.
                 </td>
               </tr>
             )}
-            {heating.map((h) => (
-              <tr key={h.id}>
+            
+            {entries && entries.map((entry) => (
+              <tr key={entry.id}>
                 <td>
-                  <span className="ht-badge">{h.energyTypeLabel}</span>
+                  <span className="ht-badge">{entry.energyTypeLabel || entry.energyType}</span>
                 </td>
                 <td>
-                  <span className="ht-qty">{h.consumption?.toLocaleString()}</span>
+                  <span className="ht-qty">{entry.consumption?.toLocaleString()}</span>
                   <span className="ht-unit"> kWh</span>
                 </td>
-                <td>{h.month || "—"}</td>
+                <td>{entry.month || "—"}</td>
                 <td>
                   <button
                     className="ht-delete"
-                    onClick={() => handleDeleteHeating(h.id, h.month)}
+                    onClick={() => handleDelete(entry.id)}
+                    disabled={isLoading}
                     title="Remove"
                   >
                     <FiTrash2 size={14} />
@@ -154,15 +152,18 @@ export default function HeatingForm({ onSubmitSuccess }) {
               </tr>
             ))}
 
+            {/* Add Row */}
             <tr className="ht-add-row">
               <td>
                 <select
-                  value={energyTypeKey}
-                  onChange={(e) => setEnergyTypeKey(e.target.value)}
+                  value={energyType}
+                  onChange={(e) => setEnergyType(e.target.value)}
                   className="ht-select"
                 >
-                  {HEATING_COOLING_TYPES.map((t) => (
-                    <option key={t.key} value={t.key}>{t.label}</option>
+                  {heatingOptions.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
               </td>
@@ -199,7 +200,6 @@ export default function HeatingForm({ onSubmitSuccess }) {
           </tbody>
         </table>
       </div>
-
 
       <style jsx>{`
         .ht-wrap { width: 100%; }

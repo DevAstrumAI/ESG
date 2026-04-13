@@ -4,8 +4,11 @@ import './index.css';
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import AppRoutes from "./app/routes";
+import { warmupBackend } from "./services/api";
 
 // ─── Clear stale auth data on app startup ───────────────────────────────────
+warmupBackend();
+
 const clearStaleAuthOnStartup = () => {
   // Clear auth storage
   const storedAuth = localStorage.getItem("auth-storage");

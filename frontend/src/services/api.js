@@ -43,6 +43,11 @@ const request = async (endpoint, options = {}) => {
   return data;
 };
 
+// api.js - add warmup function
+export const warmupBackend = () => {
+  fetch(`${process.env.REACT_APP_API_URL}/health`, { method: "GET" }).catch(() => {});
+};
+
 // Auth API
 export const authAPI = {
   login: async (idToken) => {

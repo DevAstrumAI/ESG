@@ -207,6 +207,7 @@ async def get_city_factors(
 @router.get("/scope1")
 async def get_scope1_data(
     year: int = None,
+    month: str = None,
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -219,9 +220,12 @@ async def get_scope1_data(
     # Default to current year if not specified
     target_year = year or datetime.utcnow().year
 
-    # Fetch all scope1 documents for the year
-    docs = list(db.collection("emissionData").document(company_id).collection("scope1").where("year", "==", target_year).stream())
-    docs = _prefer_month_docs(docs)
+    if month:
+        doc = _get_scope_doc(db, company_id, "scope1", target_year, month).get()
+        docs = [doc] if doc.exists else []
+    else:
+        docs = list(db.collection("emissionData").document(company_id).collection("scope1").where("year", "==", target_year).stream())
+        docs = _prefer_month_docs(docs)
 
     # Organize data by category
     result = {
@@ -306,6 +310,7 @@ async def get_scope1_data(
 @router.get("/scope2")
 async def get_scope2_data(
     year: int = None,
+    month: str = None,
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -318,9 +323,12 @@ async def get_scope2_data(
     # Default to current year if not specified
     target_year = year or datetime.utcnow().year
 
-    # Fetch all scope2 documents for the year
-    docs = list(db.collection("emissionData").document(company_id).collection("scope2").where("year", "==", target_year).stream())
-    docs = _prefer_month_docs(docs)
+    if month:
+        doc = _get_scope_doc(db, company_id, "scope2", target_year, month).get()
+        docs = [doc] if doc.exists else []
+    else:
+        docs = list(db.collection("emissionData").document(company_id).collection("scope2").where("year", "==", target_year).stream())
+        docs = _prefer_month_docs(docs)
 
     # Organize data by category
     result = {
