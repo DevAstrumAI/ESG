@@ -64,34 +64,38 @@ export default function LoginPage() {
   return "Login failed. Please try again.";
 };
 
-// LoginPage.jsx — replace handleSubmit
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  clearError();
-  setLocalError("");
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    clearError();
+    setLocalError("");
+    
+    if (!email || !password) {
+      setLocalError("Please enter both email and password.");
+      return;
+    }
+    
+    if (!navigator.onLine) {
+      setLocalError("You appear to be offline. Please check your internet connection.");
+      return;
+    }
+    
+    const result = await login(email, password);
+    
+    if (result.success) {
+      const token = useAuthStore.getState().token;
+      const hasCompany = Boolean(result.user?.companyId);
 
-  if (!email || !password) {
-    setLocalError("Please enter both email and password.");
-    return;
-  }
-
-  if (!navigator.onLine) {
-    setLocalError("You appear to be offline. Please check your internet connection.");
-    return;
-  }
-
-  const result = await login(email, password);
-
-  if (result.success) {
-    const token = useAuthStore.getState().token;
-    // Start company fetch but don't await it — navigate immediately
-    // The dashboard will show a loading state while it resolves
-    fetchCompany(token).catch(() => {});
-    navigate("/dashboard");
-  } else {
-    setLocalError(getFriendlyAuthError(result.error));
-  }
-};
+      if (hasCompany) {
+        // Navigate immediately and hydrate company data in background.
+        navigate("/dashboard");
+        fetchCompany(token).catch(() => {});
+      } else {
+        navigate("/setup");
+      }
+    } else {
+      setLocalError(getFriendlyAuthError(result.error));
+    }
+  };
 
   const displayError = localError || error;
 

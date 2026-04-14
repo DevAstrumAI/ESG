@@ -77,7 +77,41 @@ export const useCompanyStore = create((set, get) => ({
 
     try {
       await companyAPI.create(token, companyData);
-      const data = await companyAPI.getMe(token);
+
+      let data = null;
+      let lastFetchError = null;
+      // Firestore writes can be briefly eventual; retry hydration before failing UX.
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          data = await companyAPI.getMe(token);
+          break;
+        } catch (error) {
+          lastFetchError = error;
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+
+      if (!data?.company) {
+        // Keep flow working even if immediate read lags.
+        set({
+          company: {
+            basicInfo: {
+              name: companyData.name,
+              industry: companyData.industry,
+              employees: companyData.employees,
+              revenue: companyData.revenue,
+              region: companyData.region,
+              fiscalYear: companyData.fiscalYear,
+            },
+            locations: companyData.locations || [],
+          },
+          targets: null,
+          loading: false,
+          error: null,
+          isInitialized: true,
+        });
+        return { success: true, warning: lastFetchError?.message };
+      }
       set({ 
         company: data.company, 
         targets: data.company?.targets || null,
