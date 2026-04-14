@@ -59,9 +59,6 @@ export default function FacilitiesList({ locations }) {
                     <td data-label="Country">
                       <span className="country-badge">{getCountryLabel(loc.country)}</span>
                     </td>
-                    <td data-label="Status">
-                      <span className="status-badge active">Active</span>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -209,11 +206,7 @@ export default function FacilitiesList({ locations }) {
           font-weight: 500;
         }
 
-        .status-badge.active {
-          background: #E8F0EA;
-          color: #2E7D64;
-          border: 1px solid #C6E0C8;
-        }
+        
 
         @media (max-width: 768px) {
           .facilities-table thead {
