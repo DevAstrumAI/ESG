@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 import os
+from app.utils.firebase import get_db
+
 
 from app.routes import predictions
 from .routes import auth, companies, emissions,  reports, formal_report, settings, admin
@@ -26,6 +28,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+@app.on_event("startup")
+async def startup_event():
+    get_db()  # initialise Firebase at startup, not on first request
+
 
 # ---------------------------------------------------------------------------
 # CORS

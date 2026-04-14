@@ -19,6 +19,8 @@ export default function SignupPage() {
   const [fieldErrors, setFieldErrors] = useState({});
   const { register, loading, error, clearError } = useAuthStore();
 
+  const [localError, setLocalError] = useState("");
+
   // Clear error on component mount
   useEffect(() => {
     clearError();
@@ -85,13 +87,18 @@ export default function SignupPage() {
     
     const result = await register(email, password, name);
     if (result.success) {
-      navigate("/company-setup");
+      navigate("/setup");
     } else {
-      // Display friendly error message
-      const friendlyError = getFriendlyAuthError(result.error);
-      // You can set this to a local state or use the store error
-      // The error will be displayed by the error message div
+  const friendlyError = getFriendlyAuthError(result.error);
+  setLocalError(friendlyError); // ← was missing, this is why it didn't show
     }
+
+    // Replace the error display div at the top of the form JSX:
+    {(localError || error || fieldErrors.general) && (
+      <div className="error-message">
+        ⚠️ {localError || error || fieldErrors.general}
+      </div>
+    )}
   };
 
   return (

@@ -141,21 +141,53 @@ export const emissionsAPI = {
     return request(`/api/emissions/scope2${query}`, { token });
   },
 
-  deleteScope1Entry: async (token, data) => {
-    return request('/api/emissions/scope1', {
+ deleteScope1Entry: async (token, { year, month, category, entry }) => {
+    const response = await fetch(`${API_URL}/api/emissions/scope1`, {
       method: 'DELETE',
-      body: JSON.stringify(data),
-      token,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        year,
+        month,
+        category,
+        entry,
+      }),
     });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Delete failed');
+    }
+
+    return response.json();
   },
 
-  deleteScope2Entry: async (token, data) => {
-    return request('/api/emissions/scope2', {
+  // Similar for Scope 2 if needed
+  deleteScope2Entry: async (token, { year, month, category, entry }) => {
+    const response = await fetch(`${API_URL}/api/emissions/scope2`, {
       method: 'DELETE',
-      body: JSON.stringify(data),
-      token,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        year,
+        month,
+        category,
+        entry,
+      }),
     });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Delete failed');
+    }
+
+    return response.json();
   },
+
   
   getSummary: async (token, year) => {
     return request(`/api/emissions/summary?year=${year}`, { token });

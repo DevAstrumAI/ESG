@@ -2,29 +2,29 @@
 import React, { useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiBriefcase, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiPlus, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
-const EQUIPMENT_TYPES = [
-  "Generators", "Stove", "Heater", "Oven", "Boiler",
-  "Chimney", "Combustion turbine", "Compressor", "Dryer", "Other",
-];
+const STATIONARY_FUEL_META = {
+  biodiesel: { label: "Biodiesel", unit: "litres" },
+  bioethanol: { label: "Bioethanol", unit: "litres" },
+  biogas: { label: "Biogas", unit: "tons" },
+  diesel: { label: "Diesel", unit: "litres" },
+  cng: { label: "CNG", unit: "litres" },
+  coal: { label: "Coal", unit: "tons" },
+  heavy_fuel_oil: { label: "Heating Oil", unit: "litres" },
+  lpg: { label: "LPG", unit: "litres" },
+  petrol: { label: "Petrol", unit: "litres" },
+  wood_pellets: { label: "Wood Pellets", unit: "tons" },
+  kerosene: { label: "Kerosene", unit: "tons" },
+  natural_gas: { label: "Natural Gas", unit: "kWh" },
+};
 
-const FUEL_TYPES = [
-  { label: "Biodiesel",       unit: "litres",  key: "biodiesel" },
-  { label: "Bioethanol",      unit: "litres",  key: "bioethanol" },
-  { label: "Biogas",          unit: "tons",    key: "biogas" },
-  { label: "Diesel",          unit: "litres",  key: "diesel" },
-  { label: "CNG",             unit: "litres",  key: "cng" },
-  { label: "Domestic Coal",   unit: "tons",    key: "coal" },
-  { label: "Heating Oil",     unit: "litres",  key: "heavy_fuel_oil" },
-  { label: "Industrial Coal", unit: "tons",    key: "coal" },
-  { label: "LPG",             unit: "litres",  key: "lpg" },
-  { label: "Petrol",          unit: "litres",  key: "petrol" },
-  { label: "Wood Pellets",    unit: "tons",    key: "wood_pellets" },
-  { label: "Kerosene",        unit: "tons",    key: "kerosene" },
-  { label: "Natural Gas",     unit: "kWh",     key: "natural_gas" },
-];
+const FUEL_OPTIONS = Object.entries(STATIONARY_FUEL_META).map(([key, meta]) => ({
+  value: key,
+  label: meta.label,
+  unit: meta.unit,
+}));
 
 const MONTHS = [
   "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06",
@@ -38,148 +38,290 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function StationaryForm({ onSubmitSuccess }) {
-  const entries        = useEmissionStore((s) => s.scope1Stationary);
-  const addStationary  = useEmissionStore((s) => s.addScope1Stationary);
+export default function StationaryForm() {
+  const stationary = useEmissionStore((s) => s.scope1Stationary);
+  const addStationary = useEmissionStore((s) => s.addScope1Stationary);
   const deleteStationary = useEmissionStore((s) => s.deleteScope1Stationary);
-  const selectedYear  = useEmissionStore((s) => s.selectedYear);
+  const updateStationary = useEmissionStore((s) => s.updateScope1Stationary);
   const token = useAuthStore((s) => s.token);
 
-  const handleDeleteStationary = async (id, month) => {
-    const deleted = entries.find((e) => e.id === id);
-    if (!deleted) return;
+  // Form state
+  const [fuelType, setFuelType] = useState("");
+  const [consumption, setConsumption] = useState("");
+  const [month, setMonth] = useState(currentMonth());
 
-    const [year] = month ? month.split("-").map(Number) : [selectedYear];
+  // Edit mode state
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    fuelType: "",
+    consumption: "",
+    month: "",
+  });
+
+  const handleAdd = () => {
+    if (!fuelType || !consumption || consumption <= 0) {
+      alert("Please fill all fields");
+      return;
+    }
+
+    const meta = STATIONARY_FUEL_META[fuelType];
+    addStationary({
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      fuelType: fuelType,
+      fuel: meta.label,
+      consumption: parseFloat(consumption),
+      unit: meta.unit,
+      month: month,
+    });
+
+    setFuelType("");
+    setConsumption("");
+    setMonth(currentMonth());
+  };
+
+  const handleDelete = async (entry) => {
+    if (!window.confirm(`Delete ${entry.fuel} - ${entry.consumption} ${entry.unit}?`)) return;
+
+    const [year, monthNum] = entry.month.split("-");
+    
+    const backendEntry = {
+      fuelType: entry.fuelType,
+      consumption: entry.consumption,
+    };
 
     try {
       await emissionsAPI.deleteScope1Entry(token, {
-        year,
-        month,
+        year: parseInt(year),
+        month: entry.month,
         category: "stationary",
-        entry: {
-          fuelType: deleted.fuelType,
-          consumption: Number(deleted.consumption || 0),
-        },
+        entry: backendEntry,
       });
-      deleteStationary(id);
+      
+      deleteStationary(entry.id);
+      console.log("Delete successful");
+      
     } catch (error) {
       console.error("Failed to delete stationary entry:", error);
+      alert(`Failed to delete: ${error.message || "Unknown error"}`);
     }
   };
 
-  const [equipment, setEquipment] = useState("");
-  const [fuelKey, setFuelKey]     = useState("");
-  const [quantity, setQuantity]   = useState("");
-  const [month, setMonth]         = useState(currentMonth());
-
-  const selectedFuel = FUEL_TYPES.find((f) => f.key === fuelKey);
-
-  const handleAddRow = () => {
-    if (!equipment || !fuelKey || quantity === "") return;
-    addStationary({
-      id: Date.now(),
-      equipment,
-      fuel: selectedFuel?.label || fuelKey,
-      fuelType: fuelKey,
-      consumption: Number(quantity),
-      unit: selectedFuel?.unit || "",
-      month,
+  const startEdit = (entry) => {
+    setEditingId(entry.id);
+    setEditValues({
+      fuelType: entry.fuelType,
+      consumption: entry.consumption,
+      month: entry.month,
     });
-    setEquipment("");
-    setFuelKey("");
-    setQuantity("");
-    setMonth(currentMonth());
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({
+      fuelType: "",
+      consumption: "",
+      month: "",
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editValues.fuelType || !editValues.consumption) {
+      alert("Please fill all fields");
+      return;
+    }
+
+    const meta = STATIONARY_FUEL_META[editValues.fuelType];
+    const updatedEntry = {
+      id: editingId,
+      fuelType: editValues.fuelType,
+      fuel: meta.label,
+      consumption: parseFloat(editValues.consumption),
+      unit: meta.unit,
+      month: editValues.month,
+    };
+
+    // Get old entry for backend sync
+    const oldEntry = stationary.find(e => e.id === editingId);
+    
+    if (oldEntry && token) {
+      const [year] = editValues.month.split("-");
+      
+      const oldBackendEntry = {
+        fuelType: oldEntry.fuelType,
+        consumption: oldEntry.consumption,
+      };
+      
+      const newBackendEntry = {
+        fuelType: editValues.fuelType,
+        consumption: parseFloat(editValues.consumption),
+      };
+      
+      try {
+        // Delete old entry
+        await emissionsAPI.deleteScope1Entry(token, {
+          year: parseInt(year),
+          month: editValues.month,
+          category: "stationary",
+          entry: oldBackendEntry,
+        });
+        
+        // Add new entry via save endpoint
+        const { useCompanyStore } = require('../../store/companyStore');
+        const companyStore = useCompanyStore.getState();
+        const primaryLocation = companyStore.company?.locations?.find((loc) => loc.isPrimary) ||
+          companyStore.company?.locations?.[0];
+        const country = primaryLocation?.country || 'uae';
+        const city = (primaryLocation?.city || 'dubai').toLowerCase();
+        
+        await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8001'}/api/emissions/scope1`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            year: parseInt(year),
+            month: editValues.month,
+            country,
+            city,
+            mobile: [],
+            stationary: [newBackendEntry],
+            refrigerants: [],
+            fugitive: [],
+          }),
+        });
+        
+        // Update local state
+        updateStationary(updatedEntry);
+        
+      } catch (error) {
+        console.error("Failed to sync edit with backend:", error);
+        alert("Failed to save changes");
+        return;
+      }
+    } else {
+      updateStationary(updatedEntry);
+    }
+
+    setEditingId(null);
+    setEditValues({
+      fuelType: "",
+      consumption: "",
+      month: "",
+    });
+  };
+
+  const getUnitForFuel = (fuelType) => {
+    return STATIONARY_FUEL_META[fuelType]?.unit || "";
   };
 
   return (
     <div className="sf-wrap">
-      <div className="sf-desc-header">
-        <FiBriefcase className="sf-header-icon" />
-        <p className="sf-desc">
-          Enter fuel consumption for <strong>fixed equipment</strong> at your facilities — generators, boilers, heaters, and other stationary sources.
-        </p>
-      </div>
-
       <div className="sf-table-wrap">
         <table className="sf-table">
           <thead>
             <tr>
-              <th>Equipment</th>
               <th>Fuel Type</th>
-              <th>Quantity</th>
+              <th>Consumption</th>
+              <th>Unit</th>
               <th>Month</th>
-              <th></th>
-              </tr>
-            </thead>
+              <th>Actions</th>
+            </tr>
+          </thead>
           <tbody>
-            {entries.length === 0 && (
+            {stationary.length === 0 && (
               <tr>
                 <td colSpan={5} className="sf-empty">
-                  No entries yet. Add a row below.
+                  No stationary entries yet. Fill the row below and click + Add.
                 </td>
               </tr>
             )}
-            {entries.map((e) => (
-              <tr key={e.id}>
-                <td>{e.equipment}</td>
-                <td>{e.fuel}</td>
-                <td>
-                  <span className="sf-qty">{e.consumption.toLocaleString()}</span>
-                  <span className="sf-unit"> {e.unit}</span>
-                </td>
-                <td>{e.month || "—"}</td>
-                <td>
-                  <button
-                    className="sf-delete"
-                    onClick={() => handleDeleteStationary(e.id, e.month)}
-                    title="Remove"
-                  >
-                    <FiTrash2 size={14} />
-                  </button>
-                </td>
-              </tr>
-            ))}
 
+            {stationary.map((entry) => {
+              if (editingId === entry.id) {
+                return (
+                  <tr key={entry.id} className="sf-editing-row">
+                    <td>
+                      <select
+                        value={editValues.fuelType}
+                        onChange={(e) => setEditValues({...editValues, fuelType: e.target.value})}
+                        className="sf-select"
+                      >
+                        {FUEL_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        value={editValues.consumption}
+                        onChange={(e) => setEditValues({...editValues, consumption: e.target.value})}
+                        className="sf-input"
+                        min="0"
+                        step="any"
+                      />
+                    </td>
+                    <td>{getUnitForFuel(editValues.fuelType)}</td>
+                    <td>
+                      <select
+                        value={editValues.month}
+                        onChange={(e) => setEditValues({...editValues, month: e.target.value})}
+                        className="sf-select"
+                      >
+                        {MONTHS.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <button onClick={saveEdit} className="sf-save-btn"><FiSave /> Save</button>
+                      <button onClick={cancelEdit} className="sf-cancel-btn"><FiX /> Cancel</button>
+                    </td>
+                  </tr>
+                );
+              }
+              
+              return (
+                <tr key={entry.id}>
+                  <td>{entry.fuel}</td>
+                  <td>{entry.consumption}</td>
+                  <td>{entry.unit}</td>
+                  <td>{entry.month}</td>
+                  <td>
+                    <button onClick={() => startEdit(entry)} className="sf-edit"><FiEdit2 /></button>
+                    <button onClick={() => handleDelete(entry)} className="sf-delete"><FiTrash2 /></button>
+                  </td>
+                </tr>
+              );
+            })}
+
+            {/* Add Row */}
             <tr className="sf-add-row">
               <td>
                 <select
-                  value={equipment}
-                  onChange={(e) => setEquipment(e.target.value)}
+                  value={fuelType}
+                  onChange={(e) => setFuelType(e.target.value)}
                   className="sf-select"
                 >
-                  <option value="">Equipment Type</option>
-                  {EQUIPMENT_TYPES.map((et) => (
-                    <option key={et} value={et}>{et}</option>
+                  <option value="">Select Fuel</option>
+                  {FUEL_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
               </td>
               <td>
-                <select
-                  value={fuelKey}
-                  onChange={(e) => setFuelKey(e.target.value)}
-                  className="sf-select"
-                >
-                  <option value="">Fuel Type</option>
-                  {FUEL_TYPES.map((f) => (
-                    <option key={f.key + f.label} value={f.key}>{f.label}</option>
-                  ))}
-                </select>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={consumption}
+                  onChange={(e) => setConsumption(e.target.value)}
+                  className="sf-input"
+                  min="0"
+                  step="any"
+                />
               </td>
-              <td>
-                <div className="sf-qty-input">
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    className="sf-input"
-                    min="0"
-                  />
-                  <span className="sf-unit-tag">
-                    {selectedFuel ? selectedFuel.unit : "—"}
-                  </span>
-                </div>
-              </td>
+              <td>{getUnitForFuel(fuelType)}</td>
               <td>
                 <select
                   value={month}
@@ -192,180 +334,33 @@ export default function StationaryForm({ onSubmitSuccess }) {
                 </select>
               </td>
               <td>
-                <button className="sf-add-btn-inline" onClick={handleAddRow}>
-                  + Add
+                <button className="sf-add-btn" onClick={handleAdd}>
+                  <FiPlus /> Add
                 </button>
               </td>
-              <td></td>
             </tr>
           </tbody>
         </table>
       </div>
 
-
       <style jsx>{`
         .sf-wrap { width: 100%; }
-
-        .sf-desc-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 20px;
-        }
-
-        .sf-header-icon {
-          font-size: 20px;
-          color: #2E7D64;
-        }
-
-        .sf-desc {
-          font-size: 13px;
-          color: #6B7280;
-          margin: 0;
-        }
-        .sf-desc strong { color: #1B4D3E; }
-
-        .sf-table-wrap {
-          border: 1px solid #E5E7EB;
-          border-radius: 10px;
-          overflow: hidden;
-        }
-
-        .sf-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 14px;
-        }
-
+        .sf-table-wrap { border: 1px solid #E5E7EB; border-radius: 10px; overflow-x: auto; }
+        .sf-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 600px; }
         .sf-table thead tr { background: #F9FAFB; }
-
-        .sf-table th {
-          text-align: left;
-          padding: 11px 14px;
-          font-size: 12px;
-          font-weight: 600;
-          color: #6B7280;
-          border-bottom: 1px solid #E5E7EB;
-        }
-
-        .sf-table td {
-          padding: 11px 14px;
-          color: #111827;
-          border-bottom: 1px solid #F3F4F6;
-          vertical-align: middle;
-        }
-
-        .sf-table tbody tr:last-child td { border-bottom: none; }
-
-        .sf-empty {
-          text-align: center;
-          color: #9CA3AF;
-          font-size: 13px;
-          padding: 28px 0 !important;
-        }
-
-        .sf-qty { font-weight: 500; }
-        .sf-unit { font-size: 12px; color: #6B7280; }
-
-        .sf-delete {
-          background: none;
-          border: none;
-          color: #9CA3AF;
-          cursor: pointer;
-          padding: 4px;
-          border-radius: 4px;
-          display: flex;
-          align-items: center;
-        }
+        .sf-table th { text-align: left; padding: 12px 14px; font-size: 12px; font-weight: 600; color: #6B7280; border-bottom: 1px solid #E5E7EB; }
+        .sf-table td { padding: 12px 14px; color: #111827; border-bottom: 1px solid #F3F4F6; }
+        .sf-empty { text-align: center; color: #9CA3AF; padding: 40px 0 !important; }
+        .sf-edit, .sf-delete { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 4px; margin-right: 6px; }
+        .sf-edit { color: #2E7D64; }
+        .sf-delete { color: #9CA3AF; }
         .sf-delete:hover { color: #DC2626; background: #FEF2F2; }
-
+        .sf-select, .sf-input { width: 100%; padding: 8px 10px; border: 1px solid #E5E7EB; border-radius: 7px; font-size: 13px; }
         .sf-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
-
-        .sf-select {
-          width: 100%;
-          padding: 7px 10px;
-          border: 1px solid #E5E7EB;
-          border-radius: 7px;
-          font-size: 13px;
-          background: white;
-          color: #374151;
-          outline: none;
-        }
-        .sf-select:focus { border-color: #2E7D64; }
-
-        .sf-qty-input {
-          display: flex;
-          align-items: center;
-          border: 1px solid #E5E7EB;
-          border-radius: 7px;
-          background: white;
-          overflow: hidden;
-        }
-        .sf-qty-input:focus-within { border-color: #2E7D64; }
-
-        .sf-input {
-          flex: 1;
-          border: none;
-          outline: none;
-          padding: 7px 10px;
-          font-size: 13px;
-          background: transparent;
-          min-width: 60px;
-        }
-
-        .sf-unit-tag {
-          padding: 0 10px;
-          font-size: 12px;
-          color: #6B7280;
-          background: #F3F4F6;
-          border-left: 1px solid #E5E7EB;
-          display: flex;
-          align-items: center;
-          min-height: 33px;
-          white-space: nowrap;
-        }
-
-        .sf-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 16px 0 0 0;
-          margin-top: 16px;
-        }
-
-        .sf-footer { display: flex; justify-content: flex-end; padding: 16px 0 0 0; margin-top: 16px; }
-        .sf-footer-right { display: flex; align-items: center; gap: 12px; }
-        .sf-add-btn-inline {
-          padding: 7px 14px; background: #1B4D3E; color: white;
-          border: none; border-radius: 7px; font-size: 13px;
-          font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
-        }
-        .sf-add-btn-inline:hover { background: #2E7D64; }
-
-        .sf-error { font-size: 13px; color: #DC2626; }
-
-        .sf-submit-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 20px;
-          background: #1B4D3E;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: background 0.15s;
-        }
-        .sf-submit-btn:hover:not(:disabled) { background: #2E7D64; }
-        .sf-submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-        .sf-submit-btn.submitted { background: #059669; }
-
-        @media (max-width: 640px) {
-          .sf-table th:nth-child(4),
-          .sf-table td:nth-child(4) { display: none; }
-        }
+        .sf-add-btn { padding: 8px 16px; background: #1B4D3E; color: white; border: none; border-radius: 7px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+        .sf-save-btn, .sf-cancel-btn { padding: 6px 10px; border-radius: 4px; margin-right: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+        .sf-save-btn { background: #2E7D64; color: white; border: none; }
+        .sf-cancel-btn { background: #F3F4F6; color: #6B7280; border: none; }
       `}</style>
     </div>
   );

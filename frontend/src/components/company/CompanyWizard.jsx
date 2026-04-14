@@ -24,7 +24,7 @@ export default function CompanyWizard() {
   const [loadingSubmit, setLoadingSubmit] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState("saved"); // saved, saving, error
+  const [saveStatus, setSaveStatus] = useState("saved");
   const autoSaveTimer = useRef(null);
   
   const [companyData, setCompanyData] = useState({
@@ -38,103 +38,89 @@ export default function CompanyWizard() {
     locations: [],
   });
   
+  const hasHydrated = useRef(false);
+
   const { company, fetchCompany, updateCompany, createCompany, loading } = useCompanyStore();
   const token = useAuthStore((state) => state.token);
   const { user } = useAuthStore();
 
   const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
-  // ✅ TC-010 & TC-011: Parallel API calls + auto-save
+  // ✅ ADD THIS FUNCTION - updateField is used by child components
+  const updateField = (field, value) => {
+    setCompanyData(prev => ({ ...prev, [field]: value }));
+  };
+
   const autoSave = useCallback(async (data) => {
-    if (!token || !company) return;
-    
+    if (!token) return;
+    if (!data.name?.trim()) return;
+
     setSaveStatus("saving");
-    
     try {
-      const response = await fetch(`${API_URL}/api/companies/me`, {
-        method: "PUT",
+      const method = company ? "PUT" : "POST";
+      const endpoint = company
+        ? `${API_URL}/api/companies/me`
+        : `${API_URL}/api/companies`;
+
+      const response = await fetch(endpoint, {
+        method,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           basicInfo: {
-            name: data.name,
+            name:        data.name,
             description: data.description,
-            industry: data.industry,
-            employees: Number(data.employees),
-            revenue: Number(data.revenue),
-            region: data.region,
+            industry:    data.industry     || "",
+            employees:   Number(data.employees) || 0,
+            revenue:     Number(data.revenue)   || 0,
+            region:      data.region       || "",
           },
-          locations: data.locations,
+          locations: data.locations || [],
         }),
       });
-      
-      if (response.ok) {
-        setSaveStatus("saved");
-        // Refresh company data in store
-        await fetchCompany(token, { force: true });
-      } else {
-        setSaveStatus("error");
-      }
+      setSaveStatus(response.ok ? "saved" : "error");           
     } catch (error) {
-      console.error("Auto-save failed:", error);
       setSaveStatus("error");
     }
-  }, [token, company, fetchCompany]);
-
-  // Handle field changes with auto-save
-  const updateField = (field, value) => {
-    setCompanyData((prev) => {
-      const updated = { ...prev, [field]: value };
-      
-      // Trigger auto-save after 1.5 seconds of inactivity
-      if (autoSaveTimer.current) {
-        clearTimeout(autoSaveTimer.current);
-      }
-      autoSaveTimer.current = setTimeout(() => {
-        autoSave(updated);
-      }, 1500);
-      
-      return updated;
-    });
-  };
-
-  // ✅ TC-010: Fetch company data with parallel API calls
-  useEffect(() => {
-    const loadData = async () => {
-      if (!token) return;
-      
-      setInitialLoading(true);
-      
-      // ✅ Parallel API calls instead of sequential
-      const [companyResult, settingsResult] = await Promise.all([
-        fetchCompany(token).catch(() => ({ success: false })),
-        settingsAPI.get(token).catch(() => ({}))
-      ]);
-      
-      setInitialLoading(false);
-    };
-    
-    loadData();
-  }, [token, fetchCompany]);
+  }, [token, company]);
 
   // If company exists, populate the wizard data
   useEffect(() => {
-    if (company) {
+    if (company && !hasHydrated.current) {
+      hasHydrated.current = true;
       setCompanyData({
-        name: company.basicInfo?.name || "",
+        name:        company.basicInfo?.name        || "",
         description: company.basicInfo?.description || "",
-        region: company.basicInfo?.region || "",
-        country: company.locations?.[0]?.country || "",
-        industry: company.basicInfo?.industry || "",
-        employees: company.basicInfo?.employees || "",
-        revenue: company.basicInfo?.revenue || "",
-        locations: company.locations || [],
+        region:      company.basicInfo?.region      || "",
+        country:     company.locations?.[0]?.country || "",
+        industry:    company.basicInfo?.industry    || "",
+        employees:   company.basicInfo?.employees   || "",
+        revenue:     company.basicInfo?.revenue     || "",
+        locations:   company.locations              || [],
       });
       setInitialLoading(false);
     }
   }, [company]);
+
+  // Load data
+  useEffect(() => {
+    const loadData = async () => {
+      if (!token) return;
+      setInitialLoading(true);
+      hasHydrated.current = false;
+
+      await Promise.all([
+        fetchCompany(token, { force: true }).catch(() => null),
+        settingsAPI.get(token).catch(() => ({})),
+      ]);
+
+      setInitialLoading(false);
+    };
+
+    loadData();
+  }, [token]);
 
   const steps = [
     { id: 1, label: "Company Info", icon: "🏢" },
@@ -235,7 +221,7 @@ export default function CompanyWizard() {
     }
   };
 
-  // ✅ TC-010: Loading skeleton with shimmer effect
+  // Loading skeleton
   if (initialLoading) {
     return (
       <div className="loading-skeleton">
@@ -291,7 +277,6 @@ export default function CompanyWizard() {
   if (company && company.basicInfo?.name) {
     return (
       <div className="wizard-container">
-        {/* Auto-save status indicator */}
         <div className="auto-save-status">
           {saveStatus === "saving" && <span className="saving">💾 Saving...</span>}
           {saveStatus === "saved" && <span className="saved">✓ All changes saved</span>}
@@ -358,14 +343,12 @@ export default function CompanyWizard() {
 
   return (
     <div className="wizard-container">
-      {/* Auto-save status indicator */}
       <div className="auto-save-status">
         {saveStatus === "saving" && <span className="saving">💾 Saving...</span>}
         {saveStatus === "saved" && <span className="saved">✓ All changes saved</span>}
         {saveStatus === "error" && <span className="error">⚠️ Unable to save</span>}
       </div>
 
-      {/* Step Progress Header */}
       <div className="wizard-header">
         <div className="steps-progress">
           {steps.map((s) => (
@@ -387,7 +370,6 @@ export default function CompanyWizard() {
         </div>
       </div>
 
-      {/* Main Content Card */}
       <Card className="wizard-content-card">
         <div className="wizard-content">
           {step === 1 && <CompanyInfoForm data={companyData} updateField={updateField} />}
@@ -400,7 +382,6 @@ export default function CompanyWizard() {
           {step === 8 && <SetupSummary data={companyData} updateField={updateField} />}
         </div>
 
-        {/* Navigation Buttons */}
         <div className="wizard-footer">
           {step > 1 && (
             <SecondaryButton onClick={prevStep} className="nav-btn back-btn">

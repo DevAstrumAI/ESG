@@ -59,9 +59,10 @@ export const useEmissionStore = create((set, get) => ({
   scope2Results:     null,
   scope2Total:       0,
   selectedYear:      new Date().getFullYear(),
+  selectedMonth:     null,
   loading:           false,
   error:             null,
-  isSubmitting:      false, // ✅ TC-014/016: Add submission guard flag
+  isSubmitting:      false,
 
   // ─── Reset All Emission Data ─────────────────────────────────────────────
   reset: () =>
@@ -77,13 +78,17 @@ export const useEmissionStore = create((set, get) => ({
       scope2Results:     null,
       scope2Total:       0,
       selectedYear:      new Date().getFullYear(),
+      selectedMonth:     null,
       loading:           false,
       error:             null,
       isSubmitting:      false,
     }),
 
-  // ─── Scope 1 Actions ──────────────────────────────────────────────────────
-  // ✅ TC-014: Add unique IDs when adding entries
+  // ─── Set Current Month/Year ─────────────────────────────────────────────
+  setSelectedMonth: (month) => set({ selectedMonth: month }),
+  setSelectedYear: (year) => set({ selectedYear: year }),
+
+  // ─── Scope 1 Actions (Local only - for UI) ─────────────────────────────
   addScope1Vehicle: (vehicle) =>
     set((state) => ({ 
       scope1Vehicles: [...state.scope1Vehicles, { 
@@ -99,13 +104,6 @@ export const useEmissionStore = create((set, get) => ({
       ),
     })),
 
-  // ✅ TC-015: Immutable delete (only removes specific entry)
-  deleteScope1Vehicle: (id) =>
-    set((state) => ({
-      scope1Vehicles: state.scope1Vehicles.filter((v) => v.id !== id)
-    })),
-
-  // ✅ TC-014: Add unique IDs when adding entries
   addScope1Stationary: (entry) =>
     set((state) => ({ 
       scope1Stationary: [...state.scope1Stationary, { 
@@ -114,13 +112,6 @@ export const useEmissionStore = create((set, get) => ({
       }] 
     })),
 
-  // ✅ TC-015: Immutable delete
-  deleteScope1Stationary: (id) =>
-    set((state) => ({
-      scope1Stationary: state.scope1Stationary.filter((e) => e.id !== id)
-    })),
-
-  // ✅ TC-014: Add unique IDs when adding entries
   addScope1Refrigerant: (entry) =>
     set((state) => ({ 
       scope1Refrigerants: [...state.scope1Refrigerants, { 
@@ -129,13 +120,6 @@ export const useEmissionStore = create((set, get) => ({
       }] 
     })),
 
-  // ✅ TC-015: Immutable delete
-  deleteScope1Refrigerant: (id) =>
-    set((state) => ({
-      scope1Refrigerants: state.scope1Refrigerants.filter((r) => r.id !== id)
-    })),
-
-  // ✅ TC-014: Add unique IDs when adding entries
   addScope1Fugitive: (entry) =>
     set((state) => ({ 
       scope1Fugitive: [...state.scope1Fugitive, { 
@@ -144,14 +128,7 @@ export const useEmissionStore = create((set, get) => ({
       }] 
     })),
 
-  // ✅ TC-015: Immutable delete
-  deleteScope1Fugitive: (id) =>
-    set((state) => ({
-      scope1Fugitive: state.scope1Fugitive.filter((f) => f.id !== id)
-    })),
-
-  // ─── Scope 2 Actions ──────────────────────────────────────────────────────
-  // ✅ TC-014: Add unique IDs when adding entries
+  // ─── Scope 2 Actions (Local only - for UI) ─────────────────────────────
   addScope2Electricity: (entry) =>
     set((state) => ({ 
       scope2Electricity: [...state.scope2Electricity, { 
@@ -160,13 +137,6 @@ export const useEmissionStore = create((set, get) => ({
       }] 
     })),
 
-  // ✅ TC-015: Immutable delete
-  deleteScope2Electricity: (id) =>
-    set((state) => ({
-      scope2Electricity: state.scope2Electricity.filter((e) => e.id !== id)
-    })),
-
-  // ✅ TC-014: Add unique IDs when adding entries
   addScope2Heating: (entry) =>
     set((state) => ({ 
       scope2Heating: [...state.scope2Heating, { 
@@ -175,13 +145,6 @@ export const useEmissionStore = create((set, get) => ({
       }] 
     })),
 
-  // ✅ TC-015: Immutable delete
-  deleteScope2Heating: (id) =>
-    set((state) => ({
-      scope2Heating: state.scope2Heating.filter((h) => h.id !== id)
-    })),
-
-  // ✅ TC-014: Add unique IDs when adding entries
   addScope2Renewable: (entry) =>
     set((state) => ({ 
       scope2Renewable: [...state.scope2Renewable, { 
@@ -190,38 +153,267 @@ export const useEmissionStore = create((set, get) => ({
       }] 
     })),
 
-  // ✅ TC-015: Immutable delete
-  deleteScope2Renewable: (id) =>
+  // ─── BACKEND-SYNCHRONIZED DELETE METHODS ───────────────────────────────
+  
+  // Scope 1 - Vehicle/ Mobile Combustion
+ 
+deleteScope1VehicleWithSync: async (vehicle, token, year, month) => {
+  set({ loading: true });
+  try {
+    // Find the entry ID from the vehicle object
+    const entryId = vehicle.id;
+    
+    const response = await fetch(`${API_URL}/api/emissions/scope1/vehicle/${entryId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ year, month }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete vehicle');
+    }
+
+    // Remove from local state
     set((state) => ({
-      scope2Renewable: state.scope2Renewable.filter((r) => r.id !== id)
-    })),
+      scope1Vehicles: state.scope1Vehicles.filter((v) => v.id !== entryId),
+      loading: false,
+    }));
+
+    // Refresh summary
+    await get().fetchSummary(token, year);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Delete vehicle error:', error);
+    set({ error: error.message, loading: false });
+    return { success: false, error: error.message };
+  }
+},
+
+deleteScope1StationaryWithSync: async (entry, token, year, month) => {
+  set({ loading: true });
+  try {
+    const entryId = entry.id;
+    
+    const response = await fetch(`${API_URL}/api/emissions/scope1/stationary/${entryId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ year, month }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete stationary entry');
+    }
+
+    set((state) => ({
+      scope1Stationary: state.scope1Stationary.filter((e) => e.id !== entryId),
+      loading: false,
+    }));
+
+    await get().fetchSummary(token, year);
+    return { success: true };
+  } catch (error) {
+    console.error('Delete stationary error:', error);
+    set({ error: error.message, loading: false });
+    return { success: false, error: error.message };
+  }
+},
+
+deleteScope1RefrigerantWithSync: async (entry, token, year, month) => {
+  set({ loading: true });
+  try {
+    const entryId = entry.id;
+    
+    const response = await fetch(`${API_URL}/api/emissions/scope1/refrigerant/${entryId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ year, month }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete refrigerant entry');
+    }
+
+    set((state) => ({
+      scope1Refrigerants: state.scope1Refrigerants.filter((r) => r.id !== entryId),
+      loading: false,
+    }));
+
+    await get().fetchSummary(token, year);
+    return { success: true };
+  } catch (error) {
+    console.error('Delete refrigerant error:', error);
+    set({ error: error.message, loading: false });
+    return { success: false, error: error.message };
+  }
+},
+
+deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
+  set({ loading: true });
+  try {
+    const entryId = entry.id;
+    
+    const response = await fetch(`${API_URL}/api/emissions/scope1/fugitive/${entryId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ year, month }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete fugitive entry');
+    }
+
+    set((state) => ({
+      scope1Fugitive: state.scope1Fugitive.filter((f) => f.id !== entryId),
+      loading: false,
+    }));
+
+    await get().fetchSummary(token, year);
+    return { success: true };
+  } catch (error) {
+    console.error('Delete fugitive error:', error);
+    set({ error: error.message, loading: false });
+    return { success: false, error: error.message };
+  }
+},
+
+  // Scope 2 - Electricity
+  deleteScope2Electricity: async (id, token, year, month) => {
+    set({ loading: true });
+    try {
+      const response = await fetch(`${API_URL}/api/emissions/scope2/electricity/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ year, month }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to delete electricity entry');
+      }
+
+      set((state) => ({
+        scope2Electricity: state.scope2Electricity.filter((e) => e.id !== id),
+        loading: false,
+      }));
+
+      await get().fetchSummary(token, year);
+      await get().loadScope2Data(token, year, month);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Delete electricity error:', error);
+      set({ error: error.message, loading: false });
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Scope 2 - Heating
+  deleteScope2Heating: async (id, token, year, month) => {
+    set({ loading: true });
+    try {
+      const response = await fetch(`${API_URL}/api/emissions/scope2/heating/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ year, month }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to delete heating entry');
+      }
+
+      set((state) => ({
+        scope2Heating: state.scope2Heating.filter((h) => h.id !== id),
+        loading: false,
+      }));
+
+      await get().fetchSummary(token, year);
+      await get().loadScope2Data(token, year, month);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Delete heating error:', error);
+      set({ error: error.message, loading: false });
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Scope 2 - Renewable Energy
+  deleteScope2Renewable: async (id, token, year, month) => {
+    set({ loading: true });
+    try {
+      const response = await fetch(`${API_URL}/api/emissions/scope2/renewable/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ year, month }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to delete renewable entry');
+      }
+
+      set((state) => ({
+        scope2Renewable: state.scope2Renewable.filter((r) => r.id !== id),
+        loading: false,
+      }));
+
+      await get().fetchSummary(token, year);
+      await get().loadScope2Data(token, year, month);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Delete renewable error:', error);
+      set({ error: error.message, loading: false });
+      return { success: false, error: error.message };
+    }
+  },
 
   // ─── Replace entire arrays (prevents duplicates) ─────────────────────────
-  setScope1Vehicles: (vehicles) =>
-    set({ scope1Vehicles: vehicles }),
+  setScope1Vehicles: (vehicles) => set({ scope1Vehicles: vehicles }),
+  setScope1Stationary: (stationary) => set({ scope1Stationary: stationary }),
+  setScope1Refrigerants: (refrigerants) => set({ scope1Refrigerants: refrigerants }),
+  setScope1Fugitive: (fugitive) => set({ scope1Fugitive: fugitive }),
+  setScope2Electricity: (electricity) => set({ scope2Electricity: electricity }),
+  setScope2Heating: (heating) => set({ scope2Heating: heating }),
+  setScope2Renewable: (renewable) => set({ scope2Renewable: renewable }),
 
-  setScope1Stationary: (stationary) =>
-    set({ scope1Stationary: stationary }),
-
-  setScope1Refrigerants: (refrigerants) =>
-    set({ scope1Refrigerants: refrigerants }),
-
-  setScope1Fugitive: (fugitive) =>
-    set({ scope1Fugitive: fugitive }),
-
-  setScope2Electricity: (electricity) =>
-    set({ scope2Electricity: electricity }),
-
-  setScope2Heating: (heating) =>
-    set({ scope2Heating: heating }),
-
-  setScope2Renewable: (renewable) =>
-    set({ scope2Renewable: renewable }),
-
-  // ─── Load Scope 1 Data from API (replaces existing data) ────────────────────
-  loadScope1Data: async (token, year) => {
+  // ─── Load Scope 1 Data from API (replaces existing data) ────────────────
+  loadScope1Data: async (token, year, month = null) => {
+    set({ loading: true });
     try {
-      const response = await fetch(`${API_URL}/api/emissions/scope1?year=${year}`, {
+      let url = `${API_URL}/api/emissions/scope1?year=${year}`;
+      if (month) {
+        url += `&month=${month}`;
+      }
+      
+      const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -250,19 +442,27 @@ export const useEmissionStore = create((set, get) => ({
         scope1Stationary: stationaryData,
         scope1Refrigerants: refrigerantData,
         scope1Fugitive: fugitiveData,
+        loading: false,
       });
 
       return { success: true, data };
     } catch (error) {
       console.error("Failed to load Scope 1 data:", error);
+      set({ error: error.message, loading: false });
       return { success: false, error: error.message };
     }
   },
 
-  // ─── Load Scope 2 Data from API (replaces existing data) ────────────────────
-  loadScope2Data: async (token, year) => {
+  // ─── Load Scope 2 Data from API (replaces existing data) ────────────────
+  loadScope2Data: async (token, year, month = null) => {
+    set({ loading: true });
     try {
-      const response = await fetch(`${API_URL}/api/emissions/scope2?year=${year}`, {
+      let url = `${API_URL}/api/emissions/scope2?year=${year}`;
+      if (month) {
+        url += `&month=${month}`;
+      }
+      
+      const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -287,21 +487,21 @@ export const useEmissionStore = create((set, get) => ({
         scope2Electricity: electricityData,
         scope2Heating: heatingData,
         scope2Renewable: renewableData,
+        loading: false,
       });
 
       return { success: true, data };
     } catch (error) {
       console.error("Failed to load Scope 2 data:", error);
+      set({ error: error.message, loading: false });
       return { success: false, error: error.message };
     }
   },
 
-  // ─── Submit Scope 1 ───────────────────────────────────────────────────────
-  // ✅ TC-014/016: Add submission guard to prevent double submission
+  // ─── Submit Scope 1 ─────────────────────────────────────────────────────
   submitScope1: async (token, year, monthString) => {
     const { isSubmitting } = get();
     
-    // ✅ Prevent double submission
     if (isSubmitting) {
       console.log("Submission already in progress");
       return { success: false, error: "Already submitting" };
@@ -390,12 +590,10 @@ export const useEmissionStore = create((set, get) => ({
     }
   },
 
-  // ─── Submit Scope 2 ───────────────────────────────────────────────────────
-  // ✅ TC-014/016: Add submission guard to prevent double submission
+  // ─── Submit Scope 2 ─────────────────────────────────────────────────────
   submitScope2: async (token, year, monthString) => {
     const { isSubmitting } = get();
     
-    // ✅ Prevent double submission
     if (isSubmitting) {
       console.log("Submission already in progress");
       return { success: false, error: "Already submitting" };
@@ -479,7 +677,7 @@ export const useEmissionStore = create((set, get) => ({
     }
   },
 
-  // ─── Fetch Summary - FIXED with months count ──────────────────────────────
+  // ─── Fetch Summary ──────────────────────────────────────────────────────
   fetchSummary: async (token, year) => {
     const resolvedYear = year || get().selectedYear;
     try {
@@ -500,17 +698,14 @@ export const useEmissionStore = create((set, get) => ({
 
       const result = await response.json();
 
-      // Extract values from backend response
       const electricityLocation = result.scope2?.breakdown?.electricity || 
                                   result.scope2?.breakdown?.electricityLocation || 0;
       const electricityMarket = result.scope2?.breakdown?.electricityMarket || 0;
       const heatingKg = result.scope2?.breakdown?.heating || 0;
       
-      // IMPORTANT: Location-based total MUST include heating
       const locationBasedTotal = electricityLocation + heatingKg;
       const marketBasedTotal = electricityMarket;
 
-      // Calculate months with data - fetch from month-status endpoint or use fallback
       let monthsCount = 0;
       try {
         const monthStatusResponse = await fetch(`${API_URL}/api/emissions/month-status?year=${resolvedYear}`, {
@@ -520,18 +715,17 @@ export const useEmissionStore = create((set, get) => ({
           const monthStatus = await monthStatusResponse.json();
           monthsCount = Object.values(monthStatus).filter(s => s !== "none").length;
         } else {
-          // Fallback: check if any data exists
           if (result.scope1?.totalKgCO2e > 0 || result.scope2?.locationBasedKgCO2e > 0) {
             monthsCount = 1;
           }
         }
       } catch (err) {
         console.error("Failed to fetch month status:", err);
-        // Fallback: check if any data exists
         if (result.scope1?.totalKgCO2e > 0 || result.scope2?.locationBasedKgCO2e > 0) {
           monthsCount = 1;
         }
       }
+      
       set({
         scope1Results: {
           mobile:       { kgCO2e: result.scope1?.breakdown?.mobile || 0 },
@@ -562,7 +756,7 @@ export const useEmissionStore = create((set, get) => ({
     }
   },
 
-  // ─── Clear All (logout) ───────────────────────────────────────────────────
+  // ─── Clear All (logout) ─────────────────────────────────────────────────
   clearAllData: () => {
     set({
       scope1Vehicles:    [],
@@ -576,6 +770,7 @@ export const useEmissionStore = create((set, get) => ({
       scope2Results:     null,
       scope2Total:       0,
       selectedYear:      new Date().getFullYear(),
+      selectedMonth:     null,
       loading:           false,
       error:             null,
       isSubmitting:      false,

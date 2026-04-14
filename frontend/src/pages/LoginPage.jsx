@@ -31,52 +31,67 @@ export default function LoginPage() {
   }, []);
 
   // Error mapping function
+  // LoginPage.jsx — replace getFriendlyAuthError
   const getFriendlyAuthError = (error) => {
-    const code = error?.code || error?.message || "";
-    if (code.includes("wrong-password") || code.includes("invalid-credential") || code.includes("invalid-login-credentials")) {
-      return "Incorrect email or password. Please try again.";
-    }
-    if (code.includes("user-not-found")) {
-      return "No account found with this email address.";
-    }
-    if (code.includes("too-many-requests")) {
-      return "Too many failed attempts. Please try again in a few minutes.";
-    }
-    if (code.includes("network-request-failed")) {
-      return "Connection failed. Please check your internet.";
-    }
-    return "Login failed. Please try again.";
-  };
+  // error can be a string, an Error object, or a Firebase error object
+  const msg = typeof error === "string"
+    ? error
+    : error?.code || error?.message || "";
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    clearError();
-    setLocalError("");
-    
-    if (!email || !password) {
-      setLocalError("Please enter both email and password.");
-      return;
-    }
-    
-    if (!navigator.onLine) {
-      setLocalError("You appear to be offline. Please check your internet connection.");
-      return;
-    }
-    
-    const result = await login(email, password);
-    
-    if (result.success) {
-      const token = useAuthStore.getState().token;
-      const companyResult = await fetchCompany(token);
-      if (companyResult.success) {
-        navigate("/dashboard");
-      } else {
-        navigate("/setup");
-      }
-    } else {
-      setLocalError(getFriendlyAuthError(result.error));
-    }
-  };
+  if (
+    msg.includes("wrong-password") ||
+    msg.includes("invalid-credential") ||
+    msg.includes("invalid-login-credentials") ||
+    msg.includes("INVALID_LOGIN_CREDENTIALS")
+  ) return "Incorrect email or password. Please try again.";
+
+  if (msg.includes("user-not-found") || msg.includes("USER_NOT_FOUND"))
+    return "No account found with this email address.";
+
+  if (msg.includes("too-many-requests") || msg.includes("TOO_MANY_ATTEMPTS"))
+    return "Too many failed attempts. Please wait a few minutes before trying again.";
+
+  if (msg.includes("user-disabled"))
+    return "This account has been disabled. Please contact support.";
+
+  if (
+    msg.includes("network-request-failed") ||
+    msg.includes("fetch") ||
+    msg.includes("Failed to fetch") ||
+    msg.includes("NetworkError")
+  ) return "Cannot reach the server. Please check your internet connection and try again.";
+
+  return "Login failed. Please try again.";
+};
+
+// LoginPage.jsx — replace handleSubmit
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  clearError();
+  setLocalError("");
+
+  if (!email || !password) {
+    setLocalError("Please enter both email and password.");
+    return;
+  }
+
+  if (!navigator.onLine) {
+    setLocalError("You appear to be offline. Please check your internet connection.");
+    return;
+  }
+
+  const result = await login(email, password);
+
+  if (result.success) {
+    const token = useAuthStore.getState().token;
+    // Start company fetch but don't await it — navigate immediately
+    // The dashboard will show a loading state while it resolves
+    fetchCompany(token).catch(() => {});
+    navigate("/dashboard");
+  } else {
+    setLocalError(getFriendlyAuthError(result.error));
+  }
+};
 
   const displayError = localError || error;
 
