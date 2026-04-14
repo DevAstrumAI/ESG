@@ -17,7 +17,7 @@ export default function Scope1Page() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = useAuthStore((s) => s.token);
-  const { company, fetchCompany } = useCompanyStore();
+  const { company, fetchCompany, loading: companyLoading, isInitialized: companyInitialized } = useCompanyStore();
   
   const urlMonth = searchParams.get("month");
   const defaultMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
@@ -59,21 +59,26 @@ export default function Scope1Page() {
   const isSubmitting = useEmissionStore((s) => s.isSubmitting);
 
   const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
+  const hasCompanySetup = Boolean(company?.basicInfo?.name) && Array.isArray(company?.locations) && company.locations.length > 0;
   
   // Load company data
   useEffect(() => {
-    if (token && !company) {
+    if (token && !companyInitialized) {
       fetchCompany(token);
     }
-  }, [token, company, fetchCompany]);
+  }, [token, companyInitialized, fetchCompany]);
   
   // Load Scope 1 data when month changes
   useEffect(() => {
     const loadScope1Data = async () => {
       if (!token) return;
+      if (!hasCompanySetup) {
+        setLoadingData(false);
+        return;
+      }
       
       // ✅ Prevent duplicate loading for same month
-      if (dataLoadedForMonth.current === selectedMonth) {
+      if (dataLoadedForMonth.current === selectedMonth && !isLoadingRef.current) {
         console.log("Data already loaded for", selectedMonth, "- skipping");
         setLoadingData(false);
         return;
@@ -87,12 +92,6 @@ export default function Scope1Page() {
       
       isLoadingRef.current = true;
       setLoadingData(true);
-
-       // Clear AFTER confirming we will actually load — not speculatively
-      setScope1Vehicles([]);
-      setScope1Stationary([]);
-      setScope1Refrigerants([]);
-      setScope1Fugitive([]);
       
       try {
         // Clear existing data to prevent duplicates
@@ -102,9 +101,12 @@ export default function Scope1Page() {
         setScope1Fugitive([]);
         
         const [year] = selectedMonth.split("-");
-        const response = await fetch(`${API_URL}/api/emissions/scope1?year=${year}`, {
+        const response = await fetch(
+          `${API_URL}/api/emissions/scope1?year=${year}&month=${selectedMonth}`,
+          {
           headers: { Authorization: `Bearer ${token}` },
-        });
+          }
+        );
         
         if (response.ok) {
           const data = await response.json();
@@ -139,7 +141,7 @@ export default function Scope1Page() {
     };
     
     loadScope1Data();
-  }, [token, selectedMonth]);
+  }, [token, selectedMonth, hasCompanySetup]);
   
   // Generate month options
   const generateMonthOptions = () => {
@@ -185,29 +187,27 @@ export default function Scope1Page() {
     setSubmitError(null);
   };
   
-  // Scope1Page.jsx — replace handleCalculateAll entirely
-const handleCalculateAll = async () => {
-  if (submitting || isSubmitting) return; // guard against double-click
-  setSubmitting(true);
-  setSubmitError(null);
-  setSubmitSuccess(false);
+  const handleCalculateAll = async () => {
+    if (!hasCompanySetup) {
+      setSubmitError("Please complete company setup before calculating Scope 1 emissions.");
+      return;
+    }
 
-  const [year] = selectedMonth.split("-");
-
-  // ✅ DO NOT reload data here — the store already has what the user entered
-  // The previous reload was causing duplicates by mixing local + API data
-  const result = await submitScope1(token, parseInt(year), selectedMonth);
-
-  setSubmitting(false);
-  if (result.success) {
-    setSubmitSuccess(true);
-    setShowSummary(true);
-    // Mark current month as needing a fresh load next time
-    dataLoadedForMonth.current = null;
-  } else {
-    setSubmitError(result.error || "Calculation failed. Please try again.");
-  }
-};
+    setSubmitting(true);
+    setSubmitError(null);
+    setSubmitSuccess(false);
+    
+    const [year] = selectedMonth.split("-");
+    const result = await submitScope1(token, parseInt(year, 10), selectedMonth);
+    
+    setSubmitting(false);
+    if (result.success) {
+      setSubmitSuccess(true);
+      setShowSummary(true);
+    } else {
+      setSubmitError(result.error || "Calculation failed. Please try again.");
+    }
+  };
   
   const steps = [
     { id: "mobile", label: "Mobile Combustion", icon: <FiTruck size={16} />, count: vehicles.length, component: (
@@ -240,6 +240,59 @@ const handleCalculateAll = async () => {
       />
     )},
   ];
+  const progressPercent = steps.length > 1 ? (currentStep / (steps.length - 1)) * 100 : 100;
+
+  if (!companyInitialized || companyLoading) {
+    return (
+      <div className="scope1-page">
+        <p style={{ color: "#6B7280", margin: 0 }}>Loading company setup...</p>
+      </div>
+    );
+  }
+
+  if (!hasCompanySetup) {
+    return (
+      <div className="scope1-page">
+        <div className="setup-banner">
+          <FiAlertCircle />
+          <div>
+            <h3>Complete company setup first</h3>
+            <p>You need to finish Company Setup before using Scope 1 calculations.</p>
+          </div>
+          <button onClick={() => navigate("/setup")} className="setup-btn">
+            Go to Company Setup
+          </button>
+        </div>
+        <style jsx>{`
+          .scope1-page { padding: 24px; max-width: 1400px; margin: 0 auto; }
+          .setup-banner {
+            border: 1px solid #FCD34D;
+            background: #FFFBEB;
+            color: #92400E;
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+          }
+          .setup-banner h3 { margin: 0 0 4px 0; font-size: 16px; color: #78350F; }
+          .setup-banner p { margin: 0; color: #92400E; }
+          .setup-btn {
+            margin-left: auto;
+            border: 1px solid #D97706;
+            background: #D97706;
+            color: white;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+          }
+          .setup-btn:hover { background: #B45309; border-color: #B45309; }
+        `}</style>
+      </div>
+    );
+  }
   
   if (loadingData) {
     return (
@@ -338,6 +391,10 @@ const handleCalculateAll = async () => {
             ← Previous
           </button>
           
+          <div className="progress-shell">
+          <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+            </div>
           <div className="step-indicators">
             {steps.map((step, index) => (
               <div key={step.id} className={`step-indicator ${currentStep === index ? "active" : ""} ${currentStep > index ? "completed" : ""}`}>
@@ -347,17 +404,14 @@ const handleCalculateAll = async () => {
               </div>
             ))}
           </div>
+          </div>
           
           {currentStep < steps.length - 1 ? (
             <button onClick={handleNext} className="nav-btn next-btn">Next →</button>
           ) : (
-            <button
-              onClick={handleCalculateAll}
-              disabled={submitting || isSubmitting}  // ← add isSubmitting here
-              className="nav-btn calculate-btn"
-            >
-            {submitting || isSubmitting ? "Calculating..." : "Calculate All →"}
-          </button>
+            <button onClick={handleCalculateAll} disabled={submitting} className="nav-btn calculate-btn">
+              {submitting ? "Calculating..." : "Calculate All →"}
+            </button>
           )}
         </div>
         
@@ -385,29 +439,110 @@ const handleCalculateAll = async () => {
         .month-selector label { font-weight: 500; color: #374151; }
         .month-selector select { padding: 8px 12px; border: 1px solid #D1D5DB; border-radius: 6px; background: white; font-size: 14px; }
         .month-hint { color: #6B7280; font-size: 14px; margin-bottom: 24px; }
-        .step-navigation { display: flex; align-items: center; justify-content: space-between; padding: 24px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB; }
-        .nav-btn { padding: 10px 20px; border: 1px solid #D1D5DB; border-radius: 8px; background: white; color: #374151; font-weight: 500; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
-        .nav-btn:hover:not(:disabled) { border-color: #2E7D64; color: #2E7D64; }
-        .nav-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .calculate-btn { background: #2E7D64; color: white; border-color: #2E7D64; }
-        .calculate-btn:hover:not(:disabled) { background: #1B4D3E; border-color: #1B4D3E; }
-        .step-indicators { display: flex; align-items: center; gap: 16px; flex: 1; justify-content: center; }
-        .step-indicator { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 8px; background: white; border: 2px solid #E5E7EB; transition: all 0.2s; min-width: 120px; }
-        .step-indicator.active { border-color: #2E7D64; background: #F0F9F6; }
-        .step-indicator.completed { border-color: #10B981; background: #F0FDF4; }
-        .step-icon { font-size: 20px; }
-        .step-label { font-size: 12px; font-weight: 500; color: #6B7280; text-align: center; }
-        .step-indicator.active .step-label { color: #2E7D64; }
-        .step-indicator.completed .step-label { color: #10B981; }
-        .step-count { background: #2E7D64; color: white; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px; margin-top: 4px; }
+        .step-navigation { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; background: linear-gradient(180deg, #FBFCFD 0%, #F8FAFB 100%); border-bottom: 1px solid #E5E7EB; }
+        .nav-btn {
+          min-width: 126px;
+          height: 44px;
+          padding: 0 18px;
+          border-radius: 12px;
+          border: 1px solid #D1D5DB;
+          background: white;
+          color: #374151;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+          white-space: nowrap;
+        }
+        .nav-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12); }
+        .nav-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .previous-btn { background: #FFFFFF; border-color: #D5DBE3; color: #4B5563; }
+        .previous-btn:hover:not(:disabled) { border-color: #9CA3AF; color: #1F2937; }
+        .next-btn {
+          background: linear-gradient(135deg, #2E7D64 0%, #1F9D7A 100%);
+          color: white;
+          border-color: #2E7D64;
+        }
+        .next-btn:hover:not(:disabled) {
+          border-color: #1F9D7A;
+          box-shadow: 0 12px 22px rgba(31, 157, 122, 0.34);
+        }
+        .calculate-btn {
+          background: linear-gradient(135deg, #1B4D3E 0%, #2E7D64 100%);
+          color: white;
+          border-color: #1B4D3E;
+        }
+        .calculate-btn:hover:not(:disabled) {
+          border-color: #1B4D3E;
+          box-shadow: 0 12px 22px rgba(27, 77, 62, 0.32);
+        }
+        .progress-shell { position: relative; flex: 1; max-width: 680px; padding-top: 4px; }
+        .progress-track {
+          position: absolute;
+          top: 28px;
+          left: 28px;
+          right: 28px;
+          height: 4px;
+          border-radius: 999px;
+          background: #E5E7EB;
+          overflow: hidden;
+        }
+        .progress-fill {
+          height: 100%;
+          border-radius: 999px;
+          background: linear-gradient(90deg, #2E7D64 0%, #10B981 100%);
+          box-shadow: 0 0 14px rgba(16, 185, 129, 0.32);
+          transition: width 280ms ease;
+        }
+        .step-indicators { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+        .step-indicator {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          min-width: 110px;
+          padding: 0 6px;
+          color: #6B7280;
+          transition: transform 0.2s ease, color 0.2s ease;
+        }
+        .step-icon {
+          width: 44px;
+          height: 44px;
+          border-radius: 999px;
+          border: 2px solid #D1D5DB;
+          background: white;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 17px;
+          box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+          transition: all 0.2s ease;
+        }
+        .step-label { font-size: 11px; font-weight: 600; text-align: center; }
+        .step-indicator.active { color: #1F6F5B; transform: translateY(-2px); }
+        .step-indicator.active .step-icon {
+          border-color: #2E7D64;
+          color: #2E7D64;
+          background: #ECFDF5;
+          box-shadow: 0 8px 22px rgba(46, 125, 100, 0.24);
+        }
+        .step-indicator.completed { color: #0F766E; }
+        .step-indicator.completed .step-icon { border-color: #10B981; color: #10B981; background: #F0FDF4; }
+        .step-count { background: #2E7D64; color: white; font-size: 10px; font-weight: 700; line-height: 1; padding: 5px 8px; border-radius: 999px; min-width: 22px; text-align: center; }
         .step-content { padding: 24px; }
         .error-message { background: #FEF2F2; color: #DC2626; padding: 12px 16px; border-radius: 8px; margin: 0 24px 24px 24px; border: 1px solid #FECACA; display: flex; align-items: center; gap: 8px; }
         @media (max-width: 768px) {
           .scope1-page { padding: 16px; }
           .step-navigation { flex-direction: column; gap: 16px; }
-          .step-indicators { flex-wrap: wrap; gap: 8px; }
-          .step-indicator { min-width: 100px; padding: 8px 12px; }
-          .nav-btn { padding: 8px 16px; font-size: 14px; }
+          .progress-shell { width: 100%; max-width: none; }
+          .progress-track { left: 16px; right: 16px; top: 24px; }
+          .step-indicator { min-width: 90px; }
+          .step-icon { width: 38px; height: 38px; font-size: 14px; }
+          .nav-btn { min-width: 118px; height: 40px; padding: 0 14px; font-size: 13px; }
         }
       `}</style>
     </div>

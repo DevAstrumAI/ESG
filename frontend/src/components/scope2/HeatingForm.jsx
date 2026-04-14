@@ -1,14 +1,49 @@
 // src/components/scope2/HeatingForm.jsx
-import React, { useState } from "react";
-import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiSend, FiThermometer, FiDroplet } from "react-icons/fi";
+import React, { useState, useEffect } from "react";
+import { useCompanyStore } from "../../store/companyStore";
+import { FiTrash2, FiSend, FiThermometer } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
+import { useEmissionStore } from "../../store/emissionStore";
+import { emissionsAPI } from "../../services/api";
 
-const HEATING_COOLING_TYPES = [
-  { label: "Steam / Hot Water", key: "steam_hot_water" },
-  { label: "Location Wise Average ", key: "uae_average" },
-  { label: "District Cooling", key: "district_cooling" },
-];
+// Get default heating type based on company country
+const getDefaultHeatingType = (country) => {
+  const countryLower = country?.toLowerCase() || "";
+  
+  if (countryLower === "uae" || countryLower === "united arab emirates") {
+    return "uae_average";
+  }
+  if (countryLower === "singapore") {
+    return "sg_average";
+  }
+  if (countryLower === "saudi arabia" || countryLower === "ksa") {
+    return "sa_average";
+  }
+  return "steam_hot_water";
+};
+
+// Get heating options based on region
+const getHeatingOptions = (country) => {
+  const baseOptions = [
+    { label: "Steam / Hot Water", key: "steam_hot_water" },
+    { label: "District Cooling", key: "district_cooling" },
+  ];
+  
+  const countryLower = country?.toLowerCase() || "uae";
+  
+  switch (countryLower) {
+    case 'uae':
+    case 'united arab emirates':
+      return [...baseOptions, { label: "UAE Average", key: "uae_average" }];
+    case 'singapore':
+      return [...baseOptions, { label: "Singapore Average", key: "sg_average" }];
+    case 'saudi arabia':
+    case 'ksa':
+      return baseOptions;
+    default:
+      return baseOptions;
+  }
+};
 
 const MONTHS = [
   "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06",
@@ -22,48 +57,70 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function HeatingForm({ onSubmitSuccess }) {
-  const heating = useEmissionStore((s) => s.scope2Heating || []);
-  const addHeating = useEmissionStore((s) => s.addScope2Heating);
-  const deleteHeating = useEmissionStore((s) => s.deleteScope2Heating);
-  const submitScope2 = useEmissionStore((s) => s.submitScope2);
+export default function HeatingForm({ entries, onAdd, onDelete }) {
   const token = useAuthStore((s) => s.token);
-
-  const [energyTypeKey, setEnergyTypeKey] = useState("steam_hot_water");
+  const selectedYear = useEmissionStore((s) => s.selectedYear);
+  const { company } = useCompanyStore();
+  const primaryLocation = company?.locations?.find(loc => loc.isPrimary) || company?.locations?.[0];
+  const country = primaryLocation?.country || "uae";
+  
+  const heatingOptions = getHeatingOptions(country);
+  const defaultType = getDefaultHeatingType(country);
+  
+  const [energyType, setEnergyType] = useState(defaultType);
   const [consumption, setConsumption] = useState("");
   const [month, setMonth] = useState(currentMonth());
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // ✅ TC-020: Reset default when country changes
+  useEffect(() => {
+    setEnergyType(getDefaultHeatingType(country));
+  }, [country]);
 
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [submitError, setSubmitError] = useState(null);
-
-  const selectedType = HEATING_COOLING_TYPES.find((t) => t.key === energyTypeKey);
-
-  const handleAddRow = () => {
-    if (!consumption || Number(consumption) <= 0) return;
-    addHeating({
+  const handleAddRow = async () => {
+    if (!energyType || !consumption || Number(consumption) <= 0) {
+      alert("Please fill in all fields");
+      return;
+    }
+    
+    const newEntry = {
       id: Date.now(),
-      energyType: energyTypeKey,
-      energyTypeLabel: selectedType?.label,
+      energyType,
+      energyTypeLabel: heatingOptions.find(opt => opt.key === energyType)?.label,
       consumption: Number(consumption),
       month,
-    });
+    };
+    
+    onAdd(newEntry);
+    
+    // Reset form
     setConsumption("");
     setMonth(currentMonth());
+    // Keep the same energy type (don't reset)
   };
 
-  const handleCalculateSubmit = async () => {
-    setSubmitting(true);
-    setSubmitError(null);
-    const monthStr = heating[0]?.month || currentMonth();
-    const [yr, mo] = monthStr.split("-").map(Number);
-    const result = await submitScope2(token, yr, mo);
-    setSubmitting(false);
-    if (result.success) {
-      setSubmitted(true);
-      if (onSubmitSuccess) onSubmitSuccess();
-    } else {
-      setSubmitError(result.error || "Submission failed");
+  const handleDelete = async (id) => {
+    const deleted = (entries || []).find((entry) => entry.id === id);
+    if (!deleted) return;
+
+    const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
+    const [year] = effectiveMonth.includes("-")
+      ? effectiveMonth.split("-").map(Number)
+      : [selectedYear];
+
+    try {
+      await emissionsAPI.deleteScope2Entry(token, {
+        year,
+        month: effectiveMonth,
+        category: "heating",
+        entry: {
+          energyType: deleted.energyType || "steam_hot_water",
+          consumptionKwh: Number(deleted.consumption || 0),
+        },
+      });
+      onDelete(id);
+    } catch (error) {
+      console.error("Failed to delete heating entry:", error);
     }
   };
 
@@ -84,30 +141,32 @@ export default function HeatingForm({ onSubmitSuccess }) {
               <th>Consumption (kWh)</th>
               <th>Month</th>
               <th></th>
-              </tr>
-            </thead>
+            </tr>
+          </thead>
           <tbody>
-            {heating.length === 0 && (
+            {(!entries || entries.length === 0) && (
               <tr>
                 <td colSpan={4} className="ht-empty">
                   No entries yet. Add a row below.
                 </td>
               </tr>
             )}
-            {heating.map((h) => (
-              <tr key={h.id}>
+            
+            {entries && entries.map((entry) => (
+              <tr key={entry.id}>
                 <td>
-                  <span className="ht-badge">{h.energyTypeLabel}</span>
+                  <span className="ht-badge">{entry.energyTypeLabel || entry.energyType}</span>
                 </td>
                 <td>
-                  <span className="ht-qty">{h.consumption?.toLocaleString()}</span>
+                  <span className="ht-qty">{entry.consumption?.toLocaleString()}</span>
                   <span className="ht-unit"> kWh</span>
                 </td>
-                <td>{h.month || "—"}</td>
+                <td>{entry.month || "—"}</td>
                 <td>
                   <button
                     className="ht-delete"
-                    onClick={() => deleteHeating(h.id)}
+                    onClick={() => handleDelete(entry.id)}
+                    disabled={isLoading}
                     title="Remove"
                   >
                     <FiTrash2 size={14} />
@@ -116,15 +175,18 @@ export default function HeatingForm({ onSubmitSuccess }) {
               </tr>
             ))}
 
+            {/* Add Row */}
             <tr className="ht-add-row">
               <td>
                 <select
-                  value={energyTypeKey}
-                  onChange={(e) => setEnergyTypeKey(e.target.value)}
+                  value={energyType}
+                  onChange={(e) => setEnergyType(e.target.value)}
                   className="ht-select"
                 >
-                  {HEATING_COOLING_TYPES.map((t) => (
-                    <option key={t.key} value={t.key}>{t.label}</option>
+                  {heatingOptions.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
               </td>
@@ -157,25 +219,9 @@ export default function HeatingForm({ onSubmitSuccess }) {
                   + Add
                 </button>
               </td>
-              <td></td>
             </tr>
           </tbody>
         </table>
-      </div>
-
-      <div className="ht-footer">
-        <div className="ht-footer-right">
-          {submitError && <span className="ht-error">{submitError}</span>}
-          <button
-            className={`ht-submit-btn ${submitted ? "submitted" : ""}`}
-            onClick={handleCalculateSubmit}
-            disabled={submitting || submitted || heating.length === 0}
-          >
-            {submitted ? "✅ Submitted!" : submitting ? "Calculating..." : (
-              <><FiSend size={14} /> Calculate & Submit</>
-            )}
-          </button>
-        </div>
       </div>
 
       <style jsx>{`
