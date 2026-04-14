@@ -11,12 +11,15 @@ import LocationManager from "./LocationManager";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
 import Card from "../ui/Card";
-import { FiCheck, FiArrowRight, FiArrowLeft } from "react-icons/fi";
+import { FiCheck, FiArrowRight, FiArrowLeft, FiSave } from "react-icons/fi";
 import { BiLeaf } from "react-icons/bi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useNavigate } from "react-router-dom";
 import { settingsAPI } from "../../services/api";
+
+// Storage key for localStorage draft - NEVER EXPIRES
+const COMPANY_DRAFT_KEY = "company_setup_draft";
 
 export default function CompanyWizard() {
   const navigate = useNavigate();
@@ -24,8 +27,10 @@ export default function CompanyWizard() {
   const [loadingSubmit, setLoadingSubmit] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState("saved");
+  const [saveStatus, setSaveStatus] = useState("saved"); // 'saving', 'saved', 'error'
+  const [saveType, setSaveType] = useState(null); // 'local' or 'backend'
   const autoSaveTimer = useRef(null);
+  const hasHydrated = useRef(false);
   
   const [companyData, setCompanyData] = useState({
     name: "",
@@ -37,90 +42,161 @@ export default function CompanyWizard() {
     revenue: "",
     locations: [],
   });
-  
-  const hasHydrated = useRef(false);
 
   const { company, fetchCompany, updateCompany, createCompany, loading } = useCompanyStore();
   const token = useAuthStore((state) => state.token);
-  const { user } = useAuthStore();
 
   const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
-  // ✅ ADD THIS FUNCTION - updateField is used by child components
+  // Update field and trigger auto-save
   const updateField = (field, value) => {
-    setCompanyData(prev => ({ ...prev, [field]: value }));
+    setCompanyData(prev => {
+      const newData = { ...prev, [field]: value };
+      // Trigger auto-save after state update
+      setTimeout(() => autoSave(newData), 0);
+      return newData;
+    });
   };
 
+  // Auto-save to localStorage (always) and backend (if company exists)
   const autoSave = useCallback(async (data) => {
     if (!token) return;
+    
+    // Clear previous timer
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+    }
+    
+    // Don't save empty company name
     if (!data.name?.trim()) return;
-
+    
     setSaveStatus("saving");
+    
+    // Debounce save by 1 second
+    autoSaveTimer.current = setTimeout(async () => {
+      let localSuccess = false;
+      let backendSuccess = false;
+      
+      // 1. ALWAYS save to localStorage (draft - NEVER EXPIRES)
+      try {
+        const draft = {
+          data: data,
+          timestamp: Date.now(),
+          step: step,
+        };
+        localStorage.setItem(COMPANY_DRAFT_KEY, JSON.stringify(draft));
+        localSuccess = true;
+        setSaveType("local");
+      } catch (error) {
+        console.error("Failed to save draft to localStorage:", error);
+      }
+      
+      // 2. Save to backend ONLY if company already exists
+      if (company && company.id) {
+        try {
+          const response = await fetch(`${API_URL}/api/companies/me`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              basicInfo: {
+                name: data.name,
+                description: data.description,
+                industry: data.industry || "",
+                employees: Number(data.employees) || 0,
+                revenue: Number(data.revenue) || 0,
+                region: data.region || "",
+              },
+              locations: data.locations || [],
+            }),
+          });
+          backendSuccess = response.ok;
+          if (backendSuccess) setSaveType("backend");
+        } catch (error) {
+          console.error("Failed to save to backend:", error);
+          backendSuccess = false;
+        }
+      }
+      
+      // Update status
+      if (localSuccess || backendSuccess) {
+        setSaveStatus("saved");
+      } else {
+        setSaveStatus("error");
+      }
+      
+      // Clear saved indicator after 2 seconds
+      setTimeout(() => {
+        setSaveStatus("saved");
+      }, 2000);
+    }, 1000);
+  }, [token, company, step, API_URL]);
+
+  // Load draft from localStorage (NO EXPIRATION)
+  const loadDraftFromLocalStorage = () => {
     try {
-      const method = company ? "PUT" : "POST";
-      const endpoint = company
-        ? `${API_URL}/api/companies/me`
-        : `${API_URL}/api/companies`;
-
-      const response = await fetch(endpoint, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          basicInfo: {
-            name:        data.name,
-            description: data.description,
-            industry:    data.industry     || "",
-            employees:   Number(data.employees) || 0,
-            revenue:     Number(data.revenue)   || 0,
-            region:      data.region       || "",
-          },
-          locations: data.locations || [],
-        }),
-      });
-      setSaveStatus(response.ok ? "saved" : "error");           
-    } catch (error) {
-      setSaveStatus("error");
+      const savedDraft = localStorage.getItem(COMPANY_DRAFT_KEY);
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed.data && parsed.data.name) {
+          setCompanyData(parsed.data);
+          if (parsed.step && parsed.step > 1) {
+            setStep(parsed.step);
+          }
+          console.log("Loaded draft from localStorage:", new Date(parsed.timestamp).toLocaleString());
+          return true;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load draft:", e);
     }
-  }, [token, company]);
+    return false;
+  };
 
-  // If company exists, populate the wizard data
+  // Load initial data
   useEffect(() => {
-    if (company && !hasHydrated.current) {
-      hasHydrated.current = true;
-      setCompanyData({
-        name:        company.basicInfo?.name        || "",
-        description: company.basicInfo?.description || "",
-        region:      company.basicInfo?.region      || "",
-        country:     company.locations?.[0]?.country || "",
-        industry:    company.basicInfo?.industry    || "",
-        employees:   company.basicInfo?.employees   || "",
-        revenue:     company.basicInfo?.revenue     || "",
-        locations:   company.locations              || [],
-      });
-      setInitialLoading(false);
-    }
-  }, [company]);
-
-  // Load data
-  useEffect(() => {
-    const loadData = async () => {
+    const loadInitialData = async () => {
       if (!token) return;
       setInitialLoading(true);
       hasHydrated.current = false;
-
-      await Promise.all([
-        fetchCompany(token, { force: true }).catch(() => null),
-        settingsAPI.get(token).catch(() => ({})),
-      ]);
-
+      
+      // First, try to fetch company from backend
+      await fetchCompany(token, { force: true }).catch(() => null);
+      await settingsAPI.get(token).catch(() => ({}));
+      
+      // If company exists, use company data
+      if (company && company.basicInfo?.name && !hasHydrated.current) {
+        hasHydrated.current = true;
+        setCompanyData({
+          name: company.basicInfo?.name || "",
+          description: company.basicInfo?.description || "",
+          region: company.basicInfo?.region || "",
+          country: company.locations?.[0]?.country || "",
+          industry: company.basicInfo?.industry || "",
+          employees: company.basicInfo?.employees || "",
+          revenue: company.basicInfo?.revenue || "",
+          locations: company.locations || [],
+        });
+        // Clear localStorage draft since company exists
+        localStorage.removeItem(COMPANY_DRAFT_KEY);
+      } 
+      // Otherwise, load from localStorage draft
+      else if (!company) {
+        loadDraftFromLocalStorage();
+      }
+      
       setInitialLoading(false);
     };
+    
+    loadInitialData();
+  }, [token, company, fetchCompany]);
 
-    loadData();
-  }, [token]);
+  // Clear draft on successful completion
+  const clearDraft = () => {
+    localStorage.removeItem(COMPANY_DRAFT_KEY);
+  };
 
   const steps = [
     { id: 1, label: "Company Info", icon: "🏢" },
@@ -156,6 +232,7 @@ export default function CompanyWizard() {
     setLoadingSubmit(false);
     
     if (result.success) {
+      clearDraft(); // Clear draft on success
       navigate("/dashboard");
     } else {
       setSubmitError(result.error || "Failed to update company");
@@ -185,6 +262,7 @@ export default function CompanyWizard() {
     setLoadingSubmit(false);
     
     if (result.success) {
+      clearDraft(); // Clear draft on success
       navigate("/dashboard");
     } else {
       setSubmitError(result.error || "Failed to create company");
@@ -194,6 +272,13 @@ export default function CompanyWizard() {
   async function nextStep() {
     if (step < steps.length) {
       setStep((prev) => prev + 1);
+      // Save current step to draft
+      const draft = {
+        data: companyData,
+        timestamp: Date.now(),
+        step: step + 1,
+      };
+      localStorage.setItem(COMPANY_DRAFT_KEY, JSON.stringify(draft));
     } else {
       if (company) {
         await handleUpdateCompany();
@@ -218,6 +303,25 @@ export default function CompanyWizard() {
       case 7: return companyData.locations.length > 0;
       case 8: return true;
       default: return true;
+    }
+  };
+
+  // Reset draft (clear all saved data)
+  const handleResetDraft = () => {
+    if (window.confirm("Are you sure you want to reset all unsaved progress? This cannot be undone.")) {
+      localStorage.removeItem(COMPANY_DRAFT_KEY);
+      setCompanyData({
+        name: "",
+        description: "",
+        region: "",
+        country: "",
+        industry: "",
+        employees: "",
+        revenue: "",
+        locations: [],
+      });
+      setStep(1);
+      setSaveStatus("saved");
     }
   };
 
@@ -278,7 +382,7 @@ export default function CompanyWizard() {
     return (
       <div className="wizard-container">
         <div className="auto-save-status">
-          {saveStatus === "saving" && <span className="saving">💾 Saving...</span>}
+          {saveStatus === "saving" && <span className="saving"><FiSave /> Saving...</span>}
           {saveStatus === "saved" && <span className="saved">✓ All changes saved</span>}
           {saveStatus === "error" && <span className="error">⚠️ Unable to save</span>}
         </div>
@@ -311,7 +415,7 @@ export default function CompanyWizard() {
             background: #F9FAFB;
             border-radius: 8px;
           }
-          .saving { color: #F59E0B; }
+          .saving { color: #F59E0B; display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
           .saved { color: #10B981; }
           .error { color: #EF4444; }
           .summary-actions {
@@ -344,9 +448,22 @@ export default function CompanyWizard() {
   return (
     <div className="wizard-container">
       <div className="auto-save-status">
-        {saveStatus === "saving" && <span className="saving">💾 Saving...</span>}
-        {saveStatus === "saved" && <span className="saved">✓ All changes saved</span>}
-        {saveStatus === "error" && <span className="error">⚠️ Unable to save</span>}
+        {saveStatus === "saving" && (
+          <span className="saving">
+            <FiSave /> Saving draft...
+          </span>
+        )}
+        {saveStatus === "saved" && (
+          <span className="saved">
+            ✓ Draft saved {saveType === "local" ? "(locally)" : saveType === "backend" ? "(to cloud)" : ""}
+          </span>
+        )}
+        {saveStatus === "error" && (
+          <span className="error">⚠️ Auto-save failed</span>
+        )}
+        <button onClick={handleResetDraft} className="reset-draft-btn" type="button">
+          Reset Draft
+        </button>
       </div>
 
       <div className="wizard-header">
@@ -409,16 +526,32 @@ export default function CompanyWizard() {
         }
 
         .auto-save-status {
-          text-align: right;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
           font-size: 12px;
           margin-bottom: 16px;
           padding: 8px 12px;
           background: #F9FAFB;
           border-radius: 8px;
         }
-        .saving { color: #F59E0B; }
+        
+        .saving { color: #F59E0B; display: flex; align-items: center; gap: 4px; }
         .saved { color: #10B981; }
         .error { color: #EF4444; }
+        
+        .reset-draft-btn {
+          background: none;
+          border: none;
+          color: #9CA3AF;
+          font-size: 12px;
+          cursor: pointer;
+          text-decoration: underline;
+        }
+        
+        .reset-draft-btn:hover {
+          color: #EF4444;
+        }
 
         .wizard-header {
           margin-bottom: 30px;
