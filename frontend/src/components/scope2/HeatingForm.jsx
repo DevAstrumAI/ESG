@@ -4,6 +4,7 @@ import { useCompanyStore } from "../../store/companyStore";
 import { FiTrash2, FiSend, FiThermometer } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useEmissionStore } from "../../store/emissionStore";
+import { emissionsAPI } from "../../services/api";
 
 // Get default heating type based on company country
 const getDefaultHeatingType = (country) => {
@@ -58,6 +59,7 @@ const currentMonth = () => {
 
 export default function HeatingForm({ entries, onAdd, onDelete }) {
   const token = useAuthStore((s) => s.token);
+  const selectedYear = useEmissionStore((s) => s.selectedYear);
   const { company } = useCompanyStore();
   const primaryLocation = company?.locations?.find(loc => loc.isPrimary) || company?.locations?.[0];
   const country = primaryLocation?.country || "uae";
@@ -98,7 +100,28 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
   };
 
   const handleDelete = async (id) => {
-    onDelete(id);
+    const deleted = (entries || []).find((entry) => entry.id === id);
+    if (!deleted) return;
+
+    const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
+    const [year] = effectiveMonth.includes("-")
+      ? effectiveMonth.split("-").map(Number)
+      : [selectedYear];
+
+    try {
+      await emissionsAPI.deleteScope2Entry(token, {
+        year,
+        month: effectiveMonth,
+        category: "heating",
+        entry: {
+          energyType: deleted.energyType || "steam_hot_water",
+          consumptionKwh: Number(deleted.consumption || 0),
+        },
+      });
+      onDelete(id);
+    } catch (error) {
+      console.error("Failed to delete heating entry:", error);
+    }
   };
 
   return (
