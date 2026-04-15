@@ -1,5 +1,7 @@
 // src/services/api.js
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
+import { getApiBaseUrl } from '../utils/getApiBaseUrl';
+
+const API_URL = getApiBaseUrl('http://localhost:8001');
 
 // Helper to get token from localStorage or auth store
 const getToken = () => {
@@ -45,7 +47,7 @@ const request = async (endpoint, options = {}) => {
 
 // api.js - add warmup function
 export const warmupBackend = () => {
-  fetch(`${process.env.REACT_APP_API_URL}/health`, { method: "GET" }).catch(() => {});
+  fetch(`${API_URL}/health`, { method: "GET" }).catch(() => {});
 };
 
 // Auth API

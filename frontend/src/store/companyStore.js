@@ -1,8 +1,9 @@
 // src/store/companyStore.js
 import { create } from 'zustand';
 import { companyAPI } from '../services/api';
+import { getApiBaseUrl } from '../utils/getApiBaseUrl';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
+const API_URL = getApiBaseUrl('http://localhost:8000');
 
 export const useCompanyStore = create((set, get) => ({
   company: null,
