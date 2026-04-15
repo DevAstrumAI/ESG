@@ -586,7 +586,11 @@ async def delete_scope1_entry(
         doc_ref = _get_scope_doc(db, company_id, "scope1", year, month)
         doc = doc_ref.get()
         if not doc.exists:
-            raise HTTPException(status_code=404, detail="Scope 1 data not found")
+            # Idempotent delete: if data is already absent, report success.
+            return {
+                "message": "Scope 1 entry already absent.",
+                "results": {},
+            }
 
         data = doc.to_dict()
         raw_data = data.get("rawData", {})
@@ -594,7 +598,11 @@ async def delete_scope1_entry(
 
         updated_rows, removed = _remove_matching_entry(rows, entry, lambda candidate, target: _match_scope1_entry(candidate, target, category))
         if not removed:
-            raise HTTPException(status_code=404, detail="No matching Scope 1 entry found")
+            # Idempotent delete: treat missing row as already deleted.
+            return {
+                "message": "Scope 1 entry already absent.",
+                "results": data.get("results", {}),
+            }
 
         raw_data[category] = updated_rows
         payload = {
@@ -655,7 +663,11 @@ async def delete_scope2_entry(
         doc_ref = _get_scope_doc(db, company_id, "scope2", year, month)
         doc = doc_ref.get()
         if not doc.exists:
-            raise HTTPException(status_code=404, detail="Scope 2 data not found")
+            # Idempotent delete: if data is already absent, report success.
+            return {
+                "message": "Scope 2 entry already absent.",
+                "results": {},
+            }
 
         data = doc.to_dict()
         raw_data = data.get("rawData", {})
@@ -663,7 +675,11 @@ async def delete_scope2_entry(
 
         updated_rows, removed = _remove_matching_entry(rows, entry, lambda candidate, target: _match_scope2_entry(candidate, target, category))
         if not removed:
-            raise HTTPException(status_code=404, detail="No matching Scope 2 entry found")
+            # Idempotent delete: treat missing row as already deleted.
+            return {
+                "message": "Scope 2 entry already absent.",
+                "results": data.get("results", {}),
+            }
 
         raw_data[category] = updated_rows
         payload = {
