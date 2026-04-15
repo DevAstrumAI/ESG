@@ -9,8 +9,9 @@ import {
   normalizeScope2HeatingEntry,
   normalizeScope2RenewableEntry,
 } from '../utils/emissionHydration';
+import { getApiBaseUrl } from '../utils/getApiBaseUrl';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
+const API_URL = getApiBaseUrl('http://localhost:8001');
 
 // Must match backend DISTANCE_BASED_TYPES exactly
 const DISTANCE_BASED_TYPES = new Set([
