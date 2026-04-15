@@ -161,37 +161,40 @@ export default function CompanyWizard() {
       if (!token) return;
       setInitialLoading(true);
       hasHydrated.current = false;
-      
+
       // First, try to fetch company from backend
-      await fetchCompany(token, { force: true }).catch(() => null);
+      const fetchResult = await fetchCompany(token, { force: true }).catch(() => null);
       await settingsAPI.get(token).catch(() => ({}));
-      
+
+      // Read latest company snapshot after fetch without depending on company changes.
+      const latestCompany =
+        fetchResult?.company || useCompanyStore.getState().company || null;
+
       // If company exists, use company data
-      if (company && company.basicInfo?.name && !hasHydrated.current) {
+      if (latestCompany && latestCompany.basicInfo?.name && !hasHydrated.current) {
         hasHydrated.current = true;
         setCompanyData({
-          name: company.basicInfo?.name || "",
-          description: company.basicInfo?.description || "",
-          region: company.basicInfo?.region || "",
-          country: company.locations?.[0]?.country || "",
-          industry: company.basicInfo?.industry || "",
-          employees: company.basicInfo?.employees || "",
-          revenue: company.basicInfo?.revenue || "",
-          locations: company.locations || [],
+          name: latestCompany.basicInfo?.name || "",
+          description: latestCompany.basicInfo?.description || "",
+          region: latestCompany.basicInfo?.region || "",
+          country: latestCompany.locations?.[0]?.country || "",
+          industry: latestCompany.basicInfo?.industry || "",
+          employees: latestCompany.basicInfo?.employees || "",
+          revenue: latestCompany.basicInfo?.revenue || "",
+          locations: latestCompany.locations || [],
         });
         // Clear localStorage draft since company exists
         localStorage.removeItem(COMPANY_DRAFT_KEY);
-      } 
-      // Otherwise, load from localStorage draft
-      else if (!company) {
+      } else {
+        // Otherwise, load from localStorage draft
         loadDraftFromLocalStorage();
       }
-      
+
       setInitialLoading(false);
     };
-    
+
     loadInitialData();
-  }, [token, company, fetchCompany]);
+  }, [token, fetchCompany]);
 
   // Clear draft on successful completion
   const clearDraft = () => {

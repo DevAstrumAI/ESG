@@ -12,7 +12,7 @@ export default function CompanySetupPage() {
   // ✅ TC-012/013: Force refresh on mount to get latest data
   useEffect(() => {
     if (token) {
-      fetchCompany(token, true);
+      fetchCompany(token, { force: true });
     }
   }, [token, fetchCompany]);
 
