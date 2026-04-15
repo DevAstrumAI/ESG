@@ -14,36 +14,90 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const [localError, setLocalError] = useState("");
   const { login, loading, error, clearError } = useAuthStore();
   const { fetchCompany } = useCompanyStore();
 
+  // Clear error on unmount
   useEffect(() => {
     return () => clearError();
   }, [clearError]);
 
+  // Combined visibility effect
   useEffect(() => {
+    // Force reset loading state on mount (fixes stuck loading from localStorage)
+    useAuthStore.setState({ loading: false, error: null });
     setIsVisible(true);
   }, []);
 
-  useEffect(() => {
-  // Force reset loading state on mount (fixes stuck loading from localStorage)
-  useAuthStore.setState({ loading: false, error: null });
-  setIsVisible(true);
-}, []);
+  // Error mapping function
+  // LoginPage.jsx — replace getFriendlyAuthError
+  const getFriendlyAuthError = (error) => {
+  // error can be a string, an Error object, or a Firebase error object
+  const msg = typeof error === "string"
+    ? error
+    : error?.code || error?.message || "";
+
+  if (
+    msg.includes("wrong-password") ||
+    msg.includes("invalid-credential") ||
+    msg.includes("invalid-login-credentials") ||
+    msg.includes("INVALID_LOGIN_CREDENTIALS")
+  ) return "Incorrect email or password. Please try again.";
+
+  if (msg.includes("user-not-found") || msg.includes("USER_NOT_FOUND"))
+    return "No account found with this email address.";
+
+  if (msg.includes("too-many-requests") || msg.includes("TOO_MANY_ATTEMPTS"))
+    return "Too many failed attempts. Please wait a few minutes before trying again.";
+
+  if (msg.includes("user-disabled"))
+    return "This account has been disabled. Please contact support.";
+
+  if (
+    msg.includes("network-request-failed") ||
+    msg.includes("fetch") ||
+    msg.includes("Failed to fetch") ||
+    msg.includes("NetworkError")
+  ) return "Cannot reach the server. Please check your internet connection and try again.";
+
+  return "Login failed. Please try again.";
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    clearError();
+    setLocalError("");
+    
+    if (!email || !password) {
+      setLocalError("Please enter both email and password.");
+      return;
+    }
+    
+    if (!navigator.onLine) {
+      setLocalError("You appear to be offline. Please check your internet connection.");
+      return;
+    }
+    
     const result = await login(email, password);
+    
     if (result.success) {
       const token = useAuthStore.getState().token;
-      const companyResult = await fetchCompany(token);
-      if (companyResult.success) {
+      const hasCompany = Boolean(result.user?.companyId);
+
+      if (hasCompany) {
+        // Navigate immediately and hydrate company data in background.
         navigate("/dashboard");
+        fetchCompany(token).catch(() => {});
       } else {
         navigate("/setup");
       }
+    } else {
+      setLocalError(getFriendlyAuthError(result.error));
     }
   };
+
+  const displayError = localError || error;
 
   return (
     <div className="login-container">
@@ -57,9 +111,9 @@ export default function LoginPage() {
           <h2 className="welcome-text">Welcome back</h2>
         </div>
 
-        {error && (
+        {displayError && (
           <div className="error-message">
-            ⚠️ {error}
+            ⚠️ {displayError}
           </div>
         )}
 

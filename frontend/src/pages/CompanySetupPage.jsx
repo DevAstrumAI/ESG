@@ -1,10 +1,20 @@
 // src/pages/CompanySetupPage.jsx
+import { useEffect } from "react";
 import { useCompanyStore } from "../store/companyStore";
+import { useAuthStore } from "../store/authStore";
 import { BiLeaf } from "react-icons/bi";
 import CompanyWizard from "../components/company/CompanyWizard";
 
 export default function CompanySetupPage() {
-  const { company } = useCompanyStore();
+  const { company, fetchCompany } = useCompanyStore();
+  const token = useAuthStore((s) => s.token);
+
+  // ✅ TC-012/013: Force refresh on mount to get latest data
+  useEffect(() => {
+    if (token) {
+      fetchCompany(token, { force: true });
+    }
+  }, [token, fetchCompany]);
 
   return (
     <div className="setup-page">

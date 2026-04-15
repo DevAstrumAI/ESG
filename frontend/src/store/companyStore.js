@@ -2,43 +2,75 @@
 import { create } from 'zustand';
 import { companyAPI } from '../services/api';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
 
 export const useCompanyStore = create((set, get) => ({
   company: null,
-  targets: null,  // ← ADDED: Store SBTi targets separately
+  targets: null,
   loading: false,
   error: null,
+  isInitialized: false,
+  lastFetchedAt: null,
 
-  fetchCompany: async (token) => {
-    // Don't fetch if already loading
-    if (get().loading) return;
+  fetchCompany: async (token, { force = false } = {}) => {
+    const { company, lastFetchedAt } = get();
+    const STALE_MS = 5 * 60 * 1000; // 5 minutes
+    const fetchStart = Date.now();
 
-    console.log("fetchCompany called with token:", token ? "Token exists" : "No token");
+    // Return cached data unless forced or stale
+    if (!force && company && lastFetchedAt && Date.now() - lastFetchedAt < STALE_MS) {
+      return { success: true, company: company };
+    }
 
     set({ loading: true, error: null });
 
     try {
-      const data = await companyAPI.getMe(token);
-      console.log("Company data received:", data);
+      const res = await fetch(`${API_URL}/api/companies/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        throw new Error("Failed to fetch company");
+      }
+      const data = await res.json();
       set({ 
         company: data.company, 
-        targets: data.company?.targets || null,  // ← ADDED: Extract targets from company
-        loading: false, 
-        error: null 
+        targets: data.company?.targets || null,
+        lastFetchedAt: Date.now(),
+        loading: false,
+        error: null,
+        isInitialized: true
       });
       return { success: true, company: data.company };
+    } catch (e) {
+      set({ loading: false, error: e.message, isInitialized: true });
+      return { success: false, error: e.message };
+    }
+  },
+
+  updateCompany: async (token, payload) => {
+    set({ loading: true, error: null });
+    try {
+      const res = await fetch(`${API_URL}/api/companies/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Update failed");
+      
+      set({
+        company: data.company || data,
+        targets: (data.company || data)?.targets || null,
+        lastFetchedAt: Date.now(),
+        loading: false,
+        error: null,
+      });
+      return { success: true, company: data.company || data };
     } catch (error) {
-      console.error("Fetch company error:", error);
-
-      // If backend says "No company found", treat as normal for new users
-      if (error.message && error.message.toLowerCase().includes("no company found")) {
-        console.log("No company found for this user");
-        set({ company: null, targets: null, loading: false, error: null });
-        return { success: false, company: null };
-      }
-
-      set({ company: null, targets: null, loading: false, error: error.message });
+      set({ error: error.message, loading: false });
       return { success: false, error: error.message };
     }
   },
@@ -49,12 +81,45 @@ export const useCompanyStore = create((set, get) => ({
     try {
       await companyAPI.create(token, companyData);
 
-      // After creating, fetch the full company payload
-      const data = await companyAPI.getMe(token);
+      let data = null;
+      let lastFetchError = null;
+      // Firestore writes can be briefly eventual; retry hydration before failing UX.
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          data = await companyAPI.getMe(token);
+          break;
+        } catch (error) {
+          lastFetchError = error;
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+
+      if (!data?.company) {
+        // Keep flow working even if immediate read lags.
+        set({
+          company: {
+            basicInfo: {
+              name: companyData.name,
+              industry: companyData.industry,
+              employees: companyData.employees,
+              revenue: companyData.revenue,
+              region: companyData.region,
+              fiscalYear: companyData.fiscalYear,
+            },
+            locations: companyData.locations || [],
+          },
+          targets: null,
+          loading: false,
+          error: null,
+          isInitialized: true,
+        });
+        return { success: true, warning: lastFetchError?.message };
+      }
       set({ 
         company: data.company, 
-        targets: data.company?.targets || null,  // ← ADDED
-        loading: false 
+        targets: data.company?.targets || null,
+        loading: false,
+        isInitialized: true
       });
       return { success: true, company: data.company };
     } catch (error) {
@@ -64,37 +129,16 @@ export const useCompanyStore = create((set, get) => ({
     }
   },
 
-  updateCompany: async (token, companyData) => {
-    set({ loading: true, error: null });
-
-    try {
-      await companyAPI.updateMe(token, companyData);
-
-      // After updating, fetch the latest company payload
-      const data = await companyAPI.getMe(token);
-      set({ 
-        company: data.company, 
-        targets: data.company?.targets || null,  // ← ADDED
-        loading: false 
-      });
-      return { success: true, company: data.company };
-    } catch (error) {
-      console.error("Update company error:", error);
-      set({ error: error.message, loading: false });
-      return { success: false, error: error.message };
-    }
-  },
-
-  // ─── Reset Company Data ────────────────────────────────────────────────
   reset: () =>
     set({
       company: null,
       targets: null,
       loading: false,
       error: null,
+      isInitialized: false,
+      lastFetchedAt: null,
     }),
 
-  // ─── NEW: Save SBTi Targets ─────────────────────────────────────────────
   saveTargets: async (token, payload) => {
     set({ loading: true, error: null });
     
@@ -114,14 +158,14 @@ export const useCompanyStore = create((set, get) => ({
         throw new Error(data.detail || "Failed to save targets.");
       }
       
-      // Merge targets into the existing company object in the store
       set((state) => ({
         company: state.company
           ? { ...state.company, targets: payload }
           : { targets: payload },
-        targets: payload,  // ← Store targets separately for easy access
+        targets: payload,
         loading: false,
         error: null,
+        lastFetchedAt: Date.now(),
       }));
       
       return { success: true, data };

@@ -1,325 +1,515 @@
 // src/components/dashboard/DashboardCharts/EmissionsTrendLine.jsx
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  LineChart, Line, AreaChart, Area,
-  XAxis, YAxis, Tooltip, Legend,
-  CartesianGrid, ResponsiveContainer
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer
 } from "recharts";
 import { useEmissionStore } from "../../../store/emissionStore";
+import { useAuthStore } from "../../../store/authStore";
+import { FiTrendingUp, FiTrendingDown } from "react-icons/fi";
 
-const MONTH_LABELS = [
-  "Jan","Feb","Mar","Apr","May","Jun",
-  "Jul","Aug","Sep","Oct","Nov","Dec"
-];
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
 export default function EmissionsTrendLine() {
-  const [chartType, setChartType] = useState("line");
+  const token = useAuthStore((s) => s.token);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [sparklineData, setSparklineData] = useState({
+    mobile: [],
+    stationary: [],
+    refrigerants: [],
+    fugitive: [],
+    electricity: { location: [], market: [] }
+  });
+  const [trends, setTrends] = useState({});
+  const [activeSparkline, setActiveSparkline] = useState(null);
 
-  const scope1Results = useEmissionStore((s) => s.scope1Results);
-  const scope2Results = useEmissionStore((s) => s.scope2Results);
-  const selectedYear  = useEmissionStore((s) => s.selectedYear);
+  useEffect(() => {
+    if (token) {
+      fetchSparklineData();
+    }
+  }, [token]);
 
-  // Build one data point per month using what the store has.
-  // The summary endpoint returns annual aggregates, not monthly breakdowns,
-  // so we build a single "current total" point and pad the rest as 0
-  // until monthly-level history is available from the backend.
-  const chartData = useMemo(() => {
-    const scope1Tonnes = (scope1Results?.total?.kgCO2e || 0) / 1000;
-    const scope2Tonnes = (scope2Results?.locationBasedKgCO2e || 0) / 1000;
+  const getLast6Months = () => {
+    const months = [];
+    const now = new Date();
+    
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        name: date.toLocaleString('default', { month: 'short' }),
+        fullDate: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      });
+    }
+    return months;
+  };
 
-    const currentMonth = new Date().getMonth(); // 0-indexed
+  const calculatePercentageChange = (data) => {
+    if (data.length < 2) return null;
+    const valuesWithData = data.filter(d => d.value > 0);
+    if (valuesWithData.length < 2) return null;
+    
+    const firstValue = valuesWithData[0].value;
+    const lastValue = valuesWithData[valuesWithData.length - 1].value;
+    if (firstValue === 0) return null;
+    const change = ((lastValue - firstValue) / firstValue) * 100;
+    return {
+      percent: Math.abs(change).toFixed(1),
+      direction: change >= 0 ? 'up' : 'down',
+      color: change >= 0 ? '#EF4444' : '#10B981'
+    };
+  };
 
-    return MONTH_LABELS.map((month, index) => {
-      const isPast    = index < currentMonth;
-      const isCurrent = index === currentMonth;
+  const loadFallbackData = () => {
+    const scope1Results = useEmissionStore.getState().scope1Results;
+    const scope2Results = useEmissionStore.getState().scope2Results;
+    
+    const months = getLast6Months();
+    const hasData = (scope1Results?.total?.kgCO2e > 0) || (scope2Results?.total?.kgCO2e > 0);
+    
+    const mobileData = months.map((month, index) => ({
+      month: month.name,
+      value: hasData && index === months.length - 1 ? (scope1Results?.mobile?.kgCO2e || 0) / 1000 : 0,
+      fullDate: month.fullDate
+    }));
+    
+    const stationaryData = months.map((month, index) => ({
+      month: month.name,
+      value: hasData && index === months.length - 1 ? (scope1Results?.stationary?.kgCO2e || 0) / 1000 : 0,
+      fullDate: month.fullDate
+    }));
+    
+    const refrigerantsData = months.map((month, index) => ({
+      month: month.name,
+      value: hasData && index === months.length - 1 ? (scope1Results?.refrigerants?.kgCO2e || 0) / 1000 : 0,
+      fullDate: month.fullDate
+    }));
+    
+    const fugitiveData = months.map((month, index) => ({
+      month: month.name,
+      value: hasData && index === months.length - 1 ? (scope1Results?.fugitive?.kgCO2e || 0) / 1000 : 0,
+      fullDate: month.fullDate
+    }));
+    
+    const electricityLocationData = months.map((month, index) => ({
+      month: month.name,
+      value: hasData && index === months.length - 1 ? (scope2Results?.electricity?.locationBasedKgCO2e || 0) / 1000 : 0,
+      fullDate: month.fullDate
+    }));
+    
+    const electricityMarketData = months.map((month, index) => ({
+      month: month.name,
+      value: hasData && index === months.length - 1 ? (scope2Results?.electricity?.marketBasedKgCO2e || 0) / 1000 : 0,
+      fullDate: month.fullDate
+    }));
+    
+    setSparklineData({
+      mobile: mobileData,
+      stationary: stationaryData,
+      refrigerants: refrigerantsData,
+      fugitive: fugitiveData,
+      electricity: {
+        location: electricityLocationData,
+        market: electricityMarketData
+      }
+    });
+    
+    const calculatedTrends = {
+      mobile: calculatePercentageChange(mobileData),
+      stationary: calculatePercentageChange(stationaryData),
+      refrigerants: calculatePercentageChange(refrigerantsData),
+      fugitive: calculatePercentageChange(fugitiveData),
+      electricityLocation: calculatePercentageChange(electricityLocationData),
+      electricityMarket: calculatePercentageChange(electricityMarketData)
+    };
+    
+    setTrends(calculatedTrends);
+  };
 
-      return {
-        month,
-        Scope1: isCurrent ? parseFloat(scope1Tonnes.toFixed(2)) : isPast ? 0 : null,
-        Scope2: isCurrent ? parseFloat(scope2Tonnes.toFixed(2)) : isPast ? 0 : null,
+  const fetchSparklineData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/emissions/sparkline-data`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch sparkline data");
+      }
+
+      const data = await response.json();
+      const months = getLast6Months();
+      
+      const mobileData = months.map(month => ({
+        month: month.name,
+        value: (data.mobile?.[month.fullDate] || 0) / 1000,
+        fullDate: month.fullDate
+      }));
+      
+      const stationaryData = months.map(month => ({
+        month: month.name,
+        value: (data.stationary?.[month.fullDate] || 0) / 1000,
+        fullDate: month.fullDate
+      }));
+      
+      const refrigerantsData = months.map(month => ({
+        month: month.name,
+        value: (data.refrigerants?.[month.fullDate] || 0) / 1000,
+        fullDate: month.fullDate
+      }));
+      
+      const fugitiveData = months.map(month => ({
+        month: month.name,
+        value: (data.fugitive?.[month.fullDate] || 0) / 1000,
+        fullDate: month.fullDate
+      }));
+      
+      const electricityLocationData = months.map(month => ({
+        month: month.name,
+        value: (data.electricityLocation?.[month.fullDate] || 0) / 1000,
+        fullDate: month.fullDate
+      }));
+      
+      const electricityMarketData = months.map(month => ({
+        month: month.name,
+        value: (data.electricityMarket?.[month.fullDate] || 0) / 1000,
+        fullDate: month.fullDate
+      }));
+      
+      setSparklineData({
+        mobile: mobileData,
+        stationary: stationaryData,
+        refrigerants: refrigerantsData,
+        fugitive: fugitiveData,
+        electricity: {
+          location: electricityLocationData,
+          market: electricityMarketData
+        }
+      });
+      
+      const calculatedTrends = {
+        mobile: calculatePercentageChange(mobileData),
+        stationary: calculatePercentageChange(stationaryData),
+        refrigerants: calculatePercentageChange(refrigerantsData),
+        fugitive: calculatePercentageChange(fugitiveData),
+        electricityLocation: calculatePercentageChange(electricityLocationData),
+        electricityMarket: calculatePercentageChange(electricityMarketData)
       };
-    }).filter((d) => d.Scope1 !== null);
-  }, [scope1Results, scope2Results]);
+      
+      setTrends(calculatedTrends);
+      
+    } catch (err) {
+      console.error("Error fetching sparkline data:", err);
+      loadFallbackData();
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const hasData = chartData.some(
-    (d) => (d.Scope1 || 0) > 0 || (d.Scope2 || 0) > 0
-  );
-
-  const totalScope1 = chartData.reduce((sum, d) => sum + (d.Scope1 || 0), 0);
-  const totalScope2 = chartData.reduce((sum, d) => sum + (d.Scope2 || 0), 0);
-  const monthlyAvg  = chartData.length > 0
-    ? ((totalScope1 + totalScope2) / chartData.length).toFixed(2)
-    : 0;
-
-  const peakMonth = chartData.reduce(
-    (max, d) =>
-      (d.Scope1 || 0) + (d.Scope2 || 0) > (max.Scope1 || 0) + (max.Scope2 || 0)
-        ? d : max,
-    chartData[0] || {}
-  );
-  const peakTotal = peakMonth
-    ? ((peakMonth.Scope1 || 0) + (peakMonth.Scope2 || 0)).toFixed(2)
-    : 0;
-
-  if (!hasData) {
+  const SparklineCard = ({ title, data, trend, icon, color, isElectricity = false, marketData = null }) => {
+    const lastValue = data.length > 0 ? data[data.length - 1].value : 0;
+    const maxValue = Math.max(...data.map(d => d.value), 0.1);
+    
     return (
-      <div className="trend-empty">
-        <p>No trend data yet</p>
-        <span>Submit Scope 1 and Scope 2 data to see your emissions trend</span>
+      <div 
+        className="sparkline-card"
+        onMouseEnter={() => setActiveSparkline(title)}
+        onMouseLeave={() => setActiveSparkline(null)}
+      >
+        <div className="sparkline-header">
+          <div className="sparkline-title">
+            {icon}
+            <span>{title}</span>
+          </div>
+          <div className="sparkline-stats">
+            <span className="sparkline-value">{lastValue.toFixed(2)} tCO₂e</span>
+            {trend && (
+              <span className={`sparkline-trend ${trend.direction}`}>
+                {trend.direction === 'up' ? <FiTrendingUp size={10} /> : <FiTrendingDown size={10} />}
+                {trend.percent}%
+              </span>
+            )}
+          </div>
+        </div>
+        
+        <div className="sparkline-chart">
+          <ResponsiveContainer width="100%" height={60}>
+            <LineChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+              <XAxis 
+                dataKey="month" 
+                tick={{ fontSize: 10, fill: "#9CA3AF" }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis hide={true} domain={[0, maxValue * 1.1]} />
+              <Tooltip 
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    return (
+                      <div className="sparkline-tooltip">
+                        <div className="tooltip-month">{payload[0].payload.month}</div>
+                        <div className="tooltip-value">{payload[0].value.toFixed(2)} tCO₂e</div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke={color}
+                strokeWidth={2}
+                dot={{ r: 3, fill: color }}
+                activeDot={{ r: 5 }}
+              />
+              {isElectricity && marketData && (
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  data={marketData}
+                  stroke={color}
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ r: 3, fill: color }}
+                  activeDot={{ r: 5 }}
+                />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        
+        {activeSparkline === title && (
+          <div className="sparkline-insight">
+            {trend && trend.direction === 'up' ? (
+              <span>↑ {trend.percent}% increase over last 6 months</span>
+            ) : trend && trend.direction === 'down' ? (
+              <span>↓ {trend.percent}% reduction over last 6 months</span>
+            ) : (
+              <span>Stable or no significant trend</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="sparklines-container">
+        <div className="loading-state">Loading category trends...</div>
         <style jsx>{`
-          .trend-empty {
-            height: 300px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: #9CA3AF;
+          .sparklines-container {
+            padding: 16px;
             text-align: center;
+            color: #6B7280;
           }
-          .trend-empty p { font-size: 14px; margin: 0 0 4px; color: #6B7280; }
-          .trend-empty span { font-size: 12px; }
+          .loading-state {
+            padding: 40px;
+          }
         `}</style>
       </div>
     );
   }
 
-  const commonProps = {
-    data: chartData,
-    margin: { top: 20, right: 30, left: 20, bottom: 10 },
-  };
-
-  const tooltipStyle = {
-    contentStyle: {
-      backgroundColor: "white",
-      border: "1px solid #E5E7EB",
-      borderRadius: "8px",
-      padding: "8px 12px",
-      fontSize: "12px",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-    },
-    formatter: (value) => [`${value} tCO₂e`, ""],
-  };
-
-  const axisProps = {
-    xAxis: (
-      <XAxis
-        dataKey="month"
-        tick={{ fill: "#6B7280", fontSize: 12 }}
-        axisLine={{ stroke: "#E5E7EB" }}
-      />
-    ),
-    yAxis: (
-      <YAxis
-        tick={{ fill: "#6B7280", fontSize: 12 }}
-        axisLine={{ stroke: "#E5E7EB" }}
-        label={{
-          value: "tCO₂e",
-          angle: -90,
-          position: "insideLeft",
-          fill: "#6B7280",
-          fontSize: 12,
-        }}
-      />
-    ),
-    grid: <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />,
-    legend: (
-      <Legend
-        verticalAlign="top"
-        height={36}
-        formatter={(value) => (
-          <span style={{ color: "#374151", fontSize: "12px", fontWeight: 500 }}>
-            {value}
-          </span>
-        )}
-      />
-    ),
-  };
-
   return (
-    <div className="trend-chart-container">
-      {/* Controls */}
-      <div className="chart-controls">
-        <div className="year-label">{selectedYear}</div>
-        <div className="chart-type-toggle">
-          <button
-            className={`type-btn ${chartType === "line" ? "active" : ""}`}
-            onClick={() => setChartType("line")}
-          >
-            Line
-          </button>
-          <button
-            className={`type-btn ${chartType === "area" ? "active" : ""}`}
-            onClick={() => setChartType("area")}
-          >
-            Area
-          </button>
-        </div>
+    <div className="sparklines-container">
+      <div className="sparklines-grid">
+        <SparklineCard
+          title="Mobile Combustion"
+          data={sparklineData.mobile}
+          trend={trends.mobile}
+          icon={<FiTrendingUp size={14} />}
+          color="#3B82F6"
+        />
+        
+        <SparklineCard
+          title="Stationary Combustion"
+          data={sparklineData.stationary}
+          trend={trends.stationary}
+          icon={<FiTrendingUp size={14} />}
+          color="#F59E0B"
+        />
+        
+        <SparklineCard
+          title="Refrigerants"
+          data={sparklineData.refrigerants}
+          trend={trends.refrigerants}
+          icon={<FiTrendingUp size={14} />}
+          color="#06B6D4"
+        />
+        
+        <SparklineCard
+          title="Fugitive Emissions"
+          data={sparklineData.fugitive}
+          trend={trends.fugitive}
+          icon={<FiTrendingUp size={14} />}
+          color="#EF4444"
+        />
+        
+        <SparklineCard
+          title="Electricity"
+          data={sparklineData.electricity.location}
+          marketData={sparklineData.electricity.market}
+          trend={trends.electricityLocation}
+          icon={<FiTrendingUp size={14} />}
+          color="#8B5CF6"
+          isElectricity={true}
+        />
       </div>
-
-      {/* Chart */}
-      <div className="chart-wrapper">
-        <ResponsiveContainer width="100%" height={300}>
-          {chartType === "line" ? (
-            <LineChart {...commonProps}>
-              {axisProps.grid}
-              {axisProps.xAxis}
-              {axisProps.yAxis}
-              <Tooltip {...tooltipStyle} />
-              {axisProps.legend}
-              <Line
-                type="monotone"
-                dataKey="Scope1"
-                stroke="#3B82F6"
-                strokeWidth={2}
-                dot={{ fill: "#3B82F6", r: 4 }}
-                activeDot={{ r: 6, fill: "#3B82F6", stroke: "white", strokeWidth: 2 }}
-                connectNulls
-              />
-              <Line
-                type="monotone"
-                dataKey="Scope2"
-                stroke="#F59E0B"
-                strokeWidth={2}
-                dot={{ fill: "#F59E0B", r: 4 }}
-                activeDot={{ r: 6, fill: "#F59E0B", stroke: "white", strokeWidth: 2 }}
-                connectNulls
-              />
-            </LineChart>
-          ) : (
-            <AreaChart {...commonProps}>
-              {axisProps.grid}
-              {axisProps.xAxis}
-              {axisProps.yAxis}
-              <Tooltip {...tooltipStyle} />
-              {axisProps.legend}
-              <Area
-                type="monotone"
-                dataKey="Scope1"
-                stroke="#3B82F6"
-                fill="#3B82F6"
-                fillOpacity={0.15}
-                strokeWidth={2}
-                connectNulls
-              />
-              <Area
-                type="monotone"
-                dataKey="Scope2"
-                stroke="#F59E0B"
-                fill="#F59E0B"
-                fillOpacity={0.15}
-                strokeWidth={2}
-                connectNulls
-              />
-            </AreaChart>
-          )}
-        </ResponsiveContainer>
-      </div>
-
-      {/* Footer */}
-      <div className="chart-footer">
-        <div className="insight-badge">
-          <span className="insight-dot" />
-          {peakTotal > 0
-            ? `Peak: ${peakMonth.month} (${peakTotal} tCO₂e)`
-            : "Tracking emissions this year"}
-        </div>
-        <div className="average-display">
-          <span className="avg-label">Monthly Avg:</span>
-          <span className="avg-value">{monthlyAvg} tCO₂e</span>
-        </div>
+      
+      <div className="sparklines-note">
+        <span className="solid-line">—</span> Location-based &nbsp;&nbsp;
+        <span className="dashed-line">- - -</span> Market-based
       </div>
 
       <style jsx>{`
-        .trend-chart-container { width: 100%; }
-
-        .chart-controls {
+        .sparklines-container {
+          padding: 8px;
+        }
+        
+        .sparklines-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 20px;
+        }
+        
+        .sparkline-card {
+          background: white;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 16px;
+          transition: all 0.2s ease;
+          cursor: pointer;
+        }
+        
+        .sparkline-card:hover {
+          border-color: #2E7D64;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        
+        .sparkline-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 16px;
-        }
-
-        .year-label {
-          font-size: 13px;
-          font-weight: 600;
-          color: #6B7280;
-          padding: 6px 14px;
-          background: #F3F4F6;
-          border-radius: 30px;
-        }
-
-        .chart-type-toggle {
-          display: flex;
-          gap: 4px;
-          background: #F3F4F6;
-          padding: 4px;
-          border-radius: 30px;
-        }
-
-        .type-btn {
-          padding: 6px 16px;
-          border: none;
-          background: transparent;
-          border-radius: 30px;
-          font-size: 13px;
-          font-weight: 500;
-          color: #6B7280;
-          cursor: pointer;
-          transition: all 0.15s ease;
-        }
-
-        .type-btn.active {
-          background: white;
-          color: #1B4D3E;
-          box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-        }
-
-        .chart-wrapper {
-          width: 100%;
-          height: 300px;
           margin-bottom: 12px;
         }
-
-        .chart-footer {
+        
+        .sparkline-title {
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          padding-top: 12px;
-          border-top: 1px solid #E5E7EB;
+          gap: 6px;
+          font-size: 13px;
+          font-weight: 600;
+          color: #374151;
         }
-
-        .insight-badge {
+        
+        .sparkline-stats {
           display: flex;
           align-items: center;
           gap: 8px;
-          background: #F8FAF8;
-          padding: 7px 14px;
-          border-radius: 30px;
-          font-size: 13px;
-          color: #2E7D64;
+        }
+        
+        .sparkline-value {
+          font-size: 14px;
+          font-weight: 700;
+          color: #1B4D3E;
+        }
+        
+        .sparkline-trend {
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          font-size: 11px;
+          font-weight: 600;
+          padding: 2px 6px;
+          border-radius: 12px;
+        }
+        
+        .sparkline-trend.up {
+          background: #FEE2E2;
+          color: #DC2626;
+        }
+        
+        .sparkline-trend.down {
+          background: #D1FAE5;
+          color: #059669;
+        }
+        
+        .sparkline-chart {
+          height: 60px;
+          width: 100%;
+        }
+        
+        .sparkline-insight {
+          margin-top: 12px;
+          padding-top: 8px;
+          border-top: 1px solid #E5E7EB;
+          font-size: 11px;
+          color: #6B7280;
+          text-align: center;
+        }
+        
+        .sparklines-note {
+          margin-top: 16px;
+          padding: 8px 12px;
+          background: #F9FAFB;
+          border-radius: 6px;
+          font-size: 11px;
+          color: #6B7280;
+          text-align: center;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+        }
+        
+        .solid-line {
+          color: #8B5CF6;
+          font-weight: bold;
+        }
+        
+        .dashed-line {
+          color: #8B5CF6;
+          font-weight: bold;
+          text-decoration: underline;
+          text-decoration-style: dotted;
+        }
+        
+        .sparkline-tooltip {
+          background: white;
           border: 1px solid #E5E7EB;
+          border-radius: 6px;
+          padding: 6px 10px;
+          font-size: 12px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-
-        .insight-dot {
-          width: 7px;
-          height: 7px;
-          background: #2E7D64;
-          border-radius: 50%;
-          flex-shrink: 0;
-          animation: pulse 2s infinite;
+        
+        .tooltip-month {
+          font-weight: 600;
+          color: #1B4D3E;
+          margin-bottom: 4px;
         }
-
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.3; }
+        
+        .tooltip-value {
+          color: #6B7280;
         }
-
-        .average-display { font-size: 13px; }
-        .avg-label { color: #6B7280; margin-right: 4px; }
-        .avg-value { font-weight: 600; color: #1B4D3E; }
-
+        
         @media (max-width: 768px) {
-          .chart-footer { flex-direction: column; gap: 10px; align-items: flex-start; }
+          .sparklines-grid {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
     </div>

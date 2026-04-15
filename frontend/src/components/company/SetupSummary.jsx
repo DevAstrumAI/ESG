@@ -1,11 +1,27 @@
 // src/components/company/SetupSummary.jsx
 import { useState, useEffect } from "react";
-import { FiCheckCircle, FiMapPin, FiUsers, FiDollarSign, FiGlobe, FiBriefcase, FiEdit2, FiSave, FiX, FiPlus, FiTrash2 } from "react-icons/fi";
+import { FiCheckCircle, FiMapPin, FiUsers, FiGlobe, FiBriefcase, FiEdit2, FiSave, FiX, FiPlus, FiTrash2 } from "react-icons/fi";
 import { BiBuilding } from "react-icons/bi";
 import InputField from "../ui/InputField";
 import SelectDropdown from "../ui/SelectDropdown";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
+import { 
+  FiPackage, 
+  FiMonitor, 
+  FiHeart, 
+  FiBookOpen, 
+  FiShoppingBag, 
+  FiTruck, 
+  FiHome, 
+  FiSun, 
+  FiZap, 
+  FiTool, 
+  FiSmartphone, 
+  FiPenTool, 
+  FiDollarSign, 
+  FiMoreHorizontal 
+} from "react-icons/fi";
 
 export default function SetupSummary({ data, updateField }) {
   const [editingSection, setEditingSection] = useState(null);
@@ -27,31 +43,25 @@ export default function SetupSummary({ data, updateField }) {
   const [cities, setCities] = useState([]);
 
   const regions = [
-    { label: "🌍 Middle East", value: "middle-east" },
-    { label: "🌏 Asia Pacific", value: "asia-pacific" },
-    { label: "🇪🇺 Europe (EU)", value: "eu" },
-    { label: "🇬🇧 United Kingdom", value: "uk" },
-    { label: "🇺🇸 United States", value: "us" },
-    { label: "🇮🇳 India", value: "in" },
-    { label: "🇨🇳 China", value: "cn" },
-    { label: "🌍 Other", value: "other" },
+    { label: " Middle East", value: "middle-east" },
+    { label: " Asia Pacific", value: "asia-pacific" },
   ];
 
   const industries = [
-    { label: "🏭 Manufacturing", value: "manufacturing" },
-    { label: "💻 IT / Software", value: "it" },
-    { label: "🏥 Healthcare", value: "healthcare" },
-    { label: "📚 Education", value: "education" },
-    { label: "🛍️ Retail", value: "retail" },
-    { label: "🚚 Logistics", value: "logistics" },
-    { label: "🏨 Hospitality", value: "hospitality" },
-    { label: "🌾 Agriculture", value: "agriculture" },
-    { label: "⚡ Energy", value: "energy" },
-    { label: "🏗️ Construction", value: "construction" },
-    { label: "📞 Telecommunications", value: "telecom" },
-    { label: "🎨 Creative / Design", value: "creative" },
-    { label: "📊 Financial Services", value: "finance" },
-    { label: "⚙️ Other", value: "other" },
+    { label: "Manufacturing", value: "manufacturing", icon: <FiPackage size={16} /> },
+    { label: "IT / Software", value: "it", icon: <FiMonitor size={16} /> },
+    { label: "Healthcare", value: "healthcare", icon: <FiHeart size={16} /> },
+    { label: "Education", value: "education", icon: <FiBookOpen size={16} /> },
+    { label: "Retail", value: "retail", icon: <FiShoppingBag size={16} /> },
+    { label: "Logistics", value: "logistics", icon: <FiTruck size={16} /> },
+    { label: "Hospitality", value: "hospitality", icon: <FiHome size={16} /> },
+    { label: "Agriculture", value: "agriculture", icon: <FiSun size={16} /> },
+    { label: "Energy", value: "energy", icon: <FiZap size={16} /> },
+    { label: "Construction", value: "construction", icon: <FiTool size={16} /> },
+    { label: "Telecommunications", value: "telecom", icon: <FiSmartphone size={16} /> },
+    { label: "Creative / Design", value: "creative", icon: <FiPenTool size={16} /> },
+    { label: "Financial Services", value: "finance", icon: <FiDollarSign size={16} /> },
+    { label: "Other", value: "other", icon: <FiMoreHorizontal size={16} /> },
   ];
 
   // Cities by country
@@ -71,13 +81,11 @@ export default function SetupSummary({ data, updateField }) {
       revenue: data.revenue,
     });
     
-    // Initialize facilities edit data
     if (section === 'facilities') {
       setFacilitiesEditData({
         country: data.country || "",
         locations: [...(data.locations || [])]
       });
-      // Load cities for the current country
       if (data.country) {
         setCities(citiesByCountry[data.country] || []);
       }
@@ -103,7 +111,6 @@ export default function SetupSummary({ data, updateField }) {
 
   const handleCancel = () => setEditingSection(null);
 
-  // Facilities edit functions
   const handleCountryChange = (country) => {
     setFacilitiesEditData(prev => ({ ...prev, country }));
     setCities(citiesByCountry[country] || []);
@@ -196,7 +203,7 @@ export default function SetupSummary({ data, updateField }) {
 
       <div className="summary-grid">
         {/* Company Info Card */}
-        <div className="summary-card">
+        <div className="summary-card" key="company-card">
           <div className="card-header">
             <div className="card-title">
               <FiCheckCircle className="title-icon" />
@@ -210,7 +217,7 @@ export default function SetupSummary({ data, updateField }) {
           </div>
 
           {editingSection === 'company' ? (
-            <div className="edit-mode">
+            <div className="edit-mode" key="company-edit">
               <InputField
                 label="Company Name"
                 value={editData.name}
@@ -232,11 +239,11 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row">
+              <div className="summary-row" key="company-name">
                 <span className="row-label">Company Name:</span>
                 <span className="row-value">{data.name || "—"}</span>
               </div>
-              <div className="summary-row">
+              <div className="summary-row" key="company-desc">
                 <span className="row-label">Description:</span>
                 <span className="row-value">{data.description || "—"}</span>
               </div>
@@ -245,7 +252,7 @@ export default function SetupSummary({ data, updateField }) {
         </div>
 
         {/* Region Card */}
-        <div className="summary-card">
+        <div className="summary-card" key="region-card">
           <div className="card-header">
             <div className="card-title">
               <FiGlobe className="title-icon" />
@@ -259,7 +266,7 @@ export default function SetupSummary({ data, updateField }) {
           </div>
 
           {editingSection === 'region' ? (
-            <div className="edit-mode">
+            <div className="edit-mode" key="region-edit">
               <SelectDropdown
                 label="Region"
                 value={editData.region}
@@ -273,7 +280,7 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row">
+              <div className="summary-row" key="region-value">
                 <span className="row-label">Region:</span>
                 <span className="row-value">{getRegionLabel(data.region)}</span>
               </div>
@@ -282,7 +289,7 @@ export default function SetupSummary({ data, updateField }) {
         </div>
 
         {/* Industry Card */}
-        <div className="summary-card">
+        <div className="summary-card" key="industry-card">
           <div className="card-header">
             <div className="card-title">
               <FiBriefcase className="title-icon" />
@@ -296,7 +303,7 @@ export default function SetupSummary({ data, updateField }) {
           </div>
 
           {editingSection === 'industry' ? (
-            <div className="edit-mode">
+            <div className="edit-mode" key="industry-edit">
               <SelectDropdown
                 label="Industry"
                 value={editData.industry}
@@ -310,7 +317,7 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row">
+              <div className="summary-row" key="industry-value">
                 <span className="row-label">Industry:</span>
                 <span className="row-value">{getIndustryLabel(data.industry)}</span>
               </div>
@@ -319,7 +326,7 @@ export default function SetupSummary({ data, updateField }) {
         </div>
 
         {/* Employees Card */}
-        <div className="summary-card">
+        <div className="summary-card" key="employees-card">
           <div className="card-header">
             <div className="card-title">
               <FiUsers className="title-icon" />
@@ -333,7 +340,7 @@ export default function SetupSummary({ data, updateField }) {
           </div>
 
           {editingSection === 'employees' ? (
-            <div className="edit-mode">
+            <div className="edit-mode" key="employees-edit">
               <InputField
                 label="Number of Employees"
                 type="number"
@@ -348,7 +355,7 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row">
+              <div className="summary-row" key="employees-value">
                 <span className="row-label">Employees:</span>
                 <div className="row-value">
                   {data.employees ? (
@@ -364,7 +371,7 @@ export default function SetupSummary({ data, updateField }) {
         </div>
 
         {/* Revenue Card */}
-        <div className="summary-card">
+        <div className="summary-card" key="revenue-card">
           <div className="card-header">
             <div className="card-title">
               <FiDollarSign className="title-icon" />
@@ -378,7 +385,7 @@ export default function SetupSummary({ data, updateField }) {
           </div>
 
           {editingSection === 'revenue' ? (
-            <div className="edit-mode">
+            <div className="edit-mode" key="revenue-edit">
               <InputField
                 label="Annual Revenue (USD)"
                 type="number"
@@ -393,7 +400,7 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row">
+              <div className="summary-row" key="revenue-value">
                 <span className="row-label">Annual Revenue:</span>
                 <span className="row-value">{formatRevenue(data.revenue)}</span>
               </div>
@@ -401,12 +408,12 @@ export default function SetupSummary({ data, updateField }) {
           )}
         </div>
 
-        {/* Facilities Card - Updated with inline editing */}
-        <div className="summary-card facilities-card">
+        {/* Facilities Card */}
+        <div className="summary-card facilities-card" key="facilities-card">
           <div className="card-header">
             <div className="card-title">
               <BiBuilding className="title-icon" />
-              <h4>Facilities ({data.locations.length})</h4>
+              <h4>Facilities ({data.locations?.length || 0})</h4>
             </div>
             {editingSection !== 'facilities' && (
               <button onClick={() => handleEdit('facilities')} className="edit-section-btn">
@@ -416,8 +423,7 @@ export default function SetupSummary({ data, updateField }) {
           </div>
 
           {editingSection === 'facilities' ? (
-            <div className="edit-mode">
-              {/* Country Selection */}
+            <div className="edit-mode" key="facilities-edit">
               <div className="field-group">
                 <label className="field-label">Country</label>
                 <select
@@ -432,7 +438,6 @@ export default function SetupSummary({ data, updateField }) {
                 </select>
               </div>
 
-              {/* City Selection and Add Button */}
               {facilitiesEditData.country && (
                 <div className="add-city-section">
                   <div className="field-group">
@@ -456,7 +461,6 @@ export default function SetupSummary({ data, updateField }) {
                 </div>
               )}
 
-              {/* Locations List */}
               {facilitiesEditData.locations.length > 0 && (
                 <div className="locations-list">
                   <label className="field-label">Added Locations</label>
@@ -499,7 +503,7 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="facilities-list">
-              {data.locations.length === 0 ? (
+              {!data.locations || data.locations.length === 0 ? (
                 <p className="empty-facilities">No facilities added</p>
               ) : (
                 data.locations.map((loc) => (

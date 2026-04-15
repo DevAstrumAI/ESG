@@ -141,7 +141,6 @@ export default function LocationManager({ data, updateField }) {
                     <tr>
                       <th>City Name</th>
                       <th>Country</th>
-                      <th>Status</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -156,9 +155,6 @@ export default function LocationManager({ data, updateField }) {
                         </td>
                         <td data-label="Country">
                           <span className="country-badge">{getCountryDisplayName(loc.country)}</span>
-                        </td>
-                        <td data-label="Status">
-                          <span className="status-badge">Active</span>
                         </td>
                         <td>
                           <button onClick={() => removeCity(loc.id)} className="remove-btn" title="Remove city">

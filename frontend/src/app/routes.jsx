@@ -21,6 +21,8 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { useCompanyStore } from "../store/companyStore";
 import FormalReportPage from "../pages/FormalReportPage";
+import TargetSettingsPage from "../pages/TargetSettingsPage";
+
 
 export default function AppRoutes() {
   const { loggedIn } = useAuthStore();
@@ -134,6 +136,15 @@ export default function AppRoutes() {
         element={
           <AppLayout>
             <ContactPage />
+          </AppLayout>
+        }
+      />
+
+      <Route
+        path="/target-settings"
+        element={
+          <AppLayout>
+            <TargetSettingsPage />
           </AppLayout>
         }
       />

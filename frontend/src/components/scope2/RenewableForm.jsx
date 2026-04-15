@@ -1,8 +1,8 @@
 // src/components/scope2/RenewableForm.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiSun, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiSun, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const RENEWABLE_TYPES = [
@@ -20,21 +20,37 @@ const MONTHS = [
   "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
 ];
 
+
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function RenewableForm({ onSubmitSuccess }) {
+export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
   const renewables = useEmissionStore((s) => s.scope2Renewable || []);
   const addRenewable = useEmissionStore((s) => s.addScope2Renewable);
+  const updateRenewable = useEmissionStore((s) => s.updateScope2Renewable);
   const deleteRenewable = useEmissionStore((s) => s.deleteScope2Renewable);
   const selectedYear = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
 
+  // Edit mode state
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    sourceTypeKey: "",
+    consumption: "",
+    month: "",
+  });
+
+  // Delete handler with confirmation
   const handleDeleteRenewable = async (id, month) => {
+    if (!window.confirm("Are you sure you want to delete this entry?")) return;
+    
     const deleted = renewables.find((r) => r.id === id);
     if (!deleted) return;
+
+    // Remove locally first to avoid blocked deletion UX.
+    deleteRenewable(id);
 
     const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
     const [year] = effectiveMonth.includes("-")
@@ -51,30 +67,153 @@ export default function RenewableForm({ onSubmitSuccess }) {
           generationKwh: Number(deleted.consumption || 0),
         },
       });
-      deleteRenewable(id);
     } catch (error) {
-      console.error("Failed to delete renewable entry:", error);
+      const message = String(error?.message || "");
+      const isNotFound =
+        message.includes("No matching Scope 2 entry found") ||
+        message.includes("Scope 2 data not found");
+      if (!isNotFound) {
+        console.error("Failed to delete renewable entry:", error);
+        alert("Failed to delete. Please try again.");
+      }
     }
   };
 
+  // Edit handlers
+  const startEdit = (entry) => {
+    setEditingId(entry.id);
+    setEditValues({
+      sourceTypeKey: entry.sourceType,
+      consumption: entry.consumption,
+      month: entry.month || currentMonth(),
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({
+      sourceTypeKey: "",
+      consumption: "",
+      month: "",
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editValues.sourceTypeKey || !editValues.consumption || editValues.consumption <= 0) {
+      alert("Please fill all fields");
+      return;
+    }
+
+    const selectedType = RENEWABLE_TYPES.find(t => t.key === editValues.sourceTypeKey);
+    
+    const updatedEntry = {
+      id: editingId,
+      sourceType: editValues.sourceTypeKey,
+      sourceTypeLabel: selectedType?.label,
+      consumption: Number(editValues.consumption),
+      month: editValues.month,
+    };
+
+    // Update in store
+    updateRenewable(updatedEntry);
+
+    // Sync with backend (delete old, add new)
+    const oldEntry = renewables.find(r => r.id === editingId);
+    if (oldEntry && token) {
+      const [year] = editValues.month.split("-");
+
+      try {
+        // Delete old entry
+        await emissionsAPI.deleteScope2Entry(token, {
+          year,
+          month: editValues.month,
+          category: "renewables",
+          entry: {
+            sourceType: oldEntry.sourceType,
+            generationKwh: Number(oldEntry.consumption || 0),
+          },
+        });
+        
+        // Add new entry
+        const { useCompanyStore } = require('../../store/companyStore');
+        const companyStore = useCompanyStore.getState();
+        const primaryLocation = companyStore.company?.locations?.find((loc) => loc.isPrimary) ||
+          companyStore.company?.locations?.[0];
+        const country = primaryLocation?.country || 'uae';
+        const city = (primaryLocation?.city || 'dubai').toLowerCase();
+        
+        await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8001'}/api/emissions/scope2`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            year: parseInt(year),
+            month: editValues.month,
+            country,
+            city,
+            electricity: [],
+            heating: [],
+            renewables: [{
+              sourceType: editValues.sourceTypeKey,
+              generationKwh: Number(editValues.consumption),
+            }],
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to sync edit with backend:", error);
+      }
+    }
+
+    setEditingId(null);
+    setEditValues({
+      sourceTypeKey: "",
+      consumption: "",
+      month: "",
+    });
+  };
+
+  // Add new entry handler
   const [sourceTypeKey, setSourceTypeKey] = useState("solar_ppa");
   const [consumption, setConsumption] = useState("");
-  const [month, setMonth] = useState(currentMonth());
+  const [month, setMonth] = useState(reportingMonth || currentMonth());
 
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
 
   const selectedType = RENEWABLE_TYPES.find((t) => t.key === sourceTypeKey);
 
   const handleAddRow = () => {
-    if (!consumption || Number(consumption) <= 0) return;
+    if (!consumption || Number(consumption) <= 0) {
+      alert("Please fill all fields");
+      return;
+    }
+    
+    // Check for duplicate
+    const isDuplicate = renewables.some(r => 
+      r.sourceType === sourceTypeKey && 
+      r.consumption === Number(consumption) &&
+      r.month === month
+    );
+    
+    if (isDuplicate) {
+      alert("This entry already exists for this month");
+      return;
+    }
+    
     addRenewable({
-      id: Date.now(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       sourceType: sourceTypeKey,
       sourceTypeLabel: selectedType?.label,
       consumption: Number(consumption),
       month,
     });
     setConsumption("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
   };
 
   return (
@@ -93,39 +232,112 @@ export default function RenewableForm({ onSubmitSuccess }) {
               <th>Source Type</th>
               <th>Generation (kWh)</th>
               <th>Month</th>
-              <th></th>
-              </tr>
-            </thead>
+              <th>Actions</th>
+            </tr>
+          </thead>
           <tbody>
             {renewables.length === 0 && (
               <tr>
                 <td colSpan={4} className="rw-empty">
                   No entries yet. Add a row below.
                 </td>
-               </tr>
+                </tr>
             )}
-            {renewables.map((r) => (
-              <tr key={r.id}>
-                <td>
-                  <span className="rw-badge">{r.sourceTypeLabel}</span>
-                </td>
-                <td>
-                  <span className="rw-qty">{r.consumption?.toLocaleString()}</span>
-                  <span className="rw-unit"> kWh</span>
-                </td>
-                <td>{r.month || "—"}</td>
-                <td>
-                  <button
-                    className="rw-delete"
-                    onClick={() => handleDeleteRenewable(r.id, r.month)}
-                    title="Remove"
-                  >
-                    <FiTrash2 size={14} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            
+            {renewables.map((r) => {
+              // Edit mode
+              if (editingId === r.id) {
+                const editSelectedType = RENEWABLE_TYPES.find(t => t.key === editValues.sourceTypeKey);
+                return (
+                  <tr key={r.id} className="rw-editing-row">
+                    <td className="rw-source-cell">
+                      <select
+                        value={editValues.sourceTypeKey}
+                        onChange={(e) => setEditValues({...editValues, sourceTypeKey: e.target.value})}
+                        className="rw-select"
+                      >
+                        {RENEWABLE_TYPES.map(t => (
+                          <option key={t.key} value={t.key}>{t.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="rw-consumption-cell">
+                      <div className="rw-qty-input" style={{ width: "120px" }}>
+                        <input
+                          type="number"
+                          value={editValues.consumption}
+                          onChange={(e) => setEditValues({...editValues, consumption: e.target.value})}
+                          className="rw-input"
+                          min="0"
+                          step="any"
+                          style={{ width: "80px" }}
+                        />
+                        <span className="rw-unit-tag">kWh</span>
+                      </div>
+                    </td>
+                    <td className="rw-month-cell">
+                      <select
+                        value={editValues.month}
+                        onChange={(e) => setEditValues({...editValues, month: e.target.value})}
+                        className="rw-select"
+                      >
+                        {MONTHS.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="rw-actions-cell">
+                      <button
+                        onClick={saveEdit}
+                        className="rw-save-btn"
+                        title="Save"
+                      >
+                        <FiSave size={14} /> Save
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="rw-cancel-btn"
+                        title="Cancel"
+                      >
+                        <FiX size={14} /> Cancel
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }
+              
+              // Read mode
+              return (
+                <tr key={r.id}>
+                  <td>
+                    <span className="rw-badge">{r.sourceTypeLabel}</span>
+                  </td>
+                  <td>
+                    <span className="rw-qty">{r.consumption?.toLocaleString()}</span>
+                    <span className="rw-unit"> kWh</span>
+                  </td>
+                  <td>{r.month || "—"}</td>
+                  <td>
+                    <button
+                      className="rw-edit"
+                      onClick={() => startEdit(r)}
+                      title="Edit"
+                    >
+                      <FiEdit2 size={14} />
+                    </button>
+                    <button
+                      className="rw-delete"
+                      onClick={() => handleDeleteRenewable(r.id, r.month)}
+                      title="Delete"
+                    >
+                      <FiTrash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
 
+            {/* Add Row */}
             <tr className="rw-add-row">
               <td>
                 <select
@@ -147,6 +359,7 @@ export default function RenewableForm({ onSubmitSuccess }) {
                     onChange={(e) => setConsumption(e.target.value)}
                     className="rw-input"
                     min="0"
+                    step="any"
                   />
                   <span className="rw-unit-tag">kWh</span>
                 </div>
@@ -167,12 +380,10 @@ export default function RenewableForm({ onSubmitSuccess }) {
                   + Add
                 </button>
               </td>
-              <td></td>
             </tr>
           </tbody>
         </table>
       </div>
-
 
       <style jsx>{`
         .rw-wrap { width: 100%; }
@@ -199,20 +410,21 @@ export default function RenewableForm({ onSubmitSuccess }) {
         .rw-table-wrap {
           border: 1px solid #E5E7EB;
           border-radius: 10px;
-          overflow: hidden;
+          overflow-x: auto;
         }
 
         .rw-table {
           width: 100%;
           border-collapse: collapse;
           font-size: 14px;
+          min-width: 500px;
         }
 
         .rw-table thead tr { background: #F9FAFB; }
 
         .rw-table th {
           text-align: left;
-          padding: 11px 14px;
+          padding: 12px 14px;
           font-size: 12px;
           font-weight: 600;
           color: #6B7280;
@@ -220,7 +432,7 @@ export default function RenewableForm({ onSubmitSuccess }) {
         }
 
         .rw-table td {
-          padding: 11px 14px;
+          padding: 12px 14px;
           color: #111827;
           border-bottom: 1px solid #F3F4F6;
           vertical-align: middle;
@@ -232,38 +444,58 @@ export default function RenewableForm({ onSubmitSuccess }) {
           text-align: center;
           color: #9CA3AF;
           font-size: 13px;
-          padding: 28px 0 !important;
+          padding: 40px 0 !important;
         }
 
         .rw-qty { font-weight: 500; }
-        .rw-unit { font-size: 12px; color: #6B7280; }
+        .rw-unit { font-size: 12px; color: #6B7280; margin-left: 4px; }
 
         .rw-badge {
           display: inline-block;
-          padding: 2px 8px;
+          padding: 4px 10px;
           background: #E8F0EA;
           border-radius: 20px;
           font-size: 12px;
           color: #2E7D64;
         }
 
-        .rw-delete {
+        .rw-edit, .rw-delete {
           background: none;
           border: none;
-          color: #9CA3AF;
           cursor: pointer;
-          padding: 4px;
+          padding: 6px;
           border-radius: 4px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
+          margin-right: 6px;
         }
+        .rw-edit { color: #2E7D64; }
+        .rw-edit:hover { background: #E8F5F0; }
+        .rw-delete { color: #9CA3AF; }
         .rw-delete:hover { color: #DC2626; background: #FEF2F2; }
+
+        .rw-save-btn, .rw-cancel-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 6px 10px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 12px;
+          margin-right: 6px;
+        }
+        .rw-save-btn { background: #2E7D64; color: white; }
+        .rw-save-btn:hover { background: #1B4D3E; }
+        .rw-cancel-btn { background: #F3F4F6; color: #6B7280; }
+        .rw-cancel-btn:hover { background: #E5E7EB; }
 
         .rw-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
 
         .rw-select {
           width: 100%;
-          padding: 7px 10px;
+          padding: 8px 10px;
           border: 1px solid #E5E7EB;
           border-radius: 7px;
           font-size: 13px;
@@ -287,52 +519,37 @@ export default function RenewableForm({ onSubmitSuccess }) {
           flex: 1;
           border: none;
           outline: none;
-          padding: 7px 10px;
+          padding: 8px 10px;
           font-size: 13px;
           background: transparent;
           min-width: 60px;
         }
 
         .rw-unit-tag {
-          padding: 0 10px;
+          padding: 0 12px;
           font-size: 12px;
           color: #6B7280;
           background: #F3F4F6;
           border-left: 1px solid #E5E7EB;
           display: flex;
           align-items: center;
-          min-height: 33px;
+          min-height: 35px;
           white-space: nowrap;
         }
 
-        .rw-footer { display: flex; justify-content: flex-end; padding: 16px 0 0 0; margin-top: 16px; }
-        .rw-footer-right { display: flex; align-items: center; gap: 12px; }
         .rw-add-btn-inline {
-          padding: 7px 14px; background: #1B4D3E; color: white;
-          border: none; border-radius: 7px; font-size: 13px;
-          font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
-        }
-        .rw-add-btn-inline:hover { background: #2E7D64; }
-
-        .rw-error { font-size: 13px; color: #DC2626; }
-
-        .rw-submit-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 20px;
+          padding: 8px 16px;
           background: #1B4D3E;
           color: white;
           border: none;
-          border-radius: 8px;
-          font-size: 14px;
+          border-radius: 7px;
+          font-size: 13px;
           font-weight: 500;
           cursor: pointer;
+          white-space: nowrap;
           transition: background 0.15s;
         }
-        .rw-submit-btn:hover:not(:disabled) { background: #2E7D64; }
-        .rw-submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-        .rw-submit-btn.submitted { background: #059669; }
+        .rw-add-btn-inline:hover { background: #2E7D64; }
 
         @media (max-width: 640px) {
           .rw-table th:nth-child(2),

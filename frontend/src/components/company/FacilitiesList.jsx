@@ -44,7 +44,6 @@ export default function FacilitiesList({ locations }) {
                 <tr>
                   <th>City</th>
                   <th>Country</th>
-                  <th>Status</th>
                   </tr>
                 </thead>
               <tbody>
@@ -58,9 +57,6 @@ export default function FacilitiesList({ locations }) {
                     </td>
                     <td data-label="Country">
                       <span className="country-badge">{getCountryLabel(loc.country)}</span>
-                    </td>
-                    <td data-label="Status">
-                      <span className="status-badge active">Active</span>
                     </td>
                   </tr>
                 ))}
@@ -151,7 +147,12 @@ export default function FacilitiesList({ locations }) {
           width: 100%;
           border-collapse: collapse;
           font-size: 14px;
+          table-layout: fixed;
         }
+        .facilities-table th:first-child,
+        .facilities-table td:first-child { width: 55%; }
+        .facilities-table th:last-child,
+        .facilities-table td:last-child { width: 45%; }
 
         .facilities-table th {
           text-align: left;
@@ -209,11 +210,7 @@ export default function FacilitiesList({ locations }) {
           font-weight: 500;
         }
 
-        .status-badge.active {
-          background: #E8F0EA;
-          color: #2E7D64;
-          border: 1px solid #C6E0C8;
-        }
+        
 
         @media (max-width: 768px) {
           .facilities-table thead {
