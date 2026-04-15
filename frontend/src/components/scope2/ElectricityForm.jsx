@@ -1,5 +1,5 @@
 // src/components/scope2/ElectricityForm.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiZap, FiEdit2, FiSave, FiX } from "react-icons/fi";
@@ -26,7 +26,7 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function ElectricityForm({ onSubmitSuccess }) {
+export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
   const electricity = useEmissionStore((s) => s.scope2Electricity || []);
   const addElectricity = useEmissionStore((s) => s.addScope2Electricity);
   const updateElectricity = useEmissionStore((s) => s.updateScope2Electricity);
@@ -185,7 +185,13 @@ export default function ElectricityForm({ onSubmitSuccess }) {
   // Add new entry handler
   const [consumption, setConsumption] = useState("");
   const [certificateKey, setCertificateKey] = useState("grid_average");
-  const [month, setMonth] = useState(currentMonth());
+  const [month, setMonth] = useState(reportingMonth || currentMonth());
+
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
 
   const selectedCertificate = CERTIFICATE_TYPES.find((c) => c.key === certificateKey);
 
@@ -219,7 +225,7 @@ export default function ElectricityForm({ onSubmitSuccess }) {
     });
     
     setConsumption("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
   };
 
   return (

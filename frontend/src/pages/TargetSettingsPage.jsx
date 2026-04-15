@@ -96,7 +96,7 @@ export default function TargetSettingsPage() {
       if (response.ok) {
         setSaveSuccess(true);
         // Refresh company data
-        await fetchCompany(token);
+        await fetchCompany(token, { force: true });
         setTimeout(() => setSaveSuccess(false), 3000);
       } else {
         setError(data.detail || "Failed to save targets");

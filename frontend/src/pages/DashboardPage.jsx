@@ -52,7 +52,8 @@ export default function DashboardPage() {
         console.log("Initial data load starting...");
         
         // Force fetch company data
-        await fetchCompany(token, true);
+        await fetchCompany(token, { force: true });
+        await fetchDirectTargets();
         
         // Fetch emission summary
         await fetchSummary(token, selectedYear);
@@ -88,14 +89,37 @@ export default function DashboardPage() {
   const [predictionTargetKg, setPredictionTargetKg] = useState(null);
   const [monthsSubmitted, setMonthsSubmitted] = useState(0);
   const [projectedYearEndT, setProjectedYearEndT] = useState(null);
+  const [predictionConfidence, setPredictionConfidence] = useState({ score: null, label: "N/A" });
+  const [directTargets, setDirectTargets] = useState(null);
+  const [monthlySeries, setMonthlySeries] = useState([]);
   const [predictionLoading, setPredictionLoading] = useState(false);
+
+  const fetchDirectTargets = async () => {
+    if (!token) return;
+    try {
+      const response = await fetch(`${API_URL}/api/companies/targets`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch targets");
+      const data = await response.json();
+      setDirectTargets(data?.targets || null);
+    } catch (error) {
+      console.error("Direct target fetch failed:", error);
+      setDirectTargets(null);
+    }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchCompany(token, true);
+    await fetchCompany(token, { force: true });
+    await fetchDirectTargets();
     await fetchSummary(token, selectedYear);
     setTimeout(() => setRefreshing(false), 500);
   };
+
+  useEffect(() => {
+    fetchDirectTargets();
+  }, [token]);
 
   useEffect(() => {
     const loadPredictionMetrics = async () => {
@@ -115,6 +139,7 @@ export default function DashboardPage() {
         }
 
         const apiMonths = payload?.data_availability?.total_months || 0;
+        const currentYearMonths = payload?.data_availability?.months_in_current_year || 0;
         const hasData = (scope1Results?.total?.kgCO2e > 0) || (scope2Results?.total?.kgCO2e > 0);
         const actualMonths = apiMonths > 0 ? apiMonths : (hasData ? 1 : 0);
         
@@ -135,6 +160,16 @@ export default function DashboardPage() {
         
         setPredictionTargetKg(targetKg);
         setProjectedYearEndT(yearEndData?.projected_annual_t || null);
+        setMonthlySeries(payload?.series?.monthly || []);
+
+        const monthsForConfidence = Math.max(currentYearMonths, actualMonths);
+        if (monthsForConfidence > 0) {
+          const score = Math.min(95, Math.max(10, Math.round((monthsForConfidence / 12) * 100)));
+          const label = score < 40 ? "Low" : score < 75 ? "Medium" : "High";
+          setPredictionConfidence({ score, label });
+        } else {
+          setPredictionConfidence({ score: null, label: "N/A" });
+        }
         
       } catch (error) {
         console.error("Predictions error:", error);
@@ -142,6 +177,8 @@ export default function DashboardPage() {
         setPredictionTargetKg(null);
         setMonthsSubmitted(scope1Results?.total?.kgCO2e > 0 ? 1 : 0);
         setProjectedYearEndT(null);
+        setPredictionConfidence({ score: null, label: "N/A" });
+        setMonthlySeries([]);
       } finally {
         setPredictionLoading(false);
       }
@@ -156,10 +193,51 @@ export default function DashboardPage() {
   const totalKg = scope1Kg + scope2Kg;
   const totalTonnes = totalKg / 1000;
   
-  // Get target from company store or predictions
-  const targetFromCompany = targets?.annualTargetT || company?.targets?.annualTargetT;
-  const targetT = targetFromCompany || (predictionTargetKg ? predictionTargetKg / 1000 : null);
-  const budgetUsedPct = targetT > 0 ? Math.min((totalTonnes / targetT) * 100, 100) : null;
+  // Target logic: use explicit annual target first, otherwise derive from configured reduction target.
+  const configuredTargets = directTargets || targets || company?.targets || null;
+  const rawCompanyTarget = configuredTargets?.annualTargetT ?? null;
+  const parsedCompanyTarget = Number(rawCompanyTarget);
+  const hasAnnualTarget = Number.isFinite(parsedCompanyTarget) && parsedCompanyTarget > 0;
+  const hasConfiguredTarget = Boolean(configuredTargets?.reductionPct || hasAnnualTarget);
+  const predictionTargetT = predictionTargetKg ? (predictionTargetKg / 1000) : null;
+  const targetT = hasAnnualTarget ? parsedCompanyTarget : predictionTargetT;
+  const budgetUsedPct = targetT > 0 ? (totalTonnes / targetT) * 100 : null;
+  const targetProgressPct = targetT > 0 ? ((targetT - totalTonnes) / targetT) * 100 : null;
+  const progressBarPct = targetProgressPct != null ? Math.min(Math.abs(targetProgressPct), 100) : 0;
+  const isNegativeProgress = targetProgressPct != null && targetProgressPct < 0;
+  const annualBudgetT = targetT || 0;
+  const quarterlyMilestoneT = annualBudgetT > 0 ? annualBudgetT / 4 : 0;
+  const monthlyMilestoneT = annualBudgetT > 0 ? annualBudgetT / 12 : 0;
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthlyActualT = monthNames.map((_, idx) => {
+    const monthKey = `${selectedYear}-${String(idx + 1).padStart(2, "0")}`;
+    const point = monthlySeries.find((m) => String(m.month).slice(0, 7) === monthKey);
+    return (Number(point?.total_kg || 0) / 1000);
+  });
+  const quarterRanges = [
+    { key: "Q1", months: [0, 1, 2] },
+    { key: "Q2", months: [3, 4, 5] },
+    { key: "Q3", months: [6, 7, 8] },
+    { key: "Q4", months: [9, 10, 11] },
+  ];
+  const getRag = (actual, milestone) => {
+    if (!milestone || milestone <= 0) return "na";
+    const ratio = actual / milestone;
+    if (ratio <= 1.0) return "green";
+    if (ratio <= 1.1) return "amber";
+    return "red";
+  };
+  const quarterData = quarterRanges.map((q) => {
+    const actual = q.months.reduce((sum, m) => sum + monthlyActualT[m], 0);
+    const progressPct = quarterlyMilestoneT > 0 ? Math.min((actual / quarterlyMilestoneT) * 100, 100) : 0;
+    return {
+      ...q,
+      actual,
+      progressPct,
+      rag: getRag(actual, quarterlyMilestoneT),
+    };
+  });
   
   // Determine status based on budget used
   const getBudgetStatus = () => {
@@ -300,6 +378,55 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      <Card className="target-breakdown-card">
+        <div className="target-breakdown-header">
+          <h3>Target Period Breakdown</h3>
+          <p>Quarterly and monthly milestones derived from annual budget</p>
+        </div>
+        {!annualBudgetT ? (
+          <div className="target-breakdown-empty">
+            <span>Set a target to view period milestones.</span>
+            <button onClick={() => navigate('/target-settings')} className="set-target-btn-inline">Set Target</button>
+          </div>
+        ) : (
+          <>
+            <div className="milestone-meta">
+              <span>Quarterly Milestone: <strong>{quarterlyMilestoneT.toFixed(1)} tCO₂e</strong></span>
+              <span>Monthly Milestone: <strong>{monthlyMilestoneT.toFixed(1)} tCO₂e</strong></span>
+            </div>
+            <div className="quarter-grid">
+              {quarterData.map((q) => (
+                <div key={q.key} className="quarter-card">
+                  <div className="quarter-top">
+                    <span>{q.key}</span>
+                    <span className={`rag-chip ${q.rag}`}>
+                      {q.rag === "green" ? "On Track" : q.rag === "amber" ? "At Risk" : "Off Track"}
+                    </span>
+                  </div>
+                  <div className="quarter-bar">
+                    <div className={`quarter-fill ${q.rag}`} style={{ width: `${q.progressPct}%` }} />
+                  </div>
+                  <div className="quarter-values">{q.actual.toFixed(1)} / {quarterlyMilestoneT.toFixed(1)} tCO₂e</div>
+                </div>
+              ))}
+            </div>
+            <div className="month-grid">
+              {monthNames.map((m, idx) => {
+                const actual = monthlyActualT[idx];
+                const rag = getRag(actual, monthlyMilestoneT);
+                return (
+                  <div key={m} className={`month-cell ${rag}`}>
+                    <div className="month-name">{m}</div>
+                    <div className="month-value">{actual.toFixed(1)} t</div>
+                    <div className="month-target">/{monthlyMilestoneT.toFixed(1)} t</div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </Card>
+
       {/* Summary KPI Strip */}
       <div className="summary-strip">
         {/* Card 1: Total Scope 1 + 2 */}
@@ -351,7 +478,7 @@ export default function DashboardPage() {
           {/* Budget Percentage with Tooltip */}
           <div className="tooltip-container">
             <div className="kpi-value">
-              {budgetUsedPct != null ? `${budgetUsedPct.toFixed(0)}%` : 'N/A'}
+              {targetProgressPct != null ? `${targetProgressPct.toFixed(0)}%` : 'N/A'}
             </div>
             <div className="tooltip-text">{getTooltipText()}</div>
           </div>
@@ -359,8 +486,8 @@ export default function DashboardPage() {
           {/* Progress Bar */}
           <div className="budget-progress-bar">
             <div
-              className="budget-progress-fill"
-              style={{ width: `${budgetUsedPct != null ? budgetUsedPct : 0}%` }}
+              className={`budget-progress-fill ${isNegativeProgress ? "negative" : "positive"}`}
+              style={{ width: `${progressBarPct}%` }}
             />
           </div>
           
@@ -368,10 +495,15 @@ export default function DashboardPage() {
           <div className="projected-section">
             <div className="projected-label">
               <FiTrendingUp size={12} />
-              <span>Projected Year-End</span>
+              <span>Projected year-end total based on current monthly run rate.</span>
             </div>
             <div className="projected-value">
               {projectedYearEndT ? `${projectedYearEndT.toFixed(1)} tCO₂e` : '—'}
+            </div>
+            <div className="projected-confidence">
+              Confidence: {predictionConfidence.score != null
+                ? `${predictionConfidence.label} (${predictionConfidence.score}%)`
+                : "N/A"}
             </div>
           </div>
           
@@ -388,14 +520,14 @@ export default function DashboardPage() {
           
           {/* Target Display with Set Target Link */}
           <div className="kpi-sub">
-            {targetT ? (
-              `of ${targetT.toFixed(1)} t target`
+            {hasConfiguredTarget ? (
+              targetT ? `of ${targetT.toFixed(1)} t target` : "Target configured"
             ) : (
               <button 
                 onClick={() => navigate('/target-settings')}
-                className="set-target-link"
+                className="set-target-btn"
               >
-                Set target in Settings →
+                Set Target
               </button>
             )}
           </div>
@@ -785,9 +917,14 @@ export default function DashboardPage() {
 
         .budget-progress-fill {
           height: 100%;
-          background: #2E7D64;
           border-radius: 999px;
           transition: width 0.35s ease;
+        }
+        .budget-progress-fill.positive {
+          background: #2E7D64;
+        }
+        .budget-progress-fill.negative {
+          background: #DC2626;
         }
 
         .projected-section {
@@ -810,6 +947,11 @@ export default function DashboardPage() {
           font-size: 16px;
           font-weight: 700;
           color: #1B4D3E;
+        }
+        .projected-confidence {
+          margin-top: 4px;
+          font-size: 11px;
+          color: #6B7280;
         }
 
         .status-indicator {
@@ -857,24 +999,139 @@ export default function DashboardPage() {
           visibility: visible;
         }
 
-        .set-target-link {
-          background: none;
-          border: none;
-          color: #2E7D64;
+        .set-target-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 30px;
+          padding: 6px 12px;
+          border: 1px solid #1B4D3E;
+          border-radius: 7px;
+          background: #1B4D3E;
+          color: #FFFFFF;
           cursor: pointer;
           font-size: 12px;
-          font-weight: 600;
-          text-decoration: underline;
-          padding: 0;
+          font-weight: 500;
+          transition: background 0.15s ease, border-color 0.15s ease;
         }
-
-        .set-target-link:hover {
-          color: #1B4D3E;
+        .set-target-btn:hover {
+          background: #2E7D64;
+          border-color: #2E7D64;
         }
 
         .calendar-section {
           margin-bottom: 24px;
         }
+        .target-breakdown-card {
+          background: white;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 24px;
+        }
+        .target-breakdown-header h3 {
+          margin: 0 0 6px 0;
+          font-size: 18px;
+          color: #1B4D3E;
+        }
+        .target-breakdown-header p {
+          margin: 0 0 14px 0;
+          font-size: 13px;
+          color: #6B7280;
+        }
+        .target-breakdown-empty {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          background: #F9FAFB;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          padding: 12px;
+          font-size: 13px;
+          color: #6B7280;
+        }
+        .set-target-btn-inline {
+          border: 1px solid #1B4D3E;
+          background: #1B4D3E;
+          color: #fff;
+          border-radius: 7px;
+          padding: 6px 12px;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .set-target-btn-inline:hover { background: #2E7D64; border-color: #2E7D64; }
+        .milestone-meta {
+          display: flex;
+          gap: 18px;
+          flex-wrap: wrap;
+          margin-bottom: 14px;
+          font-size: 13px;
+          color: #4B5563;
+        }
+        .quarter-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+        .quarter-card {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 10px;
+          background: #FBFCFD;
+        }
+        .quarter-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 12px;
+          font-weight: 600;
+          color: #374151;
+          margin-bottom: 8px;
+        }
+        .quarter-bar {
+          height: 8px;
+          background: #E5E7EB;
+          border-radius: 999px;
+          overflow: hidden;
+          margin-bottom: 6px;
+        }
+        .quarter-fill { height: 100%; }
+        .quarter-fill.green { background: #10B981; }
+        .quarter-fill.amber { background: #F59E0B; }
+        .quarter-fill.red { background: #EF4444; }
+        .quarter-values {
+          font-size: 11px;
+          color: #6B7280;
+        }
+        .rag-chip {
+          font-size: 10px;
+          font-weight: 600;
+          padding: 2px 6px;
+          border-radius: 999px;
+        }
+        .rag-chip.green { background: #D1FAE5; color: #065F46; }
+        .rag-chip.amber { background: #FEF3C7; color: #92400E; }
+        .rag-chip.red { background: #FEE2E2; color: #991B1B; }
+        .month-grid {
+          display: grid;
+          grid-template-columns: repeat(12, minmax(0, 1fr));
+          gap: 8px;
+        }
+        .month-cell {
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          padding: 8px 6px;
+          text-align: center;
+          background: #fff;
+        }
+        .month-cell.green { border-color: #86EFAC; background: #F0FDF4; }
+        .month-cell.amber { border-color: #FCD34D; background: #FFFBEB; }
+        .month-cell.red { border-color: #FCA5A5; background: #FEF2F2; }
+        .month-name { font-size: 11px; font-weight: 600; color: #374151; }
+        .month-value { font-size: 11px; color: #1F2937; margin-top: 3px; }
+        .month-target { font-size: 10px; color: #6B7280; }
 
         .total-emissions-card {
           background: white;
@@ -1133,6 +1390,12 @@ export default function DashboardPage() {
           .compliance-grid {
             grid-template-columns: 1fr;
           }
+          .quarter-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .month-grid {
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+          }
         }
 
         @media (max-width: 768px) {
@@ -1151,6 +1414,9 @@ export default function DashboardPage() {
 
           .breakdown-grid {
             grid-template-columns: 1fr;
+          }
+          .month-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
           }
 
           .total-value {

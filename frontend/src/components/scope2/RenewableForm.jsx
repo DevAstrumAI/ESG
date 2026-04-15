@@ -1,5 +1,5 @@
 // src/components/scope2/RenewableForm.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiSun, FiEdit2, FiSave, FiX } from "react-icons/fi";
@@ -26,7 +26,7 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function RenewableForm({ onSubmitSuccess }) {
+export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
   const renewables = useEmissionStore((s) => s.scope2Renewable || []);
   const addRenewable = useEmissionStore((s) => s.addScope2Renewable);
   const updateRenewable = useEmissionStore((s) => s.updateScope2Renewable);
@@ -177,7 +177,13 @@ export default function RenewableForm({ onSubmitSuccess }) {
   // Add new entry handler
   const [sourceTypeKey, setSourceTypeKey] = useState("solar_ppa");
   const [consumption, setConsumption] = useState("");
-  const [month, setMonth] = useState(currentMonth());
+  const [month, setMonth] = useState(reportingMonth || currentMonth());
+
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
 
   const selectedType = RENEWABLE_TYPES.find((t) => t.key === sourceTypeKey);
 
@@ -207,7 +213,7 @@ export default function RenewableForm({ onSubmitSuccess }) {
       month,
     });
     setConsumption("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
   };
 
   return (

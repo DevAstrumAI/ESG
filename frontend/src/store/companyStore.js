@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { companyAPI } from '../services/api';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
 
 export const useCompanyStore = create((set, get) => ({
   company: null,

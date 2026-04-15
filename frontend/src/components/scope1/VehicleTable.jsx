@@ -1,5 +1,5 @@
 // src/components/scope1/VehicleTable.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiTruck, FiEdit2, FiSave, FiX } from "react-icons/fi";
@@ -48,7 +48,7 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function VehicleTable({ onSubmitSuccess }) {
+export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
   const vehicles      = useEmissionStore((s) => s.scope1Vehicles);
   const addVehicle    = useEmissionStore((s) => s.addScope1Vehicle);
   const deleteVehicle = useEmissionStore((s) => s.deleteScope1Vehicle);
@@ -99,7 +99,13 @@ export default function VehicleTable({ onSubmitSuccess }) {
   const [vehicleType, setVehicleType] = useState("");
   const [fuelType, setFuelType]       = useState("");
   const [quantity, setQuantity]       = useState("");
-  const [month, setMonth]             = useState(currentMonth());
+  const [month, setMonth]             = useState(reportingMonth || currentMonth());
+
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
 
   const mappedFuelType = vehicleType && fuelType
     ? mapVehicleFuelType(vehicleType, fuelType)
@@ -152,7 +158,7 @@ export default function VehicleTable({ onSubmitSuccess }) {
     setVehicleType("");
     setFuelType("");
     setQuantity("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
   };
 
   return (

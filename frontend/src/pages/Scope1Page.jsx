@@ -67,6 +67,15 @@ export default function Scope1Page() {
       fetchCompany(token);
     }
   }, [token, companyInitialized, fetchCompany]);
+
+  // Keep selected month synced with URL month query.
+  useEffect(() => {
+    const resolvedMonth = urlMonth || defaultMonth;
+    if (resolvedMonth !== selectedMonth) {
+      setSelectedMonth(resolvedMonth);
+      dataLoadedForMonth.current = null;
+    }
+  }, [urlMonth, defaultMonth, selectedMonth]);
   
   // Load Scope 1 data when month changes
   useEffect(() => {
@@ -110,17 +119,29 @@ export default function Scope1Page() {
         
         if (response.ok) {
           const data = await response.json();
+
+          const matchesMonth = (entryMonth) =>
+            typeof entryMonth === "string" && entryMonth.slice(0, 7) === selectedMonth;
+          const dedupeById = (rows) => {
+            const seen = new Set();
+            return rows.filter((row) => {
+              if (!row?.id) return true;
+              if (seen.has(row.id)) return false;
+              seen.add(row.id);
+              return true;
+            });
+          };
           
-          const mobileData = (data.mobile || []).map((item, index) =>
+          const mobileData = dedupeById((data.mobile || []).filter((item) => matchesMonth(item.month))).map((item, index) =>
             normalizeScope1MobileEntry(item, `${Date.now()}-mobile-${index}-${Math.random()}`)
           );
-          const stationaryData = (data.stationary || []).map((item, index) =>
+          const stationaryData = dedupeById((data.stationary || []).filter((item) => matchesMonth(item.month))).map((item, index) =>
             normalizeScope1StationaryEntry(item, `${Date.now()}-stationary-${index}-${Math.random()}`)
           );
-          const refrigerantData = (data.refrigerants || []).map((item, index) =>
+          const refrigerantData = dedupeById((data.refrigerants || []).filter((item) => matchesMonth(item.month))).map((item, index) =>
             normalizeScope1RefrigerantEntry(item, `${Date.now()}-refrigerant-${index}-${Math.random()}`)
           );
-          const fugitiveData = (data.fugitive || []).map((item, index) =>
+          const fugitiveData = dedupeById((data.fugitive || []).filter((item) => matchesMonth(item.month))).map((item, index) =>
             normalizeScope1FugitiveEntry(item, `${Date.now()}-fugitive-${index}-${Math.random()}`)
           );
           
@@ -212,6 +233,7 @@ export default function Scope1Page() {
   const steps = [
     { id: "mobile", label: "Mobile Combustion", icon: <FiTruck size={16} />, count: vehicles.length, component: (
       <VehicleTable
+        reportingMonth={selectedMonth}
         vehicles={vehicles}
         onAdd={addVehicle}
         onUpdate={updateVehicle}
@@ -220,6 +242,7 @@ export default function Scope1Page() {
     )},
     { id: "stationary", label: "Stationary Combustion", icon: <FiBriefcase size={16} />, count: stationary.length, component: (
       <StationaryForm
+        reportingMonth={selectedMonth}
         entries={stationary}
         onAdd={addStationary}
         onDelete={deleteStationary}
@@ -227,6 +250,7 @@ export default function Scope1Page() {
     )},
     { id: "refrigerants", label: "Refrigerants", icon: <FiWind size={16} />, count: refrigerants.length, component: (
       <RefrigerantForm
+        reportingMonth={selectedMonth}
         entries={refrigerants}
         onAdd={addRefrigerant}
         onDelete={deleteRefrigerant}
@@ -234,6 +258,7 @@ export default function Scope1Page() {
     )},
     { id: "fugitive", label: "Fugitive Emissions", icon: <FiAlertCircle size={16} />, count: fugitive.length, component: (
       <FugitiveForm
+        reportingMonth={selectedMonth}
         entries={fugitive}
         onAdd={addFugitive}
         onDelete={deleteFugitive}

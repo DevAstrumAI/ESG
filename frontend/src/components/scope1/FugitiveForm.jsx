@@ -1,5 +1,5 @@
 // src/components/scope1/FugitiveForm.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiAlertCircle, FiEdit2, FiSave, FiX } from "react-icons/fi";
@@ -35,7 +35,7 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function FugitiveForm({ onSubmitSuccess }) {
+export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
   const fugitives    = useEmissionStore((s) => s.scope1Fugitive);
   const addFugitive  = useEmissionStore((s) => s.addScope1Fugitive);
   const updateFugitive = useEmissionStore((s) => s.updateScope1Fugitive);
@@ -82,7 +82,13 @@ export default function FugitiveForm({ onSubmitSuccess }) {
 
   const [source, setSource]           = useState("");
   const [quantity, setQuantity]       = useState("");
-  const [month, setMonth]             = useState(currentMonth());
+  const [month, setMonth]             = useState(reportingMonth || currentMonth());
+
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
 
   const selectedSource = SOURCE_TYPES.find((s) => s.label === source);
 
@@ -98,7 +104,7 @@ export default function FugitiveForm({ onSubmitSuccess }) {
     });
     setSource("");
     setQuantity("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
   };
   const startEdit = (entry) => {
     setEditingId(entry.id);

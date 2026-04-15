@@ -100,19 +100,9 @@ export default function DataCompletenessCalendar({ year, onMonthClick }) {
     const monthName = months[monthIndex];
     
     if (status === "none") {
-      // No data at all - show both options
-      setDialogConfig({
-        isOpen: true,
-        title: `Add Data for ${monthName} ${year}`,
-        message: `No emission data found for ${monthName} ${year}. Which scope would you like to enter?`,
-        options: [
-          { label: "📊 Scope 1 (Direct Emissions)", value: "scope1" },
-          { label: "⚡ Scope 2 (Indirect Emissions)", value: "scope2" }
-        ],
-        onConfirm: (selectedScope) => {
-          navigate(`/${selectedScope}?month=${monthStr}`);
-        }
-      });
+      // Missing month pills should open data entry directly with month prefilled.
+      navigate(`/scope1?month=${monthStr}`);
+      return;
     } else if (status === "scope1") {
       // Only Scope 1 exists, offer to add Scope 2
       setDialogConfig({

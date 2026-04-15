@@ -1,5 +1,5 @@
 // src/components/scope1/RefrigerantForm.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiWind, FiEdit2, FiSave, FiX } from "react-icons/fi";
@@ -32,7 +32,7 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function RefrigerantForm({ onSubmitSuccess }) {
+export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const refrigerants    = useEmissionStore((s) => s.scope1Refrigerants);
   const addRefrigerant  = useEmissionStore((s) => s.addScope1Refrigerant);
   const updateRefrigerant = useEmissionStore((s) => s.updateScope1Refrigerant);
@@ -79,7 +79,13 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
 
   const [refrigerantKey, setRefrigerantKey] = useState("");
   const [quantity, setQuantity]             = useState("");
-  const [month, setMonth]                   = useState(currentMonth());
+  const [month, setMonth]                   = useState(reportingMonth || currentMonth());
+
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
 
   const selectedRefrigerant = REFRIGERANT_TYPES.find((r) => r.key === refrigerantKey);
 
@@ -95,7 +101,7 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
     });
     setRefrigerantKey("");
     setQuantity("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
   };
   const startEdit = (entry) => {
     setEditingId(entry.id);

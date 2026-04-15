@@ -16,6 +16,7 @@ import { useEmissionStore } from "../../../store/emissionStore";
 import { FiLayers, FiBarChart2, FiRefreshCw } from "react-icons/fi";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
+const KG_TO_TONNES = 1000;
 
 export default function StackedCategoryChart({ year }) {
   const token = useAuthStore((s) => s.token);
@@ -106,25 +107,25 @@ const fetchFallbackData = async () => {
         return {
           name: month,
           month: monthStr,
-          mobile: isCurrentMonth ? (scope1Results?.mobile?.kgCO2e || 0) : 0,
-          stationary: isCurrentMonth ? (scope1Results?.stationary?.kgCO2e || 0) : 0,
-          refrigerants: isCurrentMonth ? (scope1Results?.refrigerants?.kgCO2e || 0) : 0,
-          fugitive: isCurrentMonth ? (scope1Results?.fugitive?.kgCO2e || 0) : 0,
+          mobile: isCurrentMonth ? (scope1Results?.mobile?.kgCO2e || 0) / KG_TO_TONNES : 0,
+          stationary: isCurrentMonth ? (scope1Results?.stationary?.kgCO2e || 0) / KG_TO_TONNES : 0,
+          refrigerants: isCurrentMonth ? (scope1Results?.refrigerants?.kgCO2e || 0) / KG_TO_TONNES : 0,
+          fugitive: isCurrentMonth ? (scope1Results?.fugitive?.kgCO2e || 0) / KG_TO_TONNES : 0,
           hasData: isCurrentMonth && hasData,
         };
       } else {
         return {
           name: month,
           month: monthStr,
-          electricityLocation: isCurrentMonth ? (scope2Results?.electricity?.locationBasedKgCO2e || 0) : 0,
-          electricityMarket: isCurrentMonth ? (scope2Results?.electricity?.marketBasedKgCO2e || 0) : 0,
-          heating: isCurrentMonth ? (scope2Results?.heating?.kgCO2e || 0) : 0,
+          electricityLocation: isCurrentMonth ? (scope2Results?.electricity?.locationBasedKgCO2e || 0) / KG_TO_TONNES : 0,
+          electricityMarket: isCurrentMonth ? (scope2Results?.electricity?.marketBasedKgCO2e || 0) / KG_TO_TONNES : 0,
+          heating: isCurrentMonth ? (scope2Results?.heating?.kgCO2e || 0) / KG_TO_TONNES : 0,
           hasData: isCurrentMonth && hasData,
         };
       }
     });
     
-    setChartData(transformedData);
+    setChartData(applyMissingPlaceholders(transformedData));
     
   } catch (err) {
     console.error("Fallback error:", err);
@@ -147,7 +148,7 @@ const createEmptyChartData = () => {
     }
     return baseData;
   });
-  setChartData(emptyData);
+  setChartData(applyMissingPlaceholders(emptyData));
 };
 
   const transformChartData = (data) => {
@@ -163,20 +164,34 @@ const createEmptyChartData = () => {
       };
       
       if (scope === "scope1") {
-        result.mobile = monthData.mobileKg || 0;
-        result.stationary = monthData.stationaryKg || 0;
-        result.refrigerants = monthData.refrigerantsKg || 0;
-        result.fugitive = monthData.fugitiveKg || 0;
+        result.mobile = (monthData.mobileKg || 0) / KG_TO_TONNES;
+        result.stationary = (monthData.stationaryKg || 0) / KG_TO_TONNES;
+        result.refrigerants = (monthData.refrigerantsKg || 0) / KG_TO_TONNES;
+        result.fugitive = (monthData.fugitiveKg || 0) / KG_TO_TONNES;
       } else {
-        result.electricityLocation = monthData.electricityLocationKg || 0;
-        result.electricityMarket = monthData.electricityMarketKg || 0;
-        result.heating = monthData.heatingKg || 0;
+        result.electricityLocation = (monthData.electricityLocationKg || 0) / KG_TO_TONNES;
+        result.electricityMarket = (monthData.electricityMarketKg || 0) / KG_TO_TONNES;
+        result.heating = (monthData.heatingKg || 0) / KG_TO_TONNES;
       }
       
       return result;
     });
     
-    setChartData(transformed);
+    setChartData(applyMissingPlaceholders(transformed));
+  };
+
+  const applyMissingPlaceholders = (rows) => {
+    const maxKnownTotal = rows.reduce((max, row) => {
+      const total = scope === "scope1"
+        ? (row.mobile || 0) + (row.stationary || 0) + (row.refrigerants || 0) + (row.fugitive || 0)
+        : (row.electricityLocation || 0) + (row.electricityMarket || 0) + (row.heating || 0);
+      return Math.max(max, total);
+    }, 0);
+    const placeholder = maxKnownTotal > 0 ? Math.max(maxKnownTotal * 0.08, 0.05) : 0.05;
+    return rows.map((row) => ({
+      ...row,
+      missingPlaceholder: row.hasData ? 0 : placeholder,
+    }));
   };
 
   useEffect(() => {
@@ -201,27 +216,27 @@ const createEmptyChartData = () => {
                   <div className="tooltip-item">
                     <span className="tooltip-color" style={{ background: "#3B82F6" }}></span>
                     <span className="tooltip-label">Mobile Combustion:</span>
-                    <span className="tooltip-value">{(data.mobile / 1000).toFixed(2)} tCO₂e</span>
+                    <span className="tooltip-value">{data.mobile.toFixed(2)} tCO₂e</span>
                   </div>
                   <div className="tooltip-item">
                     <span className="tooltip-color" style={{ background: "#F59E0B" }}></span>
                     <span className="tooltip-label">Stationary Combustion:</span>
-                    <span className="tooltip-value">{(data.stationary / 1000).toFixed(2)} tCO₂e</span>
+                    <span className="tooltip-value">{data.stationary.toFixed(2)} tCO₂e</span>
                   </div>
                   <div className="tooltip-item">
                     <span className="tooltip-color" style={{ background: "#06B6D4" }}></span>
                     <span className="tooltip-label">Refrigerants:</span>
-                    <span className="tooltip-value">{(data.refrigerants / 1000).toFixed(2)} tCO₂e</span>
+                    <span className="tooltip-value">{data.refrigerants.toFixed(2)} tCO₂e</span>
                   </div>
                   <div className="tooltip-item">
                     <span className="tooltip-color" style={{ background: "#EF4444" }}></span>
                     <span className="tooltip-label">Fugitive Emissions:</span>
-                    <span className="tooltip-value">{(data.fugitive / 1000).toFixed(2)} tCO₂e</span>
+                    <span className="tooltip-value">{data.fugitive.toFixed(2)} tCO₂e</span>
                   </div>
                   <div className="tooltip-item total">
                     <span className="tooltip-label">Total:</span>
                     <span className="tooltip-value">
-                      {((data.mobile + data.stationary + data.refrigerants + data.fugitive) / 1000).toFixed(2)} tCO₂e
+                      {(data.mobile + data.stationary + data.refrigerants + data.fugitive).toFixed(2)} tCO₂e
                     </span>
                   </div>
                 </>
@@ -230,22 +245,22 @@ const createEmptyChartData = () => {
                   <div className="tooltip-item">
                     <span className="tooltip-color" style={{ background: "#8B5CF6" }}></span>
                     <span className="tooltip-label">Electricity (Location):</span>
-                    <span className="tooltip-value">{(data.electricityLocation / 1000).toFixed(2)} tCO₂e</span>
+                    <span className="tooltip-value">{data.electricityLocation.toFixed(2)} tCO₂e</span>
                   </div>
                   <div className="tooltip-item">
                     <span className="tooltip-color" style={{ background: "#A78BFA" }}></span>
                     <span className="tooltip-label">Electricity (Market):</span>
-                    <span className="tooltip-value">{(data.electricityMarket / 1000).toFixed(2)} tCO₂e</span>
+                    <span className="tooltip-value">{data.electricityMarket.toFixed(2)} tCO₂e</span>
                   </div>
                   <div className="tooltip-item">
                     <span className="tooltip-color" style={{ background: "#F97316" }}></span>
                     <span className="tooltip-label">Heating & Cooling:</span>
-                    <span className="tooltip-value">{(data.heating / 1000).toFixed(2)} tCO₂e</span>
+                    <span className="tooltip-value">{data.heating.toFixed(2)} tCO₂e</span>
                   </div>
                   <div className="tooltip-item total">
                     <span className="tooltip-label">Total:</span>
                     <span className="tooltip-value">
-                      {((data.electricityLocation + data.heating) / 1000).toFixed(2)} tCO₂e
+                      {(data.electricityLocation + data.heating).toFixed(2)} tCO₂e
                     </span>
                   </div>
                 </>
@@ -361,6 +376,7 @@ const createEmptyChartData = () => {
             wrapperStyle={{ fontSize: 12, paddingTop: 16 }}
             formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
           />
+          <Bar dataKey="missingPlaceholder" stackId="placeholder" fill="#E5E7EB" legendType="none" />
           {getBars()}
         </BarChart>
       </ResponsiveContainer>

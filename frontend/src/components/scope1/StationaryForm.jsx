@@ -1,5 +1,5 @@
 // src/components/scope1/StationaryForm.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiBriefcase, FiEdit2, FiSave, FiX } from "react-icons/fi";
@@ -39,7 +39,7 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function StationaryForm({ onSubmitSuccess }) {
+export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
   const entries        = useEmissionStore((s) => s.scope1Stationary);
   const addStationary  = useEmissionStore((s) => s.addScope1Stationary);
   const updateStationary = useEmissionStore((s) => s.updateScope1Stationary);
@@ -88,7 +88,13 @@ export default function StationaryForm({ onSubmitSuccess }) {
   const [equipment, setEquipment] = useState("");
   const [fuelKey, setFuelKey]     = useState("");
   const [quantity, setQuantity]   = useState("");
-  const [month, setMonth]         = useState(currentMonth());
+  const [month, setMonth]         = useState(reportingMonth || currentMonth());
+
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
 
   const selectedFuel = FUEL_TYPES.find((f) => f.key === fuelKey);
 
@@ -106,7 +112,7 @@ export default function StationaryForm({ onSubmitSuccess }) {
     setEquipment("");
     setFuelKey("");
     setQuantity("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
   };
   const startEdit = (entry) => {
     setEditingId(entry.id);

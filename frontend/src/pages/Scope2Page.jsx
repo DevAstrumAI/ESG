@@ -61,6 +61,15 @@ export default function Scope2Page() {
       fetchCompany(token);
     }
   }, [token, companyInitialized, fetchCompany]);
+
+  // Keep selected month synced with URL month query.
+  useEffect(() => {
+    const resolvedMonth = urlMonth || defaultMonth;
+    if (resolvedMonth !== selectedMonth) {
+      setSelectedMonth(resolvedMonth);
+      dataLoadedForMonth.current = null;
+    }
+  }, [urlMonth, defaultMonth, selectedMonth]);
   
   // Load Scope 2 data when month changes
   useEffect(() => {
@@ -103,8 +112,20 @@ export default function Scope2Page() {
         
         if (response.ok) {
           const data = await response.json();
+
+          const matchesMonth = (entryMonth) =>
+            typeof entryMonth === "string" && entryMonth.slice(0, 7) === selectedMonth;
+          const dedupeById = (rows) => {
+            const seen = new Set();
+            return rows.filter((row) => {
+              if (!row?.id) return true;
+              if (seen.has(row.id)) return false;
+              seen.add(row.id);
+              return true;
+            });
+          };
           
-          const electricityData = (data.electricity || []).map((item, index) => ({
+          const electricityData = dedupeById((data.electricity || []).filter((item) => matchesMonth(item.month))).map((item, index) => ({
             id: item.id || `${Date.now()}-electricity-${index}-${Math.random()}`,
             facilityName: item.facilityName || 'Main Facility',
             consumption: item.consumption || 0,
@@ -112,14 +133,14 @@ export default function Scope2Page() {
             month: item.month,
           }));
           
-          const heatingData = (data.heating || []).map((item, index) => ({
+          const heatingData = dedupeById((data.heating || []).filter((item) => matchesMonth(item.month))).map((item, index) => ({
             id: item.id || `${Date.now()}-heating-${index}-${Math.random()}`,
             energyType: item.energyType,
             consumption: item.consumption || 0,
             month: item.month,
           }));
           
-          const renewableData = (data.renewables || []).map((item, index) => ({
+          const renewableData = dedupeById((data.renewables || []).filter((item) => matchesMonth(item.month))).map((item, index) => ({
             id: item.id || `${Date.now()}-renewable-${index}-${Math.random()}`,
             sourceType: item.sourceType,
             consumption: item.consumption || 0,
@@ -212,13 +233,13 @@ export default function Scope2Page() {
   
   const steps = [
     { id: "electricity", label: "Electricity", icon: <FiZap />, count: electricity.length, component: (
-      <ElectricityForm entries={electricity} onAdd={addElectricity} onDelete={deleteElectricity} />
+      <ElectricityForm reportingMonth={selectedMonth} entries={electricity} onAdd={addElectricity} onDelete={deleteElectricity} />
     )},
     { id: "heating", label: "Heating", icon: <FiThermometer />, count: heating.length, component: (
-      <HeatingForm entries={heating} onAdd={addHeating} onDelete={deleteHeating} />
+      <HeatingForm reportingMonth={selectedMonth} entries={heating} onAdd={addHeating} onDelete={deleteHeating} />
     )},
     { id: "renewables", label: "Renewables", icon: <FiSun />, count: renewables.length, component: (
-      <RenewableForm entries={renewables} onAdd={addRenewable} onDelete={deleteRenewable} />
+      <RenewableForm reportingMonth={selectedMonth} entries={renewables} onAdd={addRenewable} onDelete={deleteRenewable} />
     )},
   ];
   const progressPercent = steps.length > 1 ? (currentStep / (steps.length - 1)) * 100 : 100;

@@ -58,7 +58,7 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function HeatingForm({ entries, onAdd, onDelete }) {
+export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }) {
   const token = useAuthStore((s) => s.token);
   const selectedYear = useEmissionStore((s) => s.selectedYear);
   const { company } = useCompanyStore();
@@ -70,7 +70,7 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
   
   const [energyType, setEnergyType] = useState(defaultType);
   const [consumption, setConsumption] = useState("");
-  const [month, setMonth] = useState(currentMonth());
+  const [month, setMonth] = useState(reportingMonth || currentMonth());
   const [isLoading, setIsLoading] = useState(false);
   const updateHeating = useEmissionStore((s) => s.updateScope2Heating);
   const [editingId, setEditingId] = useState(null);
@@ -84,6 +84,11 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
   useEffect(() => {
     setEnergyType(getDefaultHeatingType(country));
   }, [country]);
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
   const handleAddRow = async () => {
     if (!energyType || !consumption || Number(consumption) <= 0) {
       alert("Please fill in all fields");
@@ -102,7 +107,7 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
     
     // Reset form
     setConsumption("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
     // Keep the same energy type (don't reset)
   };
 
