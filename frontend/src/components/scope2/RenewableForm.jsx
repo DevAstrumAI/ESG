@@ -48,6 +48,9 @@ export default function RenewableForm({ onSubmitSuccess }) {
     const deleted = renewables.find((r) => r.id === id);
     if (!deleted) return;
 
+    // Remove locally first to avoid blocked deletion UX.
+    deleteRenewable(id);
+
     const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
     const [year] = effectiveMonth.includes("-")
       ? effectiveMonth.split("-").map(Number)
@@ -63,10 +66,15 @@ export default function RenewableForm({ onSubmitSuccess }) {
           generationKwh: Number(deleted.consumption || 0),
         },
       });
-      deleteRenewable(id);
     } catch (error) {
-      console.error("Failed to delete renewable entry:", error);
-      alert("Failed to delete. Please try again.");
+      const message = String(error?.message || "");
+      const isNotFound =
+        message.includes("No matching Scope 2 entry found") ||
+        message.includes("Scope 2 data not found");
+      if (!isNotFound) {
+        console.error("Failed to delete renewable entry:", error);
+        alert("Failed to delete. Please try again.");
+      }
     }
   };
 

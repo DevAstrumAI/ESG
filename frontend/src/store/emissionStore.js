@@ -128,6 +128,27 @@ export const useEmissionStore = create((set, get) => ({
       }] 
     })),
 
+  // Local deletes used by Scope 1 UI components
+  deleteScope1Vehicle: (id) =>
+    set((state) => ({
+      scope1Vehicles: state.scope1Vehicles.filter((vehicle) => vehicle.id !== id),
+    })),
+
+  deleteScope1Stationary: (id) =>
+    set((state) => ({
+      scope1Stationary: state.scope1Stationary.filter((entry) => entry.id !== id),
+    })),
+
+  deleteScope1Refrigerant: (id) =>
+    set((state) => ({
+      scope1Refrigerants: state.scope1Refrigerants.filter((entry) => entry.id !== id),
+    })),
+
+  deleteScope1Fugitive: (id) =>
+    set((state) => ({
+      scope1Fugitive: state.scope1Fugitive.filter((entry) => entry.id !== id),
+    })),
+
   // ─── Scope 2 Actions (Local only - for UI) ─────────────────────────────
   addScope2Electricity: (entry) =>
     set((state) => ({ 
@@ -151,6 +172,22 @@ export const useEmissionStore = create((set, get) => ({
         ...entry, 
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
       }] 
+    })),
+
+  // Local deletes used by Scope 2 UI components
+  deleteScope2Electricity: (id) =>
+    set((state) => ({
+      scope2Electricity: state.scope2Electricity.filter((entry) => entry.id !== id),
+    })),
+
+  deleteScope2Heating: (id) =>
+    set((state) => ({
+      scope2Heating: state.scope2Heating.filter((entry) => entry.id !== id),
+    })),
+
+  deleteScope2Renewable: (id) =>
+    set((state) => ({
+      scope2Renewable: state.scope2Renewable.filter((entry) => entry.id !== id),
     })),
 
   // ─── BACKEND-SYNCHRONIZED DELETE METHODS ───────────────────────────────
@@ -293,8 +330,8 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
   }
 },
 
-  // Scope 2 - Electricity
-  deleteScope2Electricity: async (id, token, year, month) => {
+  // Scope 2 - Electricity (legacy endpoint sync)
+  deleteScope2ElectricityWithSync: async (id, token, year, month) => {
     set({ loading: true });
     try {
       const response = await fetch(`${API_URL}/api/emissions/scope2/electricity/${id}`, {
@@ -327,8 +364,8 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
     }
   },
 
-  // Scope 2 - Heating
-  deleteScope2Heating: async (id, token, year, month) => {
+  // Scope 2 - Heating (legacy endpoint sync)
+  deleteScope2HeatingWithSync: async (id, token, year, month) => {
     set({ loading: true });
     try {
       const response = await fetch(`${API_URL}/api/emissions/scope2/heating/${id}`, {
@@ -361,8 +398,8 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
     }
   },
 
-  // Scope 2 - Renewable Energy
-  deleteScope2Renewable: async (id, token, year, month) => {
+  // Scope 2 - Renewable Energy (legacy endpoint sync)
+  deleteScope2RenewableWithSync: async (id, token, year, month) => {
     set({ loading: true });
     try {
       const response = await fetch(`${API_URL}/api/emissions/scope2/renewable/${id}`, {

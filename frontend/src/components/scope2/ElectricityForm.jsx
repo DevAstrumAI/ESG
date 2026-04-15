@@ -48,6 +48,9 @@ export default function ElectricityForm({ onSubmitSuccess }) {
     const deleted = electricity.find((e) => e.id === id);
     if (!deleted) return;
 
+    // Remove locally first to keep CRUD smooth even if backend cannot match this row.
+    deleteElectricity(id);
+
     const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
     const [year] = effectiveMonth.includes("-")
       ? effectiveMonth.split("-").map(Number)
@@ -65,10 +68,15 @@ export default function ElectricityForm({ onSubmitSuccess }) {
           certificateType: deleted.certificateType || "grid_average",
         },
       });
-      deleteElectricity(id);
     } catch (error) {
-      console.error("Failed to delete electricity entry:", error);
-      alert("Failed to delete. Please try again.");
+      const message = String(error?.message || "");
+      const isNotFound =
+        message.includes("No matching Scope 2 entry found") ||
+        message.includes("Scope 2 data not found");
+      if (!isNotFound) {
+        console.error("Failed to delete electricity entry:", error);
+        alert("Failed to delete. Please try again.");
+      }
     }
   };
 

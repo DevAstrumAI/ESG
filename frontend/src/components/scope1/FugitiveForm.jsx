@@ -2,13 +2,24 @@
 import React, { useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiPlus, FiEdit2, FiSave, FiX } from "react-icons/fi";
+import { FiTrash2, FiAlertCircle, FiDroplet } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
-const FUGITIVE_OPTIONS = [
-  { value: "methane", label: "Methane (CH₄)" },
-  { value: "n2o", label: "Nitrous Oxide (N₂O)" },
-  { value: "co2_extinguisher", label: "CO₂ Fire Extinguisher" },
+const SOURCE_TYPES = [
+  { label: "Pipeline Leaks",          key: "methane" },
+  { label: "Valve Leaks",             key: "methane" },
+  { label: "Flange Leaks",            key: "methane" },
+  { label: "Compressor Seals",        key: "methane" },
+  { label: "Storage Tanks",           key: "methane" },
+  { label: "Pressure Relief Devices", key: "methane" },
+  { label: "Open-ended Lines",        key: "methane" },
+  { label: "Sampling Connections",    key: "methane" },
+  { label: "Wastewater Treatment",    key: "n2o"     },
+  { label: "Cooling Towers",          key: "methane" },
+  { label: "Coal Mining",             key: "methane" },
+  { label: "Oil & Gas Extraction",    key: "methane" },
+  { label: "Landfills",               key: "methane" },
+  { label: "Other",                   key: "methane" },
 ];
 
 const MONTHS = [
@@ -23,305 +34,271 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function FugitiveForm() {
-  const fugitive = useEmissionStore((s) => s.scope1Fugitive);
-  const addFugitive = useEmissionStore((s) => s.addScope1Fugitive);
+export default function FugitiveForm({ onSubmitSuccess }) {
+  const fugitives    = useEmissionStore((s) => s.scope1Fugitive);
+  const addFugitive  = useEmissionStore((s) => s.addScope1Fugitive);
   const deleteFugitive = useEmissionStore((s) => s.deleteScope1Fugitive);
-  const updateFugitive = useEmissionStore((s) => s.updateScope1Fugitive);
+  const selectedYear = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+  const [deletingIds, setDeletingIds] = useState(new Set());
 
-  const [sourceType, setSourceType] = useState("");
-  const [emissionKg, setEmissionKg] = useState("");
-  const [month, setMonth] = useState(currentMonth());
+  const handleDeleteFugitive = async (id, month) => {
+    if (deletingIds.has(id)) return;
+    const deleted = fugitives.find((f) => f.id === id);
+    if (!deleted) return;
 
-  const [editingId, setEditingId] = useState(null);
-  const [editValues, setEditValues] = useState({
-    sourceType: "",
-    emissionKg: "",
-    month: "",
-  });
+    setDeletingIds((prev) => new Set(prev).add(id));
+    const [year] = month ? month.split("-").map(Number) : [selectedYear];
 
-  const handleAdd = () => {
-    if (!sourceType || !emissionKg || emissionKg <= 0) {
-      alert("Please fill all fields");
-      return;
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      deleteFugitive(id);
+      await emissionsAPI.deleteScope1Entry(token, {
+        year,
+        month,
+        category: "fugitive",
+        entry: {
+          sourceType: deleted.sourceType || "methane",
+          emissionKg: Number(deleted.emissionKg || deleted.amount || 0),
+        },
+      });
+    } catch (error) {
+      console.warn("Fugitive deletion sync failed, local row removed:", error);
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
+  };
 
-    const selected = FUGITIVE_OPTIONS.find(f => f.value === sourceType);
+  const [source, setSource]           = useState("");
+  const [quantity, setQuantity]       = useState("");
+  const [month, setMonth]             = useState(currentMonth());
+
+  const selectedSource = SOURCE_TYPES.find((s) => s.label === source);
+
+  const handleAddRow = () => {
+    if (!source || quantity === "") return;
     addFugitive({
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      source: selected.label,
-      sourceType: sourceType,
-      emissionKg: parseFloat(emissionKg),
-      amount: parseFloat(emissionKg),
-      month: month,
+      id: Date.now(),
+      source,
+      sourceType: selectedSource?.key || "methane",
+      emissionKg: Number(quantity),
+      amount: Number(quantity),
+      month,
     });
-
-    setSourceType("");
-    setEmissionKg("");
+    setSource("");
+    setQuantity("");
     setMonth(currentMonth());
   };
 
-  const handleDelete = async (entry) => {
-    if (!window.confirm(`Delete ${entry.source} - ${entry.emissionKg} kg?`)) return;
-
-    const [year] = entry.month.split("-");
-    
-    const backendEntry = {
-      sourceType: entry.sourceType,
-      emissionKg: entry.emissionKg,
-    };
-
-    try {
-      await emissionsAPI.deleteScope1Entry(token, {
-        year: parseInt(year),
-        month: entry.month,
-        category: "fugitive",
-        entry: backendEntry,
-      });
-      
-      deleteFugitive(entry.id);
-      console.log("Delete successful");
-      
-    } catch (error) {
-      console.error("Failed to delete fugitive entry:", error);
-      alert(`Failed to delete: ${error.message || "Unknown error"}`);
-    }
-  };
-
-  const startEdit = (entry) => {
-    setEditingId(entry.id);
-    setEditValues({
-      sourceType: entry.sourceType,
-      emissionKg: entry.emissionKg,
-      month: entry.month,
-    });
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-  };
-
-  const saveEdit = async () => {
-    if (!editValues.sourceType || !editValues.emissionKg) {
-      alert("Please fill all fields");
-      return;
-    }
-
-    const selected = FUGITIVE_OPTIONS.find(f => f.value === editValues.sourceType);
-    const updatedEntry = {
-      id: editingId,
-      source: selected.label,
-      sourceType: editValues.sourceType,
-      emissionKg: parseFloat(editValues.emissionKg),
-      amount: parseFloat(editValues.emissionKg),
-      month: editValues.month,
-    };
-
-    const oldEntry = fugitive.find(f => f.id === editingId);
-    
-    if (oldEntry && token) {
-      const [year] = editValues.month.split("-");
-      
-      const oldBackendEntry = {
-        sourceType: oldEntry.sourceType,
-        emissionKg: oldEntry.emissionKg,
-      };
-      
-      const newBackendEntry = {
-        sourceType: editValues.sourceType,
-        emissionKg: parseFloat(editValues.emissionKg),
-      };
-      
-      try {
-        await emissionsAPI.deleteScope1Entry(token, {
-          year: parseInt(year),
-          month: editValues.month,
-          category: "fugitive",
-          entry: oldBackendEntry,
-        });
-        
-        const { useCompanyStore } = require('../../store/companyStore');
-        const companyStore = useCompanyStore.getState();
-        const primaryLocation = companyStore.company?.locations?.find((loc) => loc.isPrimary) ||
-          companyStore.company?.locations?.[0];
-        const country = primaryLocation?.country || 'uae';
-        const city = (primaryLocation?.city || 'dubai').toLowerCase();
-        
-        await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8001'}/api/emissions/scope1`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            year: parseInt(year),
-            month: editValues.month,
-            country,
-            city,
-            mobile: [],
-            stationary: [],
-            refrigerants: [],
-            fugitive: [newBackendEntry],
-          }),
-        });
-        
-        updateFugitive(updatedEntry);
-        
-      } catch (error) {
-        console.error("Failed to sync edit with backend:", error);
-        alert("Failed to save changes");
-        return;
-      }
-    } else {
-      updateFugitive(updatedEntry);
-    }
-
-    setEditingId(null);
-  };
-
   return (
-    <div className="ff-wrap">
-      <div className="ff-table-wrap">
-        <table className="ff-table">
+    <div className="fg-wrap">
+      <div className="fg-desc-header">
+        <FiAlertCircle className="fg-header-icon" />
+        <p className="fg-desc">
+          Track <strong>fugitive emissions</strong> — unintentional leaks from equipment, pipelines, valves, and other industrial sources.
+        </p>
+      </div>
+
+      <div className="fg-table-wrap">
+        <table className="fg-table">
           <thead>
             <tr>
-              <th>Source Type</th>
-              <th>Amount (kg)</th>
+              <th>Emission Source</th>
+              <th>Gas Type</th>
+              <th>Quantity</th>
               <th>Month</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
+              <th></th>
+              </tr>
+            </thead>
           <tbody>
-            {fugitive.length === 0 && (
+            {fugitives.length === 0 && (
               <tr>
-                <td colSpan={4} className="ff-empty">
-                  No fugitive entries yet. Fill the row below and click + Add.
+                <td colSpan={5} className="fg-empty">
+                  No entries yet. Add a row below.
                 </td>
               </tr>
             )}
+            {fugitives.map((f) => (
+              <tr key={f.id} className={deletingIds.has(f.id) ? "row-deleting" : ""}>
+                <td>{f.source}</td>
+                <td>
+                  <span className="fg-badge">{f.sourceType || "methane"}</span>
+                </td>
+                <td>
+                  <span className="fg-qty">{f.emissionKg?.toLocaleString()}</span>
+                  <span className="fg-unit"> kg</span>
+                </td>
+                <td>{f.month || "—"}</td>
+                <td>
+                  <button className="fg-delete" onClick={() => handleDeleteFugitive(f.id, f.month)} disabled={deletingIds.has(f.id)} title="Remove">
+                    <FiTrash2 size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
 
-            {fugitive.map((entry) => {
-              if (editingId === entry.id) {
-                return (
-                  <tr key={entry.id} className="ff-editing-row">
-                    <td>
-                      <select
-                        value={editValues.sourceType}
-                        onChange={(e) => setEditValues({...editValues, sourceType: e.target.value})}
-                        className="ff-select"
-                      >
-                        {FUGITIVE_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        value={editValues.emissionKg}
-                        onChange={(e) => setEditValues({...editValues, emissionKg: e.target.value})}
-                        className="ff-input"
-                        min="0"
-                        step="any"
-                      />
-                    </td>
-                    <td>
-                      <select
-                        value={editValues.month}
-                        onChange={(e) => setEditValues({...editValues, month: e.target.value})}
-                        className="ff-select"
-                      >
-                        {MONTHS.map(m => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <button onClick={saveEdit} className="ff-save-btn"><FiSave /> Save</button>
-                      <button onClick={cancelEdit} className="ff-cancel-btn"><FiX /> Cancel</button>
-                    </td>
-                  </tr>
-                );
-              }
-              
-              return (
-                <tr key={entry.id}>
-                  <td>{entry.source}</td>
-                  <td>{entry.emissionKg || entry.amount}</td>
-                  <td>{entry.month}</td>
-                  <td>
-                    <button onClick={() => startEdit(entry)} className="ff-edit"><FiEdit2 /></button>
-                    <button onClick={() => handleDelete(entry)} className="ff-delete"><FiTrash2 /></button>
-                  </td>
-                </tr>
-              );
-            })}
-
-            {/* Add Row */}
-            <tr className="ff-add-row">
+            <tr className="fg-add-row">
               <td>
-                <select
-                  value={sourceType}
-                  onChange={(e) => setSourceType(e.target.value)}
-                  className="ff-select"
-                >
+                <select value={source} onChange={(e) => setSource(e.target.value)} className="fg-select">
                   <option value="">Select Source</option>
-                  {FUGITIVE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  {SOURCE_TYPES.map((s) => (
+                    <option key={s.label} value={s.label}>{s.label}</option>
                   ))}
                 </select>
               </td>
               <td>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={emissionKg}
-                  onChange={(e) => setEmissionKg(e.target.value)}
-                  className="ff-input"
-                  min="0"
-                  step="any"
-                />
+                <span className="fg-preview">
+                  {selectedSource ? selectedSource.key : "—"}
+                </span>
               </td>
               <td>
-                <select
-                  value={month}
-                  onChange={(e) => setMonth(e.target.value)}
-                  className="ff-select"
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
+                <div className="fg-qty-input">
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    className="fg-input"
+                    min="0"
+                    step="0.01"
+                  />
+                  <span className="fg-unit-tag">kg</span>
+                </div>
+              </td>
+              <td>
+                <select value={month} onChange={(e) => setMonth(e.target.value)} className="fg-select">
+                  {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </td>
               <td>
-                <button className="ff-add-btn" onClick={handleAdd}>
-                  <FiPlus /> Add
+                <button className="fg-add-btn-inline" onClick={handleAddRow}>
+                  + Add
                 </button>
               </td>
+              <td></td>
             </tr>
           </tbody>
         </table>
       </div>
 
+
       <style jsx>{`
-        .ff-wrap { width: 100%; }
-        .ff-table-wrap { border: 1px solid #E5E7EB; border-radius: 10px; overflow-x: auto; }
-        .ff-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 500px; }
-        .ff-table thead tr { background: #F9FAFB; }
-        .ff-table th { text-align: left; padding: 12px 14px; font-size: 12px; font-weight: 600; color: #6B7280; border-bottom: 1px solid #E5E7EB; }
-        .ff-table td { padding: 12px 14px; color: #111827; border-bottom: 1px solid #F3F4F6; }
-        .ff-empty { text-align: center; color: #9CA3AF; padding: 40px 0 !important; }
-        .ff-edit, .ff-delete { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 4px; margin-right: 6px; }
-        .ff-edit { color: #2E7D64; }
-        .ff-delete { color: #9CA3AF; }
-        .ff-delete:hover { color: #DC2626; background: #FEF2F2; }
-        .ff-select, .ff-input { width: 100%; padding: 8px 10px; border: 1px solid #E5E7EB; border-radius: 7px; font-size: 13px; }
-        .ff-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
-        .ff-add-btn { padding: 8px 16px; background: #1B4D3E; color: white; border: none; border-radius: 7px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
-        .ff-save-btn, .ff-cancel-btn { padding: 6px 10px; border-radius: 4px; margin-right: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
-        .ff-save-btn { background: #2E7D64; color: white; border: none; }
-        .ff-cancel-btn { background: #F3F4F6; color: #6B7280; border: none; }
+        .fg-wrap { width: 100%; }
+
+        .fg-desc-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 20px;
+        }
+
+        .fg-header-icon {
+          font-size: 20px;
+          color: #2E7D64;
+        }
+
+        .fg-desc {
+          font-size: 13px;
+          color: #6B7280;
+          margin: 0;
+        }
+        .fg-desc strong { color: #1B4D3E; }
+
+        .fg-table-wrap { border: 1px solid #E5E7EB; border-radius: 10px; overflow: hidden; }
+
+        .fg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .fg-table thead tr { background: #F9FAFB; }
+        .fg-table th {
+          text-align: left; padding: 11px 14px; font-size: 12px;
+          font-weight: 600; color: #6B7280; border-bottom: 1px solid #E5E7EB;
+        }
+        .fg-table td {
+          padding: 11px 14px; color: #111827;
+          border-bottom: 1px solid #F3F4F6; vertical-align: middle;
+        }
+        .fg-table tbody tr:last-child td { border-bottom: none; }
+        .fg-table tbody tr.row-deleting {
+          animation: fgFadeOut 220ms ease forwards;
+        }
+
+        .fg-empty { text-align: center; color: #9CA3AF; font-size: 13px; padding: 28px 0 !important; }
+
+        .fg-badge {
+          display: inline-block; padding: 2px 8px;
+          background: #F3F4F6; border-radius: 20px;
+          font-size: 12px; color: #374151;
+        }
+
+        .fg-qty { font-weight: 500; }
+        .fg-unit { font-size: 12px; color: #6B7280; }
+        .fg-preview { font-size: 13px; color: #6B7280; }
+
+        .fg-delete {
+          background: none; border: none; color: #9CA3AF;
+          cursor: pointer; padding: 4px; border-radius: 4px;
+          display: flex; align-items: center;
+        }
+        .fg-delete:hover { color: #DC2626; background: #FEF2F2; }
+        .fg-delete:disabled { opacity: 0.45; cursor: wait; }
+
+        .fg-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
+
+        .fg-select {
+          width: 100%; padding: 7px 10px; border: 1px solid #E5E7EB;
+          border-radius: 7px; font-size: 13px; background: white;
+          color: #374151; outline: none;
+        }
+        .fg-select:focus { border-color: #2E7D64; }
+
+        .fg-qty-input {
+          display: flex; align-items: center; border: 1px solid #E5E7EB;
+          border-radius: 7px; background: white; overflow: hidden;
+        }
+        .fg-qty-input:focus-within { border-color: #2E7D64; }
+
+        .fg-input {
+          flex: 1; border: none; outline: none; padding: 7px 10px;
+          font-size: 13px; background: transparent; min-width: 60px;
+        }
+
+        .fg-unit-tag {
+          padding: 0 10px; font-size: 12px; color: #6B7280;
+          background: #F3F4F6; border-left: 1px solid #E5E7EB;
+          display: flex; align-items: center; min-height: 33px; white-space: nowrap;
+        }
+
+        .fg-footer { display: flex; justify-content: flex-end; padding: 16px 0 0 0; margin-top: 16px; }
+        .fg-footer-right { display: flex; align-items: center; gap: 12px; }
+        .fg-add-btn-inline {
+          padding: 7px 14px; background: #1B4D3E; color: white;
+          border: none; border-radius: 7px; font-size: 13px;
+          font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
+        }
+        .fg-add-btn-inline:hover { background: #2E7D64; }
+                .fg-error { font-size: 13px; color: #DC2626; }
+
+        .fg-submit-btn {
+          display: flex; align-items: center; gap: 8px;
+          padding: 10px 20px; background: #1B4D3E; color: white;
+          border: none; border-radius: 8px; font-size: 14px;
+          font-weight: 500; cursor: pointer; transition: background 0.15s;
+        }
+        .fg-submit-btn:hover:not(:disabled) { background: #2E7D64; }
+        .fg-submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .fg-submit-btn.submitted { background: #059669; }
+
+        @media (max-width: 640px) {
+          .fg-table th:nth-child(2), .fg-table td:nth-child(2),
+          .fg-table th:nth-child(4), .fg-table td:nth-child(4) { display: none; }
+        }
+        @keyframes fgFadeOut {
+          0% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-4px); }
+        }
       `}</style>
     </div>
   );

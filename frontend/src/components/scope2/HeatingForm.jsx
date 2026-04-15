@@ -103,6 +103,9 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
     const deleted = (entries || []).find((entry) => entry.id === id);
     if (!deleted) return;
 
+    // Remove from UI immediately so local CRUD does not get blocked by backend mismatches.
+    onDelete(id);
+
     const effectiveMonth = deleted.month != null ? String(deleted.month) : "";
     const [year] = effectiveMonth.includes("-")
       ? effectiveMonth.split("-").map(Number)
@@ -118,9 +121,14 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
           consumptionKwh: Number(deleted.consumption || 0),
         },
       });
-      onDelete(id);
     } catch (error) {
-      console.error("Failed to delete heating entry:", error);
+      const message = String(error?.message || "");
+      const isNotFound =
+        message.includes("No matching Scope 2 entry found") ||
+        message.includes("Scope 2 data not found");
+      if (!isNotFound) {
+        console.error("Failed to delete heating entry:", error);
+      }
     }
   };
 
