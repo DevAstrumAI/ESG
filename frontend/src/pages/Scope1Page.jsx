@@ -13,6 +13,27 @@ import Scope1Summary from "../components/scope1/Scope1Summary";
 import Card from "../components/ui/Card";
 import { FiTruck, FiBriefcase, FiWind, FiAlertCircle, FiCalendar, FiArrowLeft, FiSave } from "react-icons/fi";
 
+const sendDebugLog = (location, message, data, runId, hypothesisId) => {
+  // #region agent log
+  fetch("http://127.0.0.1:7288/ingest/74551448-bb44-4f1e-95fd-b4ebb21dced5", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "bbca55",
+    },
+    body: JSON.stringify({
+      sessionId: "bbca55",
+      location,
+      message,
+      data,
+      runId,
+      hypothesisId,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+};
+
 export default function Scope1Page() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -243,6 +264,13 @@ export default function Scope1Page() {
   const progressPercent = steps.length > 1 ? (currentStep / (steps.length - 1)) * 100 : 100;
 
   if (!companyInitialized || companyLoading) {
+    sendDebugLog(
+      "Scope1Page.jsx:render:loadingCompany",
+      "Scope1 showing company loading state",
+      { companyInitialized, companyLoading },
+      "pre-fix",
+      "H4"
+    );
     return (
       <div className="scope1-page">
         <p style={{ color: "#6B7280", margin: 0 }}>Loading company setup...</p>
@@ -251,6 +279,13 @@ export default function Scope1Page() {
   }
 
   if (!hasCompanySetup) {
+    sendDebugLog(
+      "Scope1Page.jsx:render:noCompanySetup",
+      "Scope1 showing setup guidance state",
+      { companyInitialized, companyLoading, hasCompanySetup },
+      "pre-fix",
+      "H5"
+    );
     return (
       <div className="scope1-page">
         <div className="setup-banner">
@@ -279,16 +314,18 @@ export default function Scope1Page() {
           .setup-banner p { margin: 0; color: #92400E; }
           .setup-btn {
             margin-left: auto;
-            border: 1px solid #D97706;
-            background: #D97706;
+            padding: 7px 14px;
+            background: #1B4D3E;
             color: white;
-            border-radius: 8px;
-            padding: 10px 14px;
-            font-weight: 600;
+            border: none;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 500;
             cursor: pointer;
             white-space: nowrap;
+            transition: background 0.15s;
           }
-          .setup-btn:hover { background: #B45309; border-color: #B45309; }
+          .setup-btn:hover { background: #2E7D64; }
         `}</style>
       </div>
     );
