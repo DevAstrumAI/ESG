@@ -55,7 +55,16 @@ export const useCompanyStore = create((set, get) => ({
       const res = await fetch(`${API_URL}/api/companies/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error("Failed to fetch company");
+      if (!res.ok) {
+        sendDebugLog(
+          "companyStore.js:fetchCompany:nonOkResponse",
+          "Company endpoint returned non-OK response",
+          { status: res.status, statusText: res.statusText, apiUrl: API_URL },
+          "pre-fix",
+          "H6"
+        );
+        throw new Error("Failed to fetch company");
+      }
       const data = await res.json();
       sendDebugLog(
         "companyStore.js:fetchCompany:success",
