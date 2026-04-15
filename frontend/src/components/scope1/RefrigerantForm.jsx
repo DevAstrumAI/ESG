@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiWind, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiWind, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const REFRIGERANT_TYPES = [
@@ -26,6 +26,7 @@ const MONTHS = [
   "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
 ];
 
+
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -34,11 +35,17 @@ const currentMonth = () => {
 export default function RefrigerantForm({ onSubmitSuccess }) {
   const refrigerants    = useEmissionStore((s) => s.scope1Refrigerants);
   const addRefrigerant  = useEmissionStore((s) => s.addScope1Refrigerant);
+  const updateRefrigerant = useEmissionStore((s) => s.updateScope1Refrigerant);
   const deleteRefrigerant = useEmissionStore((s) => s.deleteScope1Refrigerant);
   const selectedYear  = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
   const [deletingIds, setDeletingIds] = useState(new Set());
-
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    refrigerantKey: "",
+    quantity: "",
+    month: "",
+  });
   const handleDeleteRefrigerant = async (id, month) => {
     if (deletingIds.has(id)) return;
     const deleted = refrigerants.find((r) => r.id === id);
@@ -90,6 +97,31 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
     setQuantity("");
     setMonth(currentMonth());
   };
+  const startEdit = (entry) => {
+    setEditingId(entry.id);
+    setEditValues({
+      refrigerantKey: entry.refrigerantKey,
+      quantity: entry.leakageKg,
+      month: entry.month || currentMonth(),
+    });
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({ refrigerantKey: "", quantity: "", month: "" });
+  };
+  const saveEdit = () => {
+    if (!editValues.refrigerantKey || editValues.quantity === "") return;
+    const selected = REFRIGERANT_TYPES.find((r) => r.key === editValues.refrigerantKey);
+    updateRefrigerant({
+      id: editingId,
+      refrigerantType: selected?.label || editValues.refrigerantKey,
+      refrigerantKey: editValues.refrigerantKey,
+      leakageKg: Number(editValues.quantity),
+      gwp: selected?.gwp || 0,
+      month: editValues.month,
+    });
+    cancelEdit();
+  };
 
   const co2ePreview = (leakageKg, gwp) =>
     ((leakageKg * gwp) / 1000).toFixed(3);
@@ -124,6 +156,39 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
               </tr>
             )}
             {refrigerants.map((r) => (
+              editingId === r.id ? (
+                <tr key={r.id}>
+                  <td>
+                    <select value={editValues.refrigerantKey} onChange={(ev) => setEditValues({ ...editValues, refrigerantKey: ev.target.value })} className="rf-select">
+                      <option value="">Select Refrigerant</option>
+                      {REFRIGERANT_TYPES.map((item) => <option key={item.key} value={item.key}>{item.label} (GWP: {item.gwp})</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <div className="rf-qty-input">
+                      <input type="number" value={editValues.quantity} onChange={(ev) => setEditValues({ ...editValues, quantity: ev.target.value })} className="rf-input" min="0" step="0.01" />
+                      <span className="rf-unit-tag">kg</span>
+                    </div>
+                  </td>
+                  <td><span className="rf-badge">{REFRIGERANT_TYPES.find((item) => item.key === editValues.refrigerantKey)?.gwp?.toLocaleString() || "—"}</span></td>
+                  <td>
+                    <span className="rf-co2e">
+                      {REFRIGERANT_TYPES.find((item) => item.key === editValues.refrigerantKey) && editValues.quantity
+                        ? co2ePreview(Number(editValues.quantity), REFRIGERANT_TYPES.find((item) => item.key === editValues.refrigerantKey).gwp)
+                        : "—"}
+                    </span>
+                  </td>
+                  <td>
+                    <select value={editValues.month} onChange={(ev) => setEditValues({ ...editValues, month: ev.target.value })} className="rf-select">
+                      {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <button className="rf-action-btn rf-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
+                    <button className="rf-action-btn rf-cancel-btn" onClick={cancelEdit}><FiX size={13} /></button>
+                  </td>
+                </tr>
+              ) : (
               <tr key={r.id} className={deletingIds.has(r.id) ? "row-deleting" : ""}>
                 <td>{r.refrigerantType}</td>
                 <td>
@@ -138,12 +203,15 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
                 </td>
                 <td>{r.month || "—"}</td>
                 <td>
+                  <button className="rf-edit" onClick={() => startEdit(r)} title="Edit">
+                    <FiEdit2 size={14} />
+                  </button>
                   <button className="rf-delete" onClick={() => handleDeleteRefrigerant(r.id, r.month)} disabled={deletingIds.has(r.id)} title="Remove">
                     <FiTrash2 size={14} />
                   </button>
                 </td>
               </tr>
-            ))}
+            )))}
 
             <tr className="rf-add-row">
               <td>
@@ -253,10 +321,20 @@ export default function RefrigerantForm({ onSubmitSuccess }) {
         .rf-delete {
           background: none; border: none; color: #9CA3AF;
           cursor: pointer; padding: 4px; border-radius: 4px;
-          display: flex; align-items: center;
+          display: inline-flex; align-items: center;
         }
         .rf-delete:hover { color: #DC2626; background: #FEF2F2; }
         .rf-delete:disabled { opacity: 0.45; cursor: wait; }
+        .rf-edit {
+          background: none; border: none; color: #2E7D64; cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          padding: 4px; border-radius: 4px; margin-right: 6px;
+        }
+        .rf-edit:hover { background: #E8F5F0; }
+        .rf-action-btn { border: none; cursor: pointer; padding: 5px 7px; border-radius: 4px; margin-right: 4px; }
+        .rf-save-btn { background: #2E7D64; color: white; }
+        .rf-cancel-btn { background: #F3F4F6; color: #6B7280; }
 
         .rf-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
 

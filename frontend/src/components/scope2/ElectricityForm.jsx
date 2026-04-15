@@ -20,6 +20,7 @@ const MONTHS = [
   "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
 ];
 
+
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -234,8 +235,8 @@ export default function ElectricityForm({ onSubmitSuccess }) {
         <table className="el-table">
           <thead>
             <tr>
-              <th>Consumption (kWh)</th>
               <th>Certificate Type</th>
+              <th>Consumption (kWh)</th>
               <th>Month</th>
               <th>Actions</th>
             </tr>
@@ -254,6 +255,17 @@ export default function ElectricityForm({ onSubmitSuccess }) {
               if (editingId === e.id) {
                 return (
                   <tr key={e.id} className="el-editing-row">
+                    <td className="el-certificate-cell">
+                      <select
+                        value={editValues.certificateKey}
+                        onChange={(e) => setEditValues({...editValues, certificateKey: e.target.value})}
+                        className="el-select"
+                      >
+                        {CERTIFICATE_TYPES.map(c => (
+                          <option key={c.key} value={c.key}>{c.label}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="el-consumption-cell">
                       <div className="el-qty-input" style={{ width: "120px" }}>
                         <input
@@ -266,17 +278,6 @@ export default function ElectricityForm({ onSubmitSuccess }) {
                         />
                         <span className="el-unit-tag">kWh</span>
                       </div>
-                    </td>
-                    <td className="el-certificate-cell">
-                      <select
-                        value={editValues.certificateKey}
-                        onChange={(e) => setEditValues({...editValues, certificateKey: e.target.value})}
-                        className="el-select"
-                      >
-                        {CERTIFICATE_TYPES.map(c => (
-                          <option key={c.key} value={c.key}>{c.label}</option>
-                        ))}
-                      </select>
                     </td>
                     <td className="el-month-cell">
                       <select
@@ -313,13 +314,13 @@ export default function ElectricityForm({ onSubmitSuccess }) {
               return (
                 <tr key={e.id}>
                   <td>
-                    <span className="el-qty">{e.consumption?.toLocaleString()}</span>
-                    <span className="el-unit"> kWh</span>
-                  </td>
-                  <td>
                     <span className="el-badge">
                       {e.certificateLabel || (e.certificateType === "grid_average" ? "Grid Average" : "Renewable Certificate")}
                     </span>
+                  </td>
+                  <td>
+                    <span className="el-qty">{e.consumption?.toLocaleString()}</span>
+                    <span className="el-unit"> kWh</span>
                   </td>
                   <td>{e.month || "—"}</td>
                   <td>
@@ -345,6 +346,17 @@ export default function ElectricityForm({ onSubmitSuccess }) {
             {/* Add Row */}
             <tr className="el-add-row">
               <td>
+                <select
+                  value={certificateKey}
+                  onChange={(e) => setCertificateKey(e.target.value)}
+                  className="el-select"
+                >
+                  {CERTIFICATE_TYPES.map((c) => (
+                    <option key={c.key} value={c.key}>{c.label}</option>
+                  ))}
+                </select>
+              </td>
+              <td>
                 <div className="el-qty-input">
                   <input
                     type="number"
@@ -356,17 +368,6 @@ export default function ElectricityForm({ onSubmitSuccess }) {
                   />
                   <span className="el-unit-tag">kWh</span>
                 </div>
-              </td>
-              <td>
-                <select
-                  value={certificateKey}
-                  onChange={(e) => setCertificateKey(e.target.value)}
-                  className="el-select"
-                >
-                  {CERTIFICATE_TYPES.map((c) => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
-                  ))}
-                </select>
               </td>
               <td>
                 <select

@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiTruck } from "react-icons/fi";
+import { FiTrash2, FiTruck, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const DISTANCE_BASED_TYPES = new Set([
@@ -55,7 +55,13 @@ export default function VehicleTable({ onSubmitSuccess }) {
   const selectedYear  = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
   const [deletingIds, setDeletingIds] = useState(new Set());
-
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    vehicleType: "",
+    fuelType: "",
+    quantity: "",
+    month: "",
+  });
   const handleDeleteVehicle = async (id, month) => {
     if (deletingIds.has(id)) return;
     const deleted = vehicles.find((v) => v.id === id);
@@ -99,6 +105,39 @@ export default function VehicleTable({ onSubmitSuccess }) {
     ? mapVehicleFuelType(vehicleType, fuelType)
     : "";
   const useDistance = DISTANCE_BASED_TYPES.has(mappedFuelType);
+
+  const startEdit = (entry) => {
+    const existingFuel = FUEL_OPTIONS.includes(entry.fuelType) ? entry.fuelType : "Diesel";
+    const rowFuelType = mapVehicleFuelType(entry.vehicleType, existingFuel);
+    const rowUsesDistance = DISTANCE_BASED_TYPES.has(rowFuelType);
+    setEditingId(entry.id);
+    setEditValues({
+      vehicleType: entry.vehicleType,
+      fuelType: existingFuel,
+      quantity: rowUsesDistance ? Number(entry.km || 0) : Number(entry.litres || 0),
+      month: entry.month || currentMonth(),
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({ vehicleType: "", fuelType: "", quantity: "", month: "" });
+  };
+
+  const saveEdit = () => {
+    if (!editValues.vehicleType || !editValues.fuelType || editValues.quantity === "") return;
+    const fuelKey = mapVehicleFuelType(editValues.vehicleType, editValues.fuelType);
+    const rowUsesDistance = DISTANCE_BASED_TYPES.has(fuelKey);
+    useEmissionStore.getState().updateScope1Vehicle({
+      id: editingId,
+      vehicleType: editValues.vehicleType,
+      fuelType: editValues.fuelType,
+      km: rowUsesDistance ? Number(editValues.quantity) : 0,
+      litres: rowUsesDistance ? 0 : Number(editValues.quantity),
+      month: editValues.month,
+    });
+    cancelEdit();
+  };
 
   const handleAddRow = () => {
     if (!vehicleType || !fuelType || quantity === "") return;
@@ -146,6 +185,41 @@ export default function VehicleTable({ onSubmitSuccess }) {
             )}
 
             {vehicles.map((v) => {
+              if (editingId === v.id) {
+                const editFuelType = mapVehicleFuelType(editValues.vehicleType, editValues.fuelType);
+                const editUsesDistance = DISTANCE_BASED_TYPES.has(editFuelType);
+                return (
+                  <tr key={v.id}>
+                    <td>
+                      <select value={editValues.vehicleType} onChange={(e) => setEditValues({ ...editValues, vehicleType: e.target.value })} className="vt-select">
+                        <option value="">Vehicle Type</option>
+                        {VEHICLE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select value={editValues.fuelType} onChange={(e) => setEditValues({ ...editValues, fuelType: e.target.value })} className="vt-select">
+                        <option value="">Fuel Type</option>
+                        {FUEL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <div className="vt-qty-input">
+                        <input type="number" value={editValues.quantity} onChange={(e) => setEditValues({ ...editValues, quantity: e.target.value })} className="vt-input" min="0" />
+                        <span className="vt-unit-tag">{editUsesDistance ? "km" : "L"}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <select value={editValues.month} onChange={(e) => setEditValues({ ...editValues, month: e.target.value })} className="vt-select">
+                        {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <button className="vt-action-btn vt-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
+                      <button className="vt-action-btn vt-cancel-btn" onClick={cancelEdit}><FiX size={13} /></button>
+                    </td>
+                  </tr>
+                );
+              }
               const ft = mapVehicleFuelType(v.vehicleType, v.fuelType);
               const isDistRow = DISTANCE_BASED_TYPES.has(ft);
               const qty  = isDistRow ? v.km : v.litres;
@@ -160,6 +234,9 @@ export default function VehicleTable({ onSubmitSuccess }) {
                   </td>
                   <td>{v.month || "—"}</td>
                   <td>
+                    <button className="vt-edit" onClick={() => startEdit(v)} title="Edit">
+                      <FiEdit2 size={14} />
+                    </button>
                     <button
                       className="vt-delete"
                       onClick={() => handleDeleteVehicle(v.id, v.month)}
@@ -303,11 +380,32 @@ export default function VehicleTable({ onSubmitSuccess }) {
           cursor: pointer;
           padding: 4px;
           border-radius: 4px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
         }
         .vt-delete:hover { color: #DC2626; background: #FEF2F2; }
         .vt-delete:disabled { opacity: 0.45; cursor: wait; }
+        .vt-edit {
+          background: none;
+          border: none;
+          color: #2E7D64;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          margin-right: 6px;
+        }
+        .vt-edit:hover { background: #E8F5F0; }
+        .vt-action-btn {
+          border: none;
+          cursor: pointer;
+          padding: 5px 7px;
+          border-radius: 4px;
+          margin-right: 4px;
+        }
+        .vt-save-btn { background: #2E7D64; color: white; }
+        .vt-cancel-btn { background: #F3F4F6; color: #6B7280; }
 
         .vt-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
 

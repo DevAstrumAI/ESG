@@ -25,7 +25,7 @@ export default function Scope2Summary() {
   } : {
     // Live estimates before submission
     electricityLocation: electricity.reduce((sum, e) => {
-      const factor = 0.428;
+      const factor = e.certificateType === "grid_average" ? 0.428 : 0;
       return sum + (Number(e.consumption) * factor);
     }, 0),
     electricityMarket: electricity.reduce((sum, e) => {

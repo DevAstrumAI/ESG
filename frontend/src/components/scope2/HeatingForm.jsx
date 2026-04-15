@@ -1,7 +1,7 @@
 // src/components/scope2/HeatingForm.jsx
 import React, { useState, useEffect } from "react";
 import { useCompanyStore } from "../../store/companyStore";
-import { FiTrash2, FiSend, FiThermometer } from "react-icons/fi";
+import { FiTrash2, FiThermometer, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useEmissionStore } from "../../store/emissionStore";
 import { emissionsAPI } from "../../services/api";
@@ -52,6 +52,7 @@ const MONTHS = [
   "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
 ];
 
+
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -71,12 +72,18 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
   const [consumption, setConsumption] = useState("");
   const [month, setMonth] = useState(currentMonth());
   const [isLoading, setIsLoading] = useState(false);
+  const updateHeating = useEmissionStore((s) => s.updateScope2Heating);
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    energyType: "",
+    consumption: "",
+    month: "",
+  });
   
   // ✅ TC-020: Reset default when country changes
   useEffect(() => {
     setEnergyType(getDefaultHeatingType(country));
   }, [country]);
-
   const handleAddRow = async () => {
     if (!energyType || !consumption || Number(consumption) <= 0) {
       alert("Please fill in all fields");
@@ -131,6 +138,29 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
       }
     }
   };
+  const startEdit = (entry) => {
+    setEditingId(entry.id);
+    setEditValues({
+      energyType: entry.energyType,
+      consumption: entry.consumption,
+      month: entry.month || currentMonth(),
+    });
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({ energyType: "", consumption: "", month: "" });
+  };
+  const saveEdit = () => {
+    if (!editValues.energyType || !editValues.consumption || Number(editValues.consumption) <= 0) return;
+    updateHeating({
+      id: editingId,
+      energyType: editValues.energyType,
+      energyTypeLabel: heatingOptions.find((opt) => opt.key === editValues.energyType)?.label,
+      consumption: Number(editValues.consumption),
+      month: editValues.month,
+    });
+    cancelEdit();
+  };
 
   return (
     <div className="ht-wrap">
@@ -161,6 +191,34 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
             )}
             
             {entries && entries.map((entry) => (
+              editingId === entry.id ? (
+                <tr key={entry.id}>
+                  <td>
+                    <select value={editValues.energyType} onChange={(e) => setEditValues({ ...editValues, energyType: e.target.value })} className="ht-select">
+                      {heatingOptions.map((opt) => (
+                        <option key={opt.key} value={opt.key}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <div className="ht-qty-input">
+                      <input type="number" value={editValues.consumption} onChange={(e) => setEditValues({ ...editValues, consumption: e.target.value })} className="ht-input" min="0" />
+                      <span className="ht-unit-tag">kWh</span>
+                    </div>
+                  </td>
+                  <td>
+                    <select value={editValues.month} onChange={(e) => setEditValues({ ...editValues, month: e.target.value })} className="ht-select">
+                      {MONTHS.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <button className="ht-action-btn ht-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
+                    <button className="ht-action-btn ht-cancel-btn" onClick={cancelEdit}><FiX size={13} /></button>
+                  </td>
+                </tr>
+              ) : (
               <tr key={entry.id}>
                 <td>
                   <span className="ht-badge">{entry.energyTypeLabel || entry.energyType}</span>
@@ -171,6 +229,9 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
                 </td>
                 <td>{entry.month || "—"}</td>
                 <td>
+                  <button className="ht-edit" onClick={() => startEdit(entry)} title="Edit">
+                    <FiEdit2 size={14} />
+                  </button>
                   <button
                     className="ht-delete"
                     onClick={() => handleDelete(entry.id)}
@@ -181,7 +242,7 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
                   </button>
                 </td>
               </tr>
-            ))}
+            )))}
 
             {/* Add Row */}
             <tr className="ht-add-row">
@@ -312,10 +373,25 @@ export default function HeatingForm({ entries, onAdd, onDelete }) {
           cursor: pointer;
           padding: 4px;
           border-radius: 4px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
         }
         .ht-delete:hover { color: #DC2626; background: #FEF2F2; }
+        .ht-edit {
+          background: none;
+          border: none;
+          color: #2E7D64;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          margin-right: 6px;
+        }
+        .ht-edit:hover { background: #E8F5F0; }
+        .ht-action-btn { border: none; cursor: pointer; padding: 5px 7px; border-radius: 4px; margin-right: 4px; }
+        .ht-save-btn { background: #2E7D64; color: white; }
+        .ht-cancel-btn { background: #F3F4F6; color: #6B7280; }
 
         .ht-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
 

@@ -111,6 +111,12 @@ export const useEmissionStore = create((set, get) => ({
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
       }] 
     })),
+  updateScope1Stationary: (updatedEntry) =>
+    set((state) => ({
+      scope1Stationary: state.scope1Stationary.map((entry) =>
+        entry.id === updatedEntry.id ? { ...entry, ...updatedEntry } : entry
+      ),
+    })),
 
   addScope1Refrigerant: (entry) =>
     set((state) => ({ 
@@ -119,6 +125,12 @@ export const useEmissionStore = create((set, get) => ({
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
       }] 
     })),
+  updateScope1Refrigerant: (updatedEntry) =>
+    set((state) => ({
+      scope1Refrigerants: state.scope1Refrigerants.map((entry) =>
+        entry.id === updatedEntry.id ? { ...entry, ...updatedEntry } : entry
+      ),
+    })),
 
   addScope1Fugitive: (entry) =>
     set((state) => ({ 
@@ -126,6 +138,12 @@ export const useEmissionStore = create((set, get) => ({
         ...entry, 
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
       }] 
+    })),
+  updateScope1Fugitive: (updatedEntry) =>
+    set((state) => ({
+      scope1Fugitive: state.scope1Fugitive.map((entry) =>
+        entry.id === updatedEntry.id ? { ...entry, ...updatedEntry } : entry
+      ),
     })),
 
   // Local deletes used by Scope 1 UI components
@@ -157,6 +175,12 @@ export const useEmissionStore = create((set, get) => ({
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
       }] 
     })),
+  updateScope2Electricity: (updatedEntry) =>
+    set((state) => ({
+      scope2Electricity: state.scope2Electricity.map((entry) =>
+        entry.id === updatedEntry.id ? { ...entry, ...updatedEntry } : entry
+      ),
+    })),
 
   addScope2Heating: (entry) =>
     set((state) => ({ 
@@ -165,6 +189,12 @@ export const useEmissionStore = create((set, get) => ({
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
       }] 
     })),
+  updateScope2Heating: (updatedEntry) =>
+    set((state) => ({
+      scope2Heating: state.scope2Heating.map((entry) =>
+        entry.id === updatedEntry.id ? { ...entry, ...updatedEntry } : entry
+      ),
+    })),
 
   addScope2Renewable: (entry) =>
     set((state) => ({ 
@@ -172,6 +202,12 @@ export const useEmissionStore = create((set, get) => ({
         ...entry, 
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` 
       }] 
+    })),
+  updateScope2Renewable: (updatedEntry) =>
+    set((state) => ({
+      scope2Renewable: state.scope2Renewable.map((entry) =>
+        entry.id === updatedEntry.id ? { ...entry, ...updatedEntry } : entry
+      ),
     })),
 
   // Local deletes used by Scope 2 UI components

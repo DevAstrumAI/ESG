@@ -3,26 +3,6 @@ import { create } from 'zustand';
 import { companyAPI } from '../services/api';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const sendDebugLog = (location, message, data, runId, hypothesisId) => {
-  // #region agent log
-  fetch("http://127.0.0.1:7288/ingest/74551448-bb44-4f1e-95fd-b4ebb21dced5", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "bbca55",
-    },
-    body: JSON.stringify({
-      sessionId: "bbca55",
-      location,
-      message,
-      data,
-      runId,
-      hypothesisId,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-};
 
 export const useCompanyStore = create((set, get) => ({
   company: null,
@@ -39,13 +19,6 @@ export const useCompanyStore = create((set, get) => ({
 
     // Return cached data unless forced or stale
     if (!force && company && lastFetchedAt && Date.now() - lastFetchedAt < STALE_MS) {
-      sendDebugLog(
-        "companyStore.js:fetchCompany:cacheHit",
-        "Using cached company data",
-        { ageMs: Date.now() - lastFetchedAt },
-        "pre-fix",
-        "H2"
-      );
       return { success: true, company: company };
     }
 
@@ -56,27 +29,9 @@ export const useCompanyStore = create((set, get) => ({
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        sendDebugLog(
-          "companyStore.js:fetchCompany:nonOkResponse",
-          "Company endpoint returned non-OK response",
-          { status: res.status, statusText: res.statusText, apiUrl: API_URL },
-          "pre-fix",
-          "H6"
-        );
         throw new Error("Failed to fetch company");
       }
       const data = await res.json();
-      sendDebugLog(
-        "companyStore.js:fetchCompany:success",
-        "Fetched company data",
-        {
-          durationMs: Date.now() - fetchStart,
-          hasBasicName: Boolean(data.company?.basicInfo?.name),
-          locationsCount: Array.isArray(data.company?.locations) ? data.company.locations.length : 0,
-        },
-        "pre-fix",
-        "H3"
-      );
       set({ 
         company: data.company, 
         targets: data.company?.targets || null,
@@ -87,13 +42,6 @@ export const useCompanyStore = create((set, get) => ({
       });
       return { success: true, company: data.company };
     } catch (e) {
-      sendDebugLog(
-        "companyStore.js:fetchCompany:error",
-        "Fetch company failed and initialized fallback applied",
-        { durationMs: Date.now() - fetchStart, errorMessage: e.message || "unknown" },
-        "pre-fix",
-        "H1"
-      );
       set({ loading: false, error: e.message, isInitialized: true });
       return { success: false, error: e.message };
     }

@@ -44,7 +44,6 @@ export default function FacilitiesList({ locations }) {
                 <tr>
                   <th>City</th>
                   <th>Country</th>
-                  <th>Status</th>
                   </tr>
                 </thead>
               <tbody>
@@ -148,7 +147,12 @@ export default function FacilitiesList({ locations }) {
           width: 100%;
           border-collapse: collapse;
           font-size: 14px;
+          table-layout: fixed;
         }
+        .facilities-table th:first-child,
+        .facilities-table td:first-child { width: 55%; }
+        .facilities-table th:last-child,
+        .facilities-table td:last-child { width: 45%; }
 
         .facilities-table th {
           text-align: left;

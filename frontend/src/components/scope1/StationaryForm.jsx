@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiBriefcase, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiBriefcase, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const EQUIPMENT_TYPES = [
@@ -33,6 +33,7 @@ const MONTHS = [
   "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
 ];
 
+
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -41,11 +42,18 @@ const currentMonth = () => {
 export default function StationaryForm({ onSubmitSuccess }) {
   const entries        = useEmissionStore((s) => s.scope1Stationary);
   const addStationary  = useEmissionStore((s) => s.addScope1Stationary);
+  const updateStationary = useEmissionStore((s) => s.updateScope1Stationary);
   const deleteStationary = useEmissionStore((s) => s.deleteScope1Stationary);
   const selectedYear  = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
   const [deletingIds, setDeletingIds] = useState(new Set());
-
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    equipment: "",
+    fuelKey: "",
+    quantity: "",
+    month: "",
+  });
   const handleDeleteStationary = async (id, month) => {
     if (deletingIds.has(id)) return;
     const deleted = entries.find((e) => e.id === id);
@@ -100,6 +108,33 @@ export default function StationaryForm({ onSubmitSuccess }) {
     setQuantity("");
     setMonth(currentMonth());
   };
+  const startEdit = (entry) => {
+    setEditingId(entry.id);
+    setEditValues({
+      equipment: entry.equipment,
+      fuelKey: entry.fuelType,
+      quantity: entry.consumption,
+      month: entry.month || currentMonth(),
+    });
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({ equipment: "", fuelKey: "", quantity: "", month: "" });
+  };
+  const saveEdit = () => {
+    if (!editValues.equipment || !editValues.fuelKey || editValues.quantity === "") return;
+    const fuel = FUEL_TYPES.find((f) => f.key === editValues.fuelKey);
+    updateStationary({
+      id: editingId,
+      equipment: editValues.equipment,
+      fuel: fuel?.label || editValues.fuelKey,
+      fuelType: editValues.fuelKey,
+      consumption: Number(editValues.quantity),
+      unit: fuel?.unit || "",
+      month: editValues.month,
+    });
+    cancelEdit();
+  };
 
   return (
     <div className="sf-wrap">
@@ -130,6 +165,37 @@ export default function StationaryForm({ onSubmitSuccess }) {
               </tr>
             )}
             {entries.map((e) => (
+              editingId === e.id ? (
+                <tr key={e.id}>
+                  <td>
+                    <select value={editValues.equipment} onChange={(ev) => setEditValues({ ...editValues, equipment: ev.target.value })} className="sf-select">
+                      <option value="">Equipment Type</option>
+                      {EQUIPMENT_TYPES.map((et) => <option key={et} value={et}>{et}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <select value={editValues.fuelKey} onChange={(ev) => setEditValues({ ...editValues, fuelKey: ev.target.value })} className="sf-select">
+                      <option value="">Fuel Type</option>
+                      {FUEL_TYPES.map((f) => <option key={f.key + f.label} value={f.key}>{f.label}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <div className="sf-qty-input">
+                      <input type="number" value={editValues.quantity} onChange={(ev) => setEditValues({ ...editValues, quantity: ev.target.value })} className="sf-input" min="0" />
+                      <span className="sf-unit-tag">{FUEL_TYPES.find((f) => f.key === editValues.fuelKey)?.unit || "—"}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <select value={editValues.month} onChange={(ev) => setEditValues({ ...editValues, month: ev.target.value })} className="sf-select">
+                      {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <button className="sf-action-btn sf-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
+                    <button className="sf-action-btn sf-cancel-btn" onClick={cancelEdit}><FiX size={13} /></button>
+                  </td>
+                </tr>
+              ) : (
               <tr key={e.id} className={deletingIds.has(e.id) ? "row-deleting" : ""}>
                 <td>{e.equipment}</td>
                 <td>{e.fuel}</td>
@@ -139,6 +205,9 @@ export default function StationaryForm({ onSubmitSuccess }) {
                 </td>
                 <td>{e.month || "—"}</td>
                 <td>
+                  <button className="sf-edit" onClick={() => startEdit(e)} title="Edit">
+                    <FiEdit2 size={14} />
+                  </button>
                   <button
                     className="sf-delete"
                     onClick={() => handleDeleteStationary(e.id, e.month)}
@@ -149,7 +218,7 @@ export default function StationaryForm({ onSubmitSuccess }) {
                   </button>
                 </td>
               </tr>
-            ))}
+            )))}
 
             <tr className="sf-add-row">
               <td>
@@ -288,11 +357,26 @@ export default function StationaryForm({ onSubmitSuccess }) {
           cursor: pointer;
           padding: 4px;
           border-radius: 4px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
         }
         .sf-delete:hover { color: #DC2626; background: #FEF2F2; }
         .sf-delete:disabled { opacity: 0.45; cursor: wait; }
+        .sf-edit {
+          background: none;
+          border: none;
+          color: #2E7D64;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          margin-right: 6px;
+        }
+        .sf-edit:hover { background: #E8F5F0; }
+        .sf-action-btn { border: none; cursor: pointer; padding: 5px 7px; border-radius: 4px; margin-right: 4px; }
+        .sf-save-btn { background: #2E7D64; color: white; }
+        .sf-cancel-btn { background: #F3F4F6; color: #6B7280; }
 
         .sf-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
 

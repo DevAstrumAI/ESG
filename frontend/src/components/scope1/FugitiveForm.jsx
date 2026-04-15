@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiAlertCircle, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiAlertCircle, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 
 const SOURCE_TYPES = [
@@ -29,6 +29,7 @@ const MONTHS = [
   "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
 ];
 
+
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -37,11 +38,17 @@ const currentMonth = () => {
 export default function FugitiveForm({ onSubmitSuccess }) {
   const fugitives    = useEmissionStore((s) => s.scope1Fugitive);
   const addFugitive  = useEmissionStore((s) => s.addScope1Fugitive);
+  const updateFugitive = useEmissionStore((s) => s.updateScope1Fugitive);
   const deleteFugitive = useEmissionStore((s) => s.deleteScope1Fugitive);
   const selectedYear = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
   const [deletingIds, setDeletingIds] = useState(new Set());
-
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    source: "",
+    quantity: "",
+    month: "",
+  });
   const handleDeleteFugitive = async (id, month) => {
     if (deletingIds.has(id)) return;
     const deleted = fugitives.find((f) => f.id === id);
@@ -93,6 +100,31 @@ export default function FugitiveForm({ onSubmitSuccess }) {
     setQuantity("");
     setMonth(currentMonth());
   };
+  const startEdit = (entry) => {
+    setEditingId(entry.id);
+    setEditValues({
+      source: entry.source,
+      quantity: entry.emissionKg,
+      month: entry.month || currentMonth(),
+    });
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({ source: "", quantity: "", month: "" });
+  };
+  const saveEdit = () => {
+    if (!editValues.source || editValues.quantity === "") return;
+    const selected = SOURCE_TYPES.find((item) => item.label === editValues.source);
+    updateFugitive({
+      id: editingId,
+      source: editValues.source,
+      sourceType: selected?.key || "methane",
+      emissionKg: Number(editValues.quantity),
+      amount: Number(editValues.quantity),
+      month: editValues.month,
+    });
+    cancelEdit();
+  };
 
   return (
     <div className="fg-wrap">
@@ -123,6 +155,36 @@ export default function FugitiveForm({ onSubmitSuccess }) {
               </tr>
             )}
             {fugitives.map((f) => (
+              editingId === f.id ? (
+                <tr key={f.id}>
+                  <td>
+                    <select value={editValues.source} onChange={(ev) => setEditValues({ ...editValues, source: ev.target.value })} className="fg-select">
+                      <option value="">Select Source</option>
+                      {SOURCE_TYPES.map((s) => <option key={s.label} value={s.label}>{s.label}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <span className="fg-preview">
+                      {SOURCE_TYPES.find((s) => s.label === editValues.source)?.key || "—"}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="fg-qty-input">
+                      <input type="number" value={editValues.quantity} onChange={(ev) => setEditValues({ ...editValues, quantity: ev.target.value })} className="fg-input" min="0" step="0.01" />
+                      <span className="fg-unit-tag">kg</span>
+                    </div>
+                  </td>
+                  <td>
+                    <select value={editValues.month} onChange={(ev) => setEditValues({ ...editValues, month: ev.target.value })} className="fg-select">
+                      {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <button className="fg-action-btn fg-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
+                    <button className="fg-action-btn fg-cancel-btn" onClick={cancelEdit}><FiX size={13} /></button>
+                  </td>
+                </tr>
+              ) : (
               <tr key={f.id} className={deletingIds.has(f.id) ? "row-deleting" : ""}>
                 <td>{f.source}</td>
                 <td>
@@ -134,12 +196,15 @@ export default function FugitiveForm({ onSubmitSuccess }) {
                 </td>
                 <td>{f.month || "—"}</td>
                 <td>
+                  <button className="fg-edit" onClick={() => startEdit(f)} title="Edit">
+                    <FiEdit2 size={14} />
+                  </button>
                   <button className="fg-delete" onClick={() => handleDeleteFugitive(f.id, f.month)} disabled={deletingIds.has(f.id)} title="Remove">
                     <FiTrash2 size={14} />
                   </button>
                 </td>
               </tr>
-            ))}
+            )))}
 
             <tr className="fg-add-row">
               <td>
@@ -240,10 +305,20 @@ export default function FugitiveForm({ onSubmitSuccess }) {
         .fg-delete {
           background: none; border: none; color: #9CA3AF;
           cursor: pointer; padding: 4px; border-radius: 4px;
-          display: flex; align-items: center;
+          display: inline-flex; align-items: center;
         }
         .fg-delete:hover { color: #DC2626; background: #FEF2F2; }
         .fg-delete:disabled { opacity: 0.45; cursor: wait; }
+        .fg-edit {
+          background: none; border: none; color: #2E7D64; cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          padding: 4px; border-radius: 4px; margin-right: 6px;
+        }
+        .fg-edit:hover { background: #E8F5F0; }
+        .fg-action-btn { border: none; cursor: pointer; padding: 5px 7px; border-radius: 4px; margin-right: 4px; }
+        .fg-save-btn { background: #2E7D64; color: white; }
+        .fg-cancel-btn { background: #F3F4F6; color: #6B7280; }
 
         .fg-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
 

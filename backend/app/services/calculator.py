@@ -249,9 +249,12 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
         method = entry.get("method", "location")
         certificate_type = entry.get("certificateType", "")
 
-        # Location-based always uses the grid average factor
+        # For market-based entries backed by renewable certificates, apply zero factor.
+        # This aligns app behavior with the UX expectation that certified market entries emit 0.
         location_factor_data = electricity_factors.get("grid_average", {})
         location_factor_value = float(location_factor_data.get("value", 0))
+        if method == "market" and certificate_type and certificate_type != "grid_average":
+            location_factor_value = 0.0
         location_kg_co2e = consumption_kwh * location_factor_value
 
         # Market-based logic:
