@@ -369,6 +369,8 @@ export default function DashboardPage() {
   
   const locationBasedKg = scope2Kg;
   const marketBasedKg = scope2Results?.marketBasedKgCO2e || 0;
+  const scope2DeltaKg = Math.max(locationBasedKg - marketBasedKg, 0);
+  const scope2DeltaPct = locationBasedKg > 0 ? (scope2DeltaKg / locationBasedKg) * 100 : 0;
 
   const scope1Breakdown = [
     { 
@@ -626,6 +628,52 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+      </Card>
+
+      <Card className="scope2-delta-card">
+        <div className="scope2-delta-header">
+          <h3>Scope 2 Delta</h3>
+          <p>Location-based vs market-based emissions and reduction opportunity</p>
+        </div>
+
+        <div className="scope2-delta-values">
+          <div className="scope2-delta-primary">
+            {locationBasedKg > 0 ? (locationBasedKg / 1000).toFixed(2) : "0.00"}
+            <span className="scope2-delta-unit"> tCO₂e</span>
+          </div>
+          <div className="scope2-delta-primary-label">Location-based total</div>
+
+          <div className="scope2-delta-secondary">
+            Market-based: <strong>{(marketBasedKg / 1000).toFixed(2)} tCO₂e</strong>
+          </div>
+        </div>
+
+        <div className={`scope2-gap-callout ${scope2DeltaKg > 0 ? "positive" : "neutral"}`}>
+          {scope2DeltaKg > 0 ? (
+            <>
+              <span>Reduction opportunity:</span>
+              <strong>
+                {(scope2DeltaKg / 1000).toFixed(2)} tCO₂e ({scope2DeltaPct.toFixed(1)}%)
+              </strong>
+            </>
+          ) : (
+            <>
+              <span>Reduction opportunity:</span>
+              <strong>0.00 tCO₂e (0.0%)</strong>
+            </>
+          )}
+        </div>
+
+        <div className="scope2-delta-actions">
+          <button
+            type="button"
+            className="set-target-btn"
+            onClick={() => navigate("/guide")}
+          >
+            Learn how
+          </button>
+          <span>REC/PPA explanation</span>
+        </div>
       </Card>
 
       {/* Summary KPI Strip */}
@@ -1479,6 +1527,81 @@ export default function DashboardPage() {
         }
         .swatch.red { background: #FEE2E2; }
         .swatch.green { background: #D1FAE5; }
+        .scope2-delta-card {
+          background: white;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 24px;
+        }
+        .scope2-delta-header h3 {
+          margin: 0 0 6px 0;
+          font-size: 18px;
+          color: #1B4D3E;
+        }
+        .scope2-delta-header p {
+          margin: 0 0 14px 0;
+          font-size: 13px;
+          color: #6B7280;
+        }
+        .scope2-delta-values {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 14px;
+          background: #FBFCFD;
+        }
+        .scope2-delta-primary {
+          font-size: 36px;
+          line-height: 1.1;
+          font-weight: 700;
+          color: #1B4D3E;
+        }
+        .scope2-delta-unit {
+          font-size: 14px;
+          color: #6B7280;
+          margin-left: 4px;
+          font-weight: 500;
+        }
+        .scope2-delta-primary-label {
+          margin-top: 6px;
+          font-size: 12px;
+          color: #6B7280;
+        }
+        .scope2-delta-secondary {
+          margin-top: 10px;
+          font-size: 14px;
+          color: #374151;
+        }
+        .scope2-gap-callout {
+          margin-top: 12px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          border-radius: 8px;
+          padding: 10px 12px;
+          border: 1px solid #E5E7EB;
+          font-size: 13px;
+          color: #4B5563;
+          flex-wrap: wrap;
+        }
+        .scope2-gap-callout.positive {
+          background: #ECFDF5;
+          border-color: #A7F3D0;
+        }
+        .scope2-gap-callout.neutral {
+          background: #F9FAFB;
+          border-color: #E5E7EB;
+        }
+        .scope2-delta-actions {
+          margin-top: 12px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          font-size: 12px;
+          color: #6B7280;
+        }
 
         .total-emissions-card {
           background: white;
