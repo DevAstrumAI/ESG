@@ -95,10 +95,11 @@ export default function DashboardPage() {
   }, [token, fetchSummary, selectedYear, initialLoadDone]);
 
   useEffect(() => {
-    const currentYear = new Date().getFullYear();
+    const now = new Date();
+    const currentFiscalStartYear = now.getMonth() + 1 >= 6 ? now.getFullYear() : now.getFullYear() - 1;
     const years = [];
     for (let i = 0; i <= 5; i++) {
-      years.push(currentYear - i);
+      years.push(currentFiscalStartYear - i);
     }
     setAvailableYears(years);
   }, []);
@@ -303,9 +304,20 @@ export default function DashboardPage() {
   const quarterlyMilestoneT = annualBudgetT > 0 ? annualBudgetT / 4 : 0;
   const monthlyMilestoneT = annualBudgetT > 0 ? annualBudgetT / 12 : 0;
 
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const monthlyActualT = monthNames.map((_, idx) => {
-    const monthKey = `${selectedYear}-${String(idx + 1).padStart(2, "0")}`;
+  const fiscalMonths = Array.from({ length: 12 }, (_, idx) => {
+    const monthNum = ((5 + idx) % 12) + 1; // Jun..May
+    const yearNum = monthNum >= 6 ? selectedYear : selectedYear + 1;
+    const monthKey = `${yearNum}-${String(monthNum).padStart(2, "0")}`;
+    return {
+      label: new Date(yearNum, monthNum - 1, 1).toLocaleString("en-US", { month: "short" }),
+      monthKey,
+      yearNum,
+      monthNum,
+    };
+  });
+  const monthNames = fiscalMonths.map((m) => m.label);
+  const monthlyActualT = fiscalMonths.map((m) => {
+    const monthKey = m.monthKey;
     const point = monthlySeries.find((m) => String(m.month).slice(0, 7) === monthKey);
     return (Number(point?.total_kg || 0) / 1000);
   });
@@ -441,13 +453,13 @@ export default function DashboardPage() {
   const marketBasedKg = scope2Results?.marketBasedKgCO2e || 0;
   const scope2DeltaKg = Math.max(locationBasedKg - marketBasedKg, 0);
   const scope2DeltaPct = locationBasedKg > 0 ? (scope2DeltaKg / locationBasedKg) * 100 : 0;
-  const scope2SparklineData = monthNames.map((name, idx) => {
-    const monthKey = `${selectedYear}-${String(idx + 1).padStart(2, "0")}`;
+  const scope2SparklineData = fiscalMonths.map((m) => {
+    const monthKey = m.monthKey;
     const monthRow = scope2MonthlyBreakdown.find((row) => row?.month === monthKey) || {};
     const locationT = Number(monthRow?.electricityLocationKg || 0) / 1000;
     const marketT = Number(monthRow?.electricityMarketKg || 0) / 1000;
     return {
-      month: name,
+      month: m.label,
       locationT,
       marketT,
       benefitT: Math.max(locationT - marketT, 0),
@@ -471,8 +483,11 @@ export default function DashboardPage() {
     .filter(Boolean);
   const scope2SparklineBenefitT = scope2SparklineData.reduce((sum, row) => sum + (row.benefitT || 0), 0);
   const today = new Date();
-  const currentMonthIndex = selectedYear === today.getFullYear() ? today.getMonth() : 11;
-  const currentMonthKey = `${selectedYear}-${String(currentMonthIndex + 1).padStart(2, "0")}`;
+  const todayMonth = today.getMonth() + 1;
+  const todayFiscalStartYear = todayMonth >= 6 ? today.getFullYear() : today.getFullYear() - 1;
+  const currentMonthIndex = selectedYear === todayFiscalStartYear ? fiscalMonths.findIndex((m) => m.monthKey === `${today.getFullYear()}-${String(todayMonth).padStart(2, "0")}`) : 11;
+  const safeCurrentMonthIndex = currentMonthIndex >= 0 ? currentMonthIndex : 11;
+  const currentMonthKey = fiscalMonths[safeCurrentMonthIndex]?.monthKey;
   const scope1CurrentMonth = scope1MonthlyBreakdown.find((row) => row?.month === currentMonthKey) || {};
   const scope2CurrentMonth = scope2MonthlyBreakdown.find((row) => row?.month === currentMonthKey) || {};
   const monthlySources = [
@@ -487,13 +502,12 @@ export default function DashboardPage() {
   const topSource = monthlySources.reduce((max, src) => (src.value > (max?.value || 0) ? src : max), null);
   const topSourcePct = currentMonthTotalKg > 0 && topSource ? (topSource.value / currentMonthTotalKg) * 100 : 0;
   const sourceTrendData = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(selectedYear, currentMonthIndex - (5 - i), 1);
-    const year = d.getFullYear();
-    const month = d.getMonth() + 1;
-    const monthKey = `${year}-${String(month).padStart(2, "0")}`;
-    const label = d.toLocaleString("en-US", { month: "short" });
-    const s1 = year === selectedYear ? (scope1MonthlyBreakdown.find((r) => r?.month === monthKey) || {}) : {};
-    const s2 = year === selectedYear ? (scope2MonthlyBreakdown.find((r) => r?.month === monthKey) || {}) : {};
+    const trendIndex = Math.max(0, safeCurrentMonthIndex - (5 - i));
+    const refMonth = fiscalMonths[trendIndex] || fiscalMonths[0];
+    const monthKey = refMonth.monthKey;
+    const label = refMonth.label;
+    const s1 = scope1MonthlyBreakdown.find((r) => r?.month === monthKey) || {};
+    const s2 = scope2MonthlyBreakdown.find((r) => r?.month === monthKey) || {};
     const valueKg = topSource?.key
       ? Number((topSource.key in s1 ? s1[topSource.key] : s2[topSource.key]) || 0)
       : 0;
@@ -520,7 +534,7 @@ export default function DashboardPage() {
 
       setAiRecommendationLoading(true);
       try {
-        const monthLabel = `${monthNames[currentMonthIndex]} ${selectedYear}`;
+        const monthLabel = `${monthNames[safeCurrentMonthIndex]} ${fiscalMonths[safeCurrentMonthIndex]?.yearNum || selectedYear}`;
         const response = await fetch(`${API_URL}/api/reports/source-recommendation`, {
           method: "POST",
           headers: {
@@ -548,7 +562,7 @@ export default function DashboardPage() {
     };
 
     loadAiTopSourceRecommendation();
-  }, [token, topSource?.name, topSource?.value, topSourcePct, currentMonthIndex, selectedYear, API_URL, currentMonthTotalKg]);
+  }, [token, topSource?.name, topSource?.value, topSourcePct, safeCurrentMonthIndex, selectedYear, API_URL, currentMonthTotalKg]);
 
   const scope1Breakdown = [
     { 
@@ -654,7 +668,7 @@ export default function DashboardPage() {
             >
               {availableYears.map((year) => (
                 <option key={year} value={year}>
-                  {year} Overview
+                  {year}-{year + 1} Overview
                 </option>
               ))}
             </select>
@@ -813,7 +827,7 @@ export default function DashboardPage() {
         <div className="collapsible-header">
           <div className="top-source-header">
             <h3>Top Emission Source Insight</h3>
-            <p>Largest source for {monthNames[currentMonthIndex]} {selectedYear}</p>
+            <p>Largest source for {monthNames[safeCurrentMonthIndex]} {fiscalMonths[safeCurrentMonthIndex]?.yearNum || selectedYear}</p>
           </div>
           <button className="collapse-btn" onClick={() => toggleSection("sourceInsight")}>
             {expandedSections.sourceInsight ? "Hide trend" : "Show 6-month trend"}

@@ -1,6 +1,6 @@
 # backend/app/routes/predictions.py
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response
 from app.middleware.auth import get_current_user
 from app.utils.firebase import get_db
 from app.services.predictor import (
@@ -18,6 +18,7 @@ import traceback
 import sys
 
 router = APIRouter(tags=["Predictions"])
+FISCAL_YEAR_START_MONTH = 6  # June
 
 
 # ── Helper functions for type safety ─────────────────────────────────────────
@@ -73,6 +74,25 @@ def normalize_emission_doc(doc: dict) -> dict:
             results["fugitive"]["totalKgCO2e"] = safe_float(results["fugitive"].get("totalKgCO2e", 0))
     
     return normalized
+
+
+def _parse_month(month_value):
+    if not month_value:
+        return None, None
+    try:
+        y_str, m_str = str(month_value).split("-")
+        return int(y_str), int(m_str)
+    except (ValueError, AttributeError):
+        return None, None
+
+
+def _is_in_fiscal_year(month_value: str, fiscal_year_start: int) -> bool:
+    year_part, month_part = _parse_month(month_value)
+    if year_part is None or month_part is None:
+        return False
+    if month_part >= FISCAL_YEAR_START_MONTH:
+        return year_part == fiscal_year_start
+    return year_part == (fiscal_year_start + 1)
 
 
 def get_company(uid: str) -> tuple[str, dict]:
@@ -174,7 +194,7 @@ def build_annual_series(s1_docs: list[dict], s2_docs: list[dict]) -> list[dict]:
 
 
 def count_months_in_year(monthly_series: list[dict], year: int) -> int:
-    return sum(1 for m in monthly_series if str(m["month"]).startswith(str(year)))
+    return sum(1 for m in monthly_series if _is_in_fiscal_year(m.get("month"), year))
 
 
 # ── Target save endpoint ───────────────────────────────────────────────────────
@@ -238,6 +258,7 @@ async def get_targets(
 async def get_predictions(
     year: int = None,
     current_user: dict = Depends(get_current_user),
+    response: Response = None,
 ):
     """
     Return all available predictions for the company based on their
@@ -255,6 +276,11 @@ async def get_predictions(
 
         # ── EARLY RETURN IF NO TARGETS SET ──────────────────────────────────────
         if not targets.get("reductionPct"):
+            if response is not None:
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+
             return {
                 "meta": {
                     "has_target": False,
@@ -309,6 +335,11 @@ async def get_predictions(
 
         # ── EARLY RETURN IF NO EMISSION DATA ────────────────────────────────────
         if not monthly_series and not annual_series:
+            if response is not None:
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+
             return {
                 "meta": {
                     "has_target": has_target,
@@ -340,9 +371,10 @@ async def get_predictions(
             }
 
         # ── Data availability ─────────────────────────────────────────────
-        months_in_current_year = count_months_in_year(monthly_series, current_year)
+        monthly_series_fy = [m for m in monthly_series if _is_in_fiscal_year(m.get("month"), current_year)]
+        months_in_current_year = len(monthly_series_fy)
         full_years = len([a for a in annual_series if a["year"] < current_year])
-        total_months = len(monthly_series)
+        total_months = len(monthly_series_fy)
 
         confidence = get_confidence_tier(total_months, full_years)
 
@@ -356,10 +388,7 @@ async def get_predictions(
             base_year = annual_series[0]["year"]
 
         # Current year total from annual series (if complete) or monthly sum
-        current_year_data = next((a for a in annual_series if a["year"] == current_year), None)
-        current_total_kg = current_year_data["total_kg"] if current_year_data else sum(
-            m["total_kg"] for m in monthly_series if str(m["month"]).startswith(str(current_year))
-        )
+        current_total_kg = sum(m["total_kg"] for m in monthly_series_fy)
 
         target_kg = (base_total_kg * (1 - reduction_pct / 100)) if base_total_kg else None
 
@@ -386,10 +415,7 @@ async def get_predictions(
         year_end = None
         if "year_end_projection" in confidence["available"] and months_in_current_year >= 3:
             try:
-                current_year_months = [
-                    m for m in monthly_series if str(m["month"]).startswith(str(current_year))
-                ]
-                year_end = project_year_end(current_year_months, current_year)
+                year_end = project_year_end(monthly_series_fy, current_year)
                 if year_end:
                     predictions["year_end_projection"] = {
                         "title": f"{current_year} Year-End Projection",
@@ -507,6 +533,11 @@ async def get_predictions(
             print(f"Error building refrigerant_trend: {e}")
 
         # ── Assemble response ─────────────────────────────────────────────
+        if response is not None:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+
         return {
             "meta": {
                 "company_id": company_id,
@@ -532,7 +563,7 @@ async def get_predictions(
 
             # Full series for chart rendering
             "series": {
-                "monthly": monthly_series,
+                "monthly": monthly_series_fy,
                 "annual": annual_series,
             },
         }

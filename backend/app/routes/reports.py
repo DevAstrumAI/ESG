@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response
 from app.middleware.auth import get_current_user
 from app.utils.firebase import get_db
 from datetime import datetime
@@ -7,6 +7,7 @@ import os
 import json
 
 router = APIRouter(tags=["Reports"])
+FISCAL_YEAR_START_MONTH = 6  # June
 
 # ---------------------------------------------------------------------------
 # Regional financial constants
@@ -86,7 +87,18 @@ def fetch_scope_docs(company_id: str, scope: str, year: int, month: str | None) 
             if d.get("month") == month:
                 results.append(d)
         else:
-            if d.get("year") == year:
+            month_value = d.get("month")
+            if month_value and "-" in str(month_value):
+                try:
+                    y_str, m_str = str(month_value).split("-")
+                    y_num = int(y_str)
+                    m_num = int(m_str)
+                    in_fiscal_year = (y_num == year and m_num >= FISCAL_YEAR_START_MONTH) or (y_num == year + 1 and m_num < FISCAL_YEAR_START_MONTH)
+                    if in_fiscal_year:
+                        results.append(d)
+                except (ValueError, TypeError):
+                    pass
+            elif d.get("year") == year:
                 results.append(d)
     return results
 
@@ -811,6 +823,7 @@ async def generate_report(
 async def generate_source_recommendation(
     body: dict,
     current_user: dict = Depends(get_current_user),
+    response: Response = None,
 ):
     """
     Generate a one-line AI recommendation for dashboard top emission source card.
@@ -846,6 +859,10 @@ async def generate_source_recommendation(
             industry=industry,
             city=city,
         )
+        if response is not None:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
         return {"recommendation": recommendation}
     except HTTPException:
         raise

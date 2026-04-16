@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Response
 from app.middleware.auth import get_current_user
 from app.utils.firebase import get_db
 from app.services.calculator import calculate_scope1, calculate_scope2, get_emission_factors
@@ -23,6 +23,35 @@ def _append_agent_log(hypothesisId: str, location: str, message: str, data: dict
         f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 router = APIRouter(tags=["Emissions"])
+FISCAL_YEAR_START_MONTH = 6  # June
+
+
+def _parse_month_parts(month_value):
+    if not month_value:
+        return None, None
+    try:
+        y_str, m_str = str(month_value).split("-")
+        return int(y_str), int(m_str)
+    except (ValueError, AttributeError):
+        return None, None
+
+
+def _is_month_in_fiscal_year(month_value: str, fiscal_year_start: int) -> bool:
+    year_part, month_part = _parse_month_parts(month_value)
+    if year_part is None or month_part is None:
+        return False
+    if month_part >= FISCAL_YEAR_START_MONTH:
+        return year_part == fiscal_year_start
+    return year_part == (fiscal_year_start + 1)
+
+
+def _iter_fiscal_months(fiscal_year_start: int):
+    months = []
+    for idx in range(12):
+        month_num = ((FISCAL_YEAR_START_MONTH - 1 + idx) % 12) + 1
+        year_num = fiscal_year_start if month_num >= FISCAL_YEAR_START_MONTH else fiscal_year_start + 1
+        months.append((year_num, month_num, f"{year_num}-{month_num:02d}"))
+    return months
 
 
 def _normalize_value(value):
@@ -722,6 +751,7 @@ async def delete_scope2_entry(
 async def get_monthly_breakdown(
     year: int,
     current_user: dict = Depends(get_current_user),
+    response: Response = None,
 ):
     """
     Get monthly breakdown of Scope 1 and Scope 2 emissions for the year.
@@ -733,11 +763,11 @@ async def get_monthly_breakdown(
 
     # Get scope1 docs
     s1_ref = db.collection("emissionData").document(company_id).collection("scope1")
-    s1_docs = [doc.to_dict() for doc in s1_ref.stream() if doc.to_dict().get("year") == year]
+    s1_docs = [doc.to_dict() for doc in s1_ref.stream() if _is_month_in_fiscal_year(doc.to_dict().get("month"), year)]
 
     # Get scope2 docs
     s2_ref = db.collection("emissionData").document(company_id).collection("scope2")
-    s2_docs = [doc.to_dict() for doc in s2_ref.stream() if doc.to_dict().get("year") == year]
+    s2_docs = [doc.to_dict() for doc in s2_ref.stream() if _is_month_in_fiscal_year(doc.to_dict().get("month"), year)]
 
     # Create monthly data map
     monthly_data = {}
@@ -769,8 +799,7 @@ async def get_monthly_breakdown(
 
     # Convert to list and ensure all 12 months are present
     result = []
-    for month_num in range(1, 13):
-        month_str = f"{year}-{month_num:02d}"
+    for _, _, month_str in _iter_fiscal_months(year):
         data = monthly_data.get(month_str, {"scope1_kg": 0, "scope2_kg": 0, "has_data": False})
         result.append({
             "month": month_str,
@@ -779,6 +808,10 @@ async def get_monthly_breakdown(
             "hasData": data.get("has_data", False),
         })
 
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return result
 
 
@@ -787,6 +820,7 @@ async def get_monthly_category_breakdown(
     year: int,
     scope: str,  # "scope1" or "scope2"
     current_user: dict = Depends(get_current_user),
+    response: Response = None,
 ):
     """
     Get monthly breakdown of emissions by category for a specific scope.
@@ -798,7 +832,7 @@ async def get_monthly_category_breakdown(
     # Fetch all docs for the year
     docs = []
     ref = db.collection("emissionData").document(company_id).collection(scope)
-    docs = [doc.to_dict() for doc in ref.stream() if doc.to_dict().get("year") == year]
+    docs = [doc.to_dict() for doc in ref.stream() if _is_month_in_fiscal_year(doc.to_dict().get("month"), year)]
     
     # Create monthly data map
     monthly_data = {}
@@ -826,8 +860,7 @@ async def get_monthly_category_breakdown(
     
     # Build response for all 12 months
     result = []
-    for month_num in range(1, 13):
-        month_str = f"{year}-{month_num:02d}"
+    for _, _, month_str in _iter_fiscal_months(year):
         data = monthly_data.get(month_str, {})
         result.append({
             "month": month_str,
@@ -835,6 +868,10 @@ async def get_monthly_category_breakdown(
             **{k: v for k, v in data.items() if k != "hasData"}
         })
     
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return result
 
 @router.get("/sparkline-data")
@@ -893,6 +930,7 @@ async def get_sparkline_data(
 async def get_month_status(
     year: int,
     current_user: dict = Depends(get_current_user),
+    response: Response = None,
 ):
     """
     Get submission status for each month of the year.
@@ -902,51 +940,49 @@ async def get_month_status(
     uid = current_user.get("uid")
     company_id, _, _ = get_company_and_location(uid)
 
-    # Initialize all months as "none"
+    fiscal_months = _iter_fiscal_months(year)
+    month_to_index = {month_str: idx for idx, (_, _, month_str) in enumerate(fiscal_months)}
     status = {str(i): "none" for i in range(12)}
 
     # Check scope1 docs
     s1_ref = db.collection("emissionData").document(company_id).collection("scope1")
-    s1_docs = s1_ref.where("year", "==", year).stream()
+    s1_docs = s1_ref.stream()
 
     for doc in s1_docs:
         data = doc.to_dict()
         month_str = data.get("month")
-        if month_str and "-" in month_str:
-            try:
-                month_num = int(month_str.split("-")[1]) - 1
-                if 0 <= month_num < 12:
-                    if status[str(month_num)] == "none":
-                        status[str(month_num)] = "scope1"
-                    elif status[str(month_num)] == "scope2":
-                        status[str(month_num)] = "both"
-            except (ValueError, IndexError):
-                continue
+        if month_str in month_to_index:
+            month_num = month_to_index[month_str]
+            if status[str(month_num)] == "none":
+                status[str(month_num)] = "scope1"
+            elif status[str(month_num)] == "scope2":
+                status[str(month_num)] = "both"
 
     # Check scope2 docs
     s2_ref = db.collection("emissionData").document(company_id).collection("scope2")
-    s2_docs = s2_ref.where("year", "==", year).stream()
+    s2_docs = s2_ref.stream()
 
     for doc in s2_docs:
         data = doc.to_dict()
         month_str = data.get("month")
-        if month_str and "-" in month_str:
-            try:
-                month_num = int(month_str.split("-")[1]) - 1
-                if 0 <= month_num < 12:
-                    if status[str(month_num)] == "none":
-                        status[str(month_num)] = "scope2"
-                    elif status[str(month_num)] == "scope1":
-                        status[str(month_num)] = "both"
-            except (ValueError, IndexError):
-                continue
+        if month_str in month_to_index:
+            month_num = month_to_index[month_str]
+            if status[str(month_num)] == "none":
+                status[str(month_num)] = "scope2"
+            elif status[str(month_num)] == "scope1":
+                status[str(month_num)] = "both"
 
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return status
 
 @router.get("/summary")
 async def get_summary(
     year: int = 2026,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    response: Response = None,
 ):
     """
     Return aggregated Scope 1 + Scope 2 totals for a given year.
@@ -968,7 +1004,7 @@ async def get_summary(
         scope1_doc_logged = False
         for doc in scope1_docs:
             data = doc.to_dict()
-            if data.get("year") == year:
+            if _is_month_in_fiscal_year(data.get("month"), year):
                 results = data.get("results", {})
                 scope1_total += results.get("totalKgCO2e", 0)
                 for category in ["mobile", "stationary", "refrigerants", "fugitive"]:
@@ -1015,7 +1051,7 @@ async def get_summary(
         scope2_doc_logged = False
         for doc in scope2_docs:
             data = doc.to_dict()
-            if data.get("year") == year:
+            if _is_month_in_fiscal_year(data.get("month"), year):
                 results = data.get("results", {})
                 used_location_totalKgCO2e = results.get("locationBasedKgCO2e", 0)
                 used_market_totalKgCO2e = results.get("marketBasedKgCO2e", 0)
@@ -1068,6 +1104,11 @@ async def get_summary(
             runId="pre-fix",
         )
         # #endregion
+
+        if response is not None:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
 
         return {
             "year": year,
