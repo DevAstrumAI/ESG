@@ -754,6 +754,25 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
   // ─── Fetch Summary ──────────────────────────────────────────────────────
   fetchSummary: async (token, year) => {
     const resolvedYear = year || get().selectedYear;
+    const emptyScope1 = {
+      mobile: { kgCO2e: 0 },
+      stationary: { kgCO2e: 0 },
+      refrigerants: { kgCO2e: 0 },
+      fugitive: { kgCO2e: 0 },
+      total: { kgCO2e: 0 },
+      monthsCount: 0,
+    };
+    const emptyScope2 = {
+      electricity: {
+        locationBasedKgCO2e: 0,
+        marketBasedKgCO2e: 0,
+      },
+      heating: { kgCO2e: 0 },
+      renewables: { kgCO2e: 0 },
+      locationBasedKgCO2e: 0,
+      marketBasedKgCO2e: 0,
+      monthsCount: 0,
+    };
     try {
       const response = await fetch(
         `${API_URL}/api/emissions/summary?year=${resolvedYear}`,
@@ -826,6 +845,12 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
       return { success: true };
     } catch (error) {
       console.error("Fetch summary error:", error);
+      // Clear stale totals so year-switch never shows previous year's data.
+      set({
+        scope1Results: emptyScope1,
+        scope2Results: emptyScope2,
+        selectedYear: resolvedYear,
+      });
       return { success: false, error: error.message };
     }
   },

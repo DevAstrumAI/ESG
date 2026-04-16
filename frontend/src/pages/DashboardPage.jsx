@@ -29,6 +29,17 @@ import { useAuthStore } from "../store/authStore";
 import { useEmissionStore } from "../store/emissionStore";
 import { useCompanyStore } from "../store/companyStore";
 import Card from "../components/ui/Card";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ReferenceArea,
+} from "recharts";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -92,6 +103,9 @@ export default function DashboardPage() {
   const [predictionConfidence, setPredictionConfidence] = useState({ score: null, label: "N/A" });
   const [directTargets, setDirectTargets] = useState(null);
   const [monthlySeries, setMonthlySeries] = useState([]);
+  const [annualSeries, setAnnualSeries] = useState([]);
+  const [trajectorySeries, setTrajectorySeries] = useState([]);
+  const [pathwayMeta, setPathwayMeta] = useState({ baseYear: null, targetYear: null });
   const [predictionLoading, setPredictionLoading] = useState(false);
 
   const fetchDirectTargets = async () => {
@@ -151,6 +165,7 @@ export default function DashboardPage() {
         const onTrackData = payload?.predictions?.on_track_analysis?.data;
         const trajectoryData = payload?.predictions?.target_trajectory?.data;
         const yearEndData = payload?.predictions?.year_end_projection?.data;
+        const targetTrajectory = payload?.predictions?.target_trajectory?.data || [];
         const targetFromDataAvailability = payload?.data_availability?.target_total_kg;
         
         const targetKg = onTrackData?.this_year_target_kg || 
@@ -161,6 +176,12 @@ export default function DashboardPage() {
         setPredictionTargetKg(targetKg);
         setProjectedYearEndT(yearEndData?.projected_annual_t || null);
         setMonthlySeries(payload?.series?.monthly || []);
+        setAnnualSeries(payload?.series?.annual || []);
+        setTrajectorySeries(targetTrajectory);
+        setPathwayMeta({
+          baseYear: payload?.meta?.base_year || null,
+          targetYear: payload?.meta?.target_year || null,
+        });
 
         const monthsForConfidence = Math.max(currentYearMonths, actualMonths);
         if (monthsForConfidence > 0) {
@@ -179,6 +200,9 @@ export default function DashboardPage() {
         setProjectedYearEndT(null);
         setPredictionConfidence({ score: null, label: "N/A" });
         setMonthlySeries([]);
+        setAnnualSeries([]);
+        setTrajectorySeries([]);
+        setPathwayMeta({ baseYear: null, targetYear: null });
       } finally {
         setPredictionLoading(false);
       }
@@ -238,6 +262,81 @@ export default function DashboardPage() {
       rag: getRag(actual, quarterlyMilestoneT),
     };
   });
+  const currentYear = new Date().getFullYear();
+  const elapsedMonthsForTrajectory =
+    selectedYear < currentYear ? 12 : selectedYear > currentYear ? 0 : (new Date().getMonth() + 1);
+  const actualYtdT = totalTonnes;
+  const requiredYtdT = annualBudgetT > 0 ? (annualBudgetT * (elapsedMonthsForTrajectory / 12)) : 0;
+  const trajectoryGapT = actualYtdT - requiredYtdT;
+  const trajectoryGapPct = requiredYtdT > 0 ? (trajectoryGapT / requiredYtdT) * 100 : 0;
+  const trajectoryStatus =
+    !annualBudgetT || elapsedMonthsForTrajectory === 0
+      ? "na"
+      : trajectoryGapT <= 0
+      ? "green"
+      : trajectoryGapPct <= 10
+      ? "amber"
+      : "red";
+  const annualUsedT = actualYtdT;
+  const annualRemainingT = annualBudgetT > 0 ? (annualBudgetT - actualYtdT) : 0;
+  const annualUsedPct = annualBudgetT > 0 ? Math.min((annualUsedT / annualBudgetT) * 100, 100) : 0;
+  const hasPathwayData = trajectorySeries.length > 1 && pathwayMeta.baseYear && pathwayMeta.targetYear;
+  const annualActualMap = annualSeries.reduce((acc, row) => {
+    const year = Number(row?.year);
+    if (Number.isFinite(year)) acc[year] = Number(row?.total_kg || 0) / 1000;
+    return acc;
+  }, {});
+  const trajectoryMap = trajectorySeries.reduce((acc, row) => {
+    const year = Number(row?.year);
+    if (Number.isFinite(year)) acc[year] = Number(row?.target_t || 0);
+    return acc;
+  }, {});
+  const pathwayYears = hasPathwayData
+    ? Array.from({ length: pathwayMeta.targetYear - pathwayMeta.baseYear + 1 }, (_, i) => pathwayMeta.baseYear + i)
+    : [];
+  const latestActualYear = Object.keys(annualActualMap).map(Number).filter((y) => Number.isFinite(y)).sort((a, b) => b - a)[0];
+  const latestActualValue = Number.isFinite(latestActualYear) ? annualActualMap[latestActualYear] : null;
+  const targetYearRequired = Number.isFinite(pathwayMeta.targetYear) ? trajectoryMap[pathwayMeta.targetYear] : null;
+  const pathwayChartData = pathwayYears.map((year) => {
+    const required = trajectoryMap[year] ?? null;
+    const actual = annualActualMap[year] ?? null;
+    let projection = null;
+    if (
+      Number.isFinite(latestActualYear) &&
+      latestActualValue != null &&
+      year >= latestActualYear &&
+      targetYearRequired != null &&
+      pathwayMeta.targetYear > latestActualYear
+    ) {
+      const progress = (year - latestActualYear) / (pathwayMeta.targetYear - latestActualYear);
+      projection = latestActualValue + (targetYearRequired - latestActualValue) * progress;
+    } else if (year === latestActualYear && latestActualValue != null) {
+      projection = latestActualValue;
+    }
+    return {
+      year: String(year),
+      required,
+      actual,
+      projection,
+    };
+  });
+  const gapAreas = pathwayChartData
+    .map((point, index) => {
+      const next = pathwayChartData[index + 1];
+      if (!next) return null;
+      if (point.actual == null || point.required == null || next.actual == null || next.required == null) return null;
+      const isAbove = point.actual > point.required && next.actual > next.required;
+      const isBelow = point.actual < point.required && next.actual < next.required;
+      if (!isAbove && !isBelow) return null;
+      return {
+        x1: point.year,
+        x2: next.year,
+        y1: Math.min(point.actual, point.required, next.actual, next.required),
+        y2: Math.max(point.actual, point.required, next.actual, next.required),
+        isAbove,
+      };
+    })
+    .filter(Boolean);
   
   // Determine status based on budget used
   const getBudgetStatus = () => {
@@ -424,6 +523,108 @@ export default function DashboardPage() {
               })}
             </div>
           </>
+        )}
+      </Card>
+
+      <Card className="progress-target-card">
+        <div className="progress-target-header">
+          <h3>Progress vs Target Display</h3>
+          <p>Live comparison of actual YTD emissions against required trajectory</p>
+        </div>
+        {!annualBudgetT ? (
+          <div className="progress-target-empty">
+            <span>Set a target to enable progress-vs-target tracking.</span>
+            <button onClick={() => navigate('/target-settings')} className="set-target-btn-inline">Set Target</button>
+          </div>
+        ) : (
+          <>
+            <div className="trajectory-row">
+              <div className="trajectory-block">
+                <span className="trajectory-label">Actual YTD</span>
+                <span className="trajectory-value">{actualYtdT.toFixed(1)} tCO₂e</span>
+              </div>
+              <div className="trajectory-block">
+                <span className="trajectory-label">Required YTD</span>
+                <span className="trajectory-value">{requiredYtdT.toFixed(1)} tCO₂e</span>
+              </div>
+              <div className="trajectory-status-wrap">
+                <span className={`rag-chip ${trajectoryStatus}`}>
+                  {trajectoryStatus === "green" && "On Track"}
+                  {trajectoryStatus === "amber" && "At Risk"}
+                  {trajectoryStatus === "red" && "Off Track"}
+                  {trajectoryStatus === "na" && "N/A"}
+                </span>
+              </div>
+            </div>
+
+            <div className="gap-row">
+              <span>Gap vs required trajectory:</span>
+              <strong className={trajectoryGapT <= 0 ? "gap-good" : "gap-bad"}>
+                {trajectoryGapT >= 0 ? "+" : ""}
+                {trajectoryGapT.toFixed(1)} tCO₂e
+              </strong>
+            </div>
+
+            <div className="budget-summary-card">
+              <div className="budget-summary-title">Budget Summary</div>
+              <div className="budget-summary-line">
+                <span>Used</span>
+                <span>{annualUsedT.toFixed(1)} / {annualBudgetT.toFixed(1)} tCO₂e ({annualUsedPct.toFixed(0)}%)</span>
+              </div>
+              <div className="budget-summary-bar">
+                <div className={`budget-summary-fill ${annualRemainingT < 0 ? "red" : "green"}`} style={{ width: `${annualUsedPct}%` }} />
+              </div>
+              <div className="budget-summary-line">
+                <span>Remaining</span>
+                <span className={annualRemainingT >= 0 ? "gap-good" : "gap-bad"}>
+                  {annualRemainingT.toFixed(1)} tCO₂e
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+      </Card>
+
+      <Card className="pathway-chart-card">
+        <div className="pathway-header">
+          <h3>Net Zero Pathway Chart</h3>
+          <p>Actual performance against required trajectory from baseline to target year</p>
+        </div>
+        {!hasPathwayData ? (
+          <div className="pathway-empty">
+            <span>Pathway data becomes available once target trajectory is configured.</span>
+          </div>
+        ) : (
+          <div className="pathway-chart-wrap">
+            <ResponsiveContainer width="100%" height={340}>
+              <LineChart data={pathwayChartData} margin={{ top: 18, right: 18, left: 8, bottom: 6 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                <XAxis dataKey="year" tick={{ fontSize: 12, fill: "#6B7280" }} />
+                <YAxis tick={{ fontSize: 12, fill: "#6B7280" }} label={{ value: "tCO₂e", angle: -90, position: "insideLeft", style: { fill: "#6B7280", fontSize: 12 } }} />
+                <Tooltip formatter={(value) => (value != null ? `${Number(value).toFixed(2)} tCO₂e` : "—")} />
+                <Legend />
+                {gapAreas.map((g) => (
+                  <ReferenceArea
+                    key={`gap-${g.x1}-${g.x2}`}
+                    x1={g.x1}
+                    x2={g.x2}
+                    y1={g.y1}
+                    y2={g.y2}
+                    strokeOpacity={0}
+                    fill={g.isAbove ? "#FEE2E2" : "#D1FAE5"}
+                    fillOpacity={0.6}
+                  />
+                ))}
+                <Line type="monotone" dataKey="required" name="Required Trajectory" stroke="#1B4D3E" strokeWidth={2.5} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="actual" name="Actual Emissions" stroke="#2563EB" strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} />
+                <Line type="monotone" dataKey="projection" name="Projection to Target Year" stroke="#6B7280" strokeWidth={2} strokeDasharray="6 5" dot={false} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+            <div className="pathway-note">
+              <span><span className="swatch red"></span>Actual above required pathway</span>
+              <span><span className="swatch green"></span>Actual below required pathway</span>
+            </div>
+          </div>
         )}
       </Card>
 
@@ -1132,6 +1333,152 @@ export default function DashboardPage() {
         .month-name { font-size: 11px; font-weight: 600; color: #374151; }
         .month-value { font-size: 11px; color: #1F2937; margin-top: 3px; }
         .month-target { font-size: 10px; color: #6B7280; }
+        .progress-target-card {
+          background: white;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 24px;
+        }
+        .progress-target-header h3 {
+          margin: 0 0 6px 0;
+          font-size: 18px;
+          color: #1B4D3E;
+        }
+        .progress-target-header p {
+          margin: 0 0 14px 0;
+          font-size: 13px;
+          color: #6B7280;
+        }
+        .progress-target-empty {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          background: #F9FAFB;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          padding: 12px;
+          font-size: 13px;
+          color: #6B7280;
+        }
+        .trajectory-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr auto;
+          gap: 12px;
+          margin-bottom: 10px;
+        }
+        .trajectory-block {
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          padding: 10px;
+          background: #FBFCFD;
+        }
+        .trajectory-label {
+          display: block;
+          font-size: 11px;
+          color: #6B7280;
+          margin-bottom: 4px;
+        }
+        .trajectory-value {
+          font-size: 15px;
+          font-weight: 700;
+          color: #1F2937;
+        }
+        .trajectory-status-wrap {
+          display: flex;
+          align-items: center;
+        }
+        .gap-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: #F9FAFB;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          padding: 10px 12px;
+          font-size: 13px;
+          color: #4B5563;
+          margin-bottom: 12px;
+        }
+        .gap-good { color: #065F46; }
+        .gap-bad { color: #991B1B; }
+        .budget-summary-card {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 12px;
+          background: #FBFCFD;
+        }
+        .budget-summary-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: #1B4D3E;
+          margin-bottom: 8px;
+        }
+        .budget-summary-line {
+          display: flex;
+          justify-content: space-between;
+          font-size: 12px;
+          color: #4B5563;
+          margin-bottom: 6px;
+        }
+        .budget-summary-bar {
+          height: 8px;
+          background: #E5E7EB;
+          border-radius: 999px;
+          overflow: hidden;
+          margin-bottom: 8px;
+        }
+        .budget-summary-fill {
+          height: 100%;
+        }
+        .budget-summary-fill.green { background: #10B981; }
+        .budget-summary-fill.red { background: #EF4444; }
+        .pathway-chart-card {
+          background: white;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 24px;
+        }
+        .pathway-header h3 {
+          margin: 0 0 6px 0;
+          font-size: 18px;
+          color: #1B4D3E;
+        }
+        .pathway-header p {
+          margin: 0 0 14px 0;
+          font-size: 13px;
+          color: #6B7280;
+        }
+        .pathway-empty {
+          border: 1px solid #E5E7EB;
+          background: #F9FAFB;
+          border-radius: 8px;
+          padding: 12px;
+          color: #6B7280;
+          font-size: 13px;
+        }
+        .pathway-chart-wrap {
+          width: 100%;
+        }
+        .pathway-note {
+          margin-top: 10px;
+          display: flex;
+          gap: 16px;
+          flex-wrap: wrap;
+          font-size: 12px;
+          color: #6B7280;
+        }
+        .swatch {
+          display: inline-block;
+          width: 10px;
+          height: 10px;
+          border-radius: 2px;
+          margin-right: 6px;
+        }
+        .swatch.red { background: #FEE2E2; }
+        .swatch.green { background: #D1FAE5; }
 
         .total-emissions-card {
           background: white;
@@ -1396,6 +1743,9 @@ export default function DashboardPage() {
           .month-grid {
             grid-template-columns: repeat(6, minmax(0, 1fr));
           }
+          .trajectory-row {
+            grid-template-columns: 1fr 1fr;
+          }
         }
 
         @media (max-width: 768px) {
@@ -1417,6 +1767,9 @@ export default function DashboardPage() {
           }
           .month-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+          .trajectory-row {
+            grid-template-columns: 1fr;
           }
 
           .total-value {
