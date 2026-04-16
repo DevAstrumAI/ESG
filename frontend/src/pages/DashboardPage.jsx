@@ -51,7 +51,7 @@ export default function DashboardPage() {
     pathway: false,
     scope2Delta: true,
     scope2Sparkline: false,
-    compliance: false,
+    sourceInsight: false,
   });
   const [availableYears, setAvailableYears] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -115,7 +115,10 @@ export default function DashboardPage() {
   const [annualSeries, setAnnualSeries] = useState([]);
   const [trajectorySeries, setTrajectorySeries] = useState([]);
   const [pathwayMeta, setPathwayMeta] = useState({ baseYear: null, targetYear: null });
+  const [scope1MonthlyBreakdown, setScope1MonthlyBreakdown] = useState([]);
   const [scope2MonthlyBreakdown, setScope2MonthlyBreakdown] = useState([]);
+  const [aiTopSourceRecommendation, setAiTopSourceRecommendation] = useState("");
+  const [aiRecommendationLoading, setAiRecommendationLoading] = useState(false);
   const [predictionLoading, setPredictionLoading] = useState(false);
   const toggleSection = (key) => {
     setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -223,6 +226,33 @@ export default function DashboardPage() {
 
     loadPredictionMetrics();
   }, [token, selectedYear, API_URL, scope1Results]);
+
+  useEffect(() => {
+    const loadScope1MonthlyBreakdown = async () => {
+      if (!token) return;
+      try {
+        const response = await fetch(
+          `${API_URL}/api/emissions/monthly-category-breakdown?year=${selectedYear}&scope=scope1`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        if (!response.ok) {
+          throw new Error("Failed to fetch scope1 monthly breakdown");
+        }
+        const payload = await response.json();
+        setScope1MonthlyBreakdown(Array.isArray(payload) ? payload : []);
+      } catch (error) {
+        console.error("Scope1 monthly breakdown error:", error);
+        setScope1MonthlyBreakdown([]);
+      }
+    };
+
+    loadScope1MonthlyBreakdown();
+  }, [token, selectedYear, API_URL]);
 
   useEffect(() => {
     const loadScope2MonthlyBreakdown = async () => {
@@ -440,6 +470,85 @@ export default function DashboardPage() {
     })
     .filter(Boolean);
   const scope2SparklineBenefitT = scope2SparklineData.reduce((sum, row) => sum + (row.benefitT || 0), 0);
+  const today = new Date();
+  const currentMonthIndex = selectedYear === today.getFullYear() ? today.getMonth() : 11;
+  const currentMonthKey = `${selectedYear}-${String(currentMonthIndex + 1).padStart(2, "0")}`;
+  const scope1CurrentMonth = scope1MonthlyBreakdown.find((row) => row?.month === currentMonthKey) || {};
+  const scope2CurrentMonth = scope2MonthlyBreakdown.find((row) => row?.month === currentMonthKey) || {};
+  const monthlySources = [
+    { key: "mobileKg", name: "Mobile Combustion", value: Number(scope1CurrentMonth?.mobileKg || 0), recommendation: "Optimize fleet routes and transition high-use vehicles to lower-carbon fuel options." },
+    { key: "stationaryKg", name: "Stationary Combustion", value: Number(scope1CurrentMonth?.stationaryKg || 0), recommendation: "Tune boiler efficiency and schedule preventive maintenance to reduce fuel burn." },
+    { key: "refrigerantsKg", name: "Refrigerants", value: Number(scope1CurrentMonth?.refrigerantsKg || 0), recommendation: "Prioritize leak detection and recovery practices for high-GWP refrigerants." },
+    { key: "fugitiveKg", name: "Fugitive Emissions", value: Number(scope1CurrentMonth?.fugitiveKg || 0), recommendation: "Tighten containment checks and replace leaking components in high-risk assets." },
+    { key: "electricityLocationKg", name: "Purchased Electricity", value: Number(scope2CurrentMonth?.electricityLocationKg || 0), recommendation: "Increase REC/PPA coverage and improve electricity efficiency in peak-load operations." },
+    { key: "heatingKg", name: "Heating & Cooling", value: Number(scope2CurrentMonth?.heatingKg || 0), recommendation: "Improve HVAC controls and setpoint strategy to cut avoidable thermal energy use." },
+  ];
+  const currentMonthTotalKg = monthlySources.reduce((sum, src) => sum + src.value, 0);
+  const topSource = monthlySources.reduce((max, src) => (src.value > (max?.value || 0) ? src : max), null);
+  const topSourcePct = currentMonthTotalKg > 0 && topSource ? (topSource.value / currentMonthTotalKg) * 100 : 0;
+  const sourceTrendData = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(selectedYear, currentMonthIndex - (5 - i), 1);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+    const label = d.toLocaleString("en-US", { month: "short" });
+    const s1 = year === selectedYear ? (scope1MonthlyBreakdown.find((r) => r?.month === monthKey) || {}) : {};
+    const s2 = year === selectedYear ? (scope2MonthlyBreakdown.find((r) => r?.month === monthKey) || {}) : {};
+    const valueKg = topSource?.key
+      ? Number((topSource.key in s1 ? s1[topSource.key] : s2[topSource.key]) || 0)
+      : 0;
+    return { month: label, tco2e: valueKg / 1000 };
+  });
+  const fallbackRecommendationBySource = {
+    "Mobile Combustion": "Prioritize route optimization and driver efficiency coaching for Mobile Combustion to reduce fuel use quickly without disrupting operations.",
+    "Stationary Combustion": "Improve Stationary Combustion efficiency through burner tuning and preventive maintenance to cut avoidable fuel consumption this quarter.",
+    "Refrigerants": "Strengthen leak detection and maintenance protocols for Refrigerants to reduce high-GWP losses and prevent recurring emission spikes.",
+    "Fugitive Emissions": "Run targeted inspections on valves, joints, and seals to reduce Fugitive Emissions from persistent small leaks.",
+    "Purchased Electricity": "Expand renewable procurement and tighten electricity efficiency controls in high-load operations to reduce Purchased Electricity intensity.",
+    "Heating & Cooling": "Optimize HVAC scheduling and setpoints for Heating & Cooling while correcting control drift in high-consumption zones.",
+  };
+  const fallbackTopSourceRecommendation = topSource
+    ? (fallbackRecommendationBySource[topSource.name] || "Focus near-term reduction actions on this largest source to lower monthly emissions fastest.")
+    : "";
+
+  useEffect(() => {
+    const loadAiTopSourceRecommendation = async () => {
+      if (!token || !topSource || topSource.value <= 0 || currentMonthTotalKg <= 0) {
+        setAiTopSourceRecommendation("");
+        return;
+      }
+
+      setAiRecommendationLoading(true);
+      try {
+        const monthLabel = `${monthNames[currentMonthIndex]} ${selectedYear}`;
+        const response = await fetch(`${API_URL}/api/reports/source-recommendation`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            source_name: topSource.name,
+            source_share_pct: topSourcePct,
+            source_tco2e: topSource.value / 1000,
+            month_label: monthLabel,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload?.detail || "Failed to generate AI recommendation");
+        }
+        setAiTopSourceRecommendation(String(payload?.recommendation || "").trim());
+      } catch (error) {
+        console.error("Top source AI recommendation error:", error);
+        setAiTopSourceRecommendation("");
+      } finally {
+        setAiRecommendationLoading(false);
+      }
+    };
+
+    loadAiTopSourceRecommendation();
+  }, [token, topSource?.name, topSource?.value, topSourcePct, currentMonthIndex, selectedYear, API_URL, currentMonthTotalKg]);
 
   const scope1Breakdown = [
     { 
@@ -700,6 +809,45 @@ export default function DashboardPage() {
         </div>
       </div>
       <div className="section-title">Performance</div>
+      <Card className="top-source-card">
+        <div className="collapsible-header">
+          <div className="top-source-header">
+            <h3>Top Emission Source Insight</h3>
+            <p>Largest source for {monthNames[currentMonthIndex]} {selectedYear}</p>
+          </div>
+          <button className="collapse-btn" onClick={() => toggleSection("sourceInsight")}>
+            {expandedSections.sourceInsight ? "Hide trend" : "Show 6-month trend"}
+          </button>
+        </div>
+        {topSource && topSource.value > 0 ? (
+          <>
+            <div className="top-source-main">
+              <div className="top-source-name">{topSource.name}</div>
+              <div className="top-source-share">{topSourcePct.toFixed(1)}% of total monthly emissions</div>
+            </div>
+            <div className="top-source-reco">
+              {aiRecommendationLoading
+                ? "Generating AI recommendation..."
+                : (aiTopSourceRecommendation || fallbackTopSourceRecommendation)}
+            </div>
+            {expandedSections.sourceInsight && (
+              <div className="top-source-trend">
+                <ResponsiveContainer width="100%" height={170}>
+                  <LineChart data={sourceTrendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="#EEF2F7" strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(value) => `${Number(value || 0).toFixed(2)} tCO₂e`} />
+                    <Line type="monotone" dataKey="tco2e" stroke="#1B4D3E" strokeWidth={2.5} dot={{ r: 2 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="collapsed-summary">No monthly category data available yet for this period.</div>
+        )}
+      </Card>
       {/* Total Emissions Card */}
       <Card className="total-emissions-card">
         <div className="total-header">
@@ -1149,47 +1297,18 @@ export default function DashboardPage() {
       )}
 
       {/* GHG Protocol Compliance Footer (all tabs) */}
-      <Card className="compliance-card">
-        <div className="collapsible-header">
-          <div className="compliance-header">
-            <FiAward className="compliance-icon" />
-            <h3>GHG Protocol Compliance</h3>
-          </div>
-          <button className="collapse-btn" onClick={() => toggleSection("compliance")}>
-            {expandedSections.compliance ? "Hide" : "Show"}
-          </button>
+      <div className="ghg-fixed-footer">
+        <div className="ghg-footer-inner">
+          <span className="ghg-footer-title"><FiAward /> GHG Protocol Compliance</span>
+          <span>Location-based Scope 2 is primary; market-based is reported separately.</span>
+          <span>Renewables are tracked separately and biogenic emissions are excluded from Scope 1 totals.</span>
         </div>
-        {expandedSections.compliance ? (
-        <>
-        <div className="compliance-header">
-          <FiAward className="compliance-icon" />
-          <h3>GHG Protocol Compliance</h3>
-        </div>
-        <div className="compliance-grid">
-          <div className="compliance-item">
-            <span className="compliance-check">✓</span>
-            <span>Scope 2 reported using location-based method (primary)</span>
-          </div>
-          <div className="compliance-item">
-            <span className="compliance-check">✓</span>
-            <span>Market-based Scope 2 reported separately</span>
-          </div>
-          <div className="compliance-item">
-            <span className="compliance-check">✓</span>
-            <span>Renewable energy reported separately — not deducted from totals</span>
-          </div>
-          <div className="compliance-item">
-            <span className="compliance-check">✓</span>
-            <span>Biogenic emissions flagged and excluded from Scope 1 totals</span>
-          </div>
-        </div>
-        </>
-        ) : <div className="collapsed-summary">Compliance checklist is hidden. Expand to review reporting conventions.</div>}
-      </Card>
+      </div>
 
       <style jsx>{`
         .dashboard-container {
           padding: 24px;
+          padding-bottom: 86px;
           max-width: 1400px;
           margin: 0 auto;
         }
@@ -2080,57 +2199,82 @@ export default function DashboardPage() {
           margin-bottom: 24px;
         }
 
-        .compliance-card {
+        .ghg-fixed-footer {
+          position: fixed;
+          left: var(--app-sidebar-width, 0px);
+          right: 0;
+          bottom: 0;
+          z-index: 40;
+          border-top: 1px solid #D1D5DB;
+          background: #FFFFFF;
+          box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.06);
+        }
+        .ghg-footer-inner {
+          max-width: 1400px;
+          margin: 0 auto;
+          padding: 10px 24px;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: wrap;
+          font-size: 12px;
+          color: #4B5563;
+        }
+        .ghg-footer-title {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-weight: 700;
+          color: #1B4D3E;
+        }
+        .top-source-card {
           background: white;
           border: 1px solid #E5E7EB;
+          border-radius: 12px;
           padding: 20px;
           margin-bottom: 24px;
         }
-
-        .compliance-header {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 16px;
-        }
-
-        .compliance-icon {
-          font-size: 20px;
-          color: #2E7D64;
-        }
-
-        .compliance-header h3 {
-          font-size: 16px;
-          font-weight: 600;
+        .top-source-header h3 {
+          margin: 0 0 6px 0;
+          font-size: 18px;
           color: #1B4D3E;
+        }
+        .top-source-header p {
           margin: 0;
-        }
-
-        .compliance-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 12px;
-        }
-
-        .compliance-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
           font-size: 13px;
-          color: #4B5563;
+          color: #6B7280;
         }
-
-        .compliance-check {
-          width: 20px;
-          height: 20px;
-          background: #D1FAE5;
-          color: #065F46;
-          border-radius: 50%;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 12px;
-          font-weight: bold;
+        .top-source-main {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 12px;
+          background: #FBFCFD;
+        }
+        .top-source-name {
+          font-size: 20px;
+          font-weight: 700;
+          color: #1F2937;
+        }
+        .top-source-share {
+          margin-top: 4px;
+          font-size: 13px;
+          color: #6B7280;
+        }
+        .top-source-reco {
+          margin-top: 10px;
+          font-size: 13px;
+          color: #374151;
+          background: #F9FAFB;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          padding: 10px 12px;
+        }
+        .top-source-trend {
+          margin-top: 12px;
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 8px;
+          background: #FCFDFE;
         }
 
         .activity-card {
@@ -2201,8 +2345,8 @@ export default function DashboardPage() {
           .charts-grid {
             grid-template-columns: 1fr;
           }
-          .compliance-grid {
-            grid-template-columns: 1fr;
+          .ghg-footer-inner {
+            padding: 10px 16px;
           }
           .quarter-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2218,6 +2362,7 @@ export default function DashboardPage() {
         @media (max-width: 768px) {
           .dashboard-container {
             padding: 16px;
+            padding-bottom: 104px;
           }
           
           .dashboard-header {

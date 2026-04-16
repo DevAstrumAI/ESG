@@ -447,6 +447,42 @@ def call_openai(client: openai.OpenAI, user_prompt: str) -> dict:
         raise HTTPException(status_code=500, detail=f"OpenAI returned invalid JSON: {raw[:300]}")
 
 
+def build_source_recommendation(
+    client: openai.OpenAI,
+    *,
+    source_name: str,
+    source_share_pct: float,
+    source_tco2e: float,
+    month_label: str,
+    industry: str,
+    city: str,
+) -> str:
+    prompt = f"""
+You are an experienced sustainability advisor.
+Write ONE human, practical recommendation sentence for the largest current-month emission source.
+
+Context:
+- Industry: {industry}
+- City/region: {city}
+- Month: {month_label}
+- Largest source: {source_name}
+- Source emissions: {source_tco2e:.2f} tCO2e
+- Source share of total monthly emissions: {source_share_pct:.1f}%
+
+Rules:
+1) Return JSON only: {{"recommendation":"..."}}
+2) Recommendation must be one sentence, 16-30 words, clear and natural.
+3) Mention the source category by name.
+4) Must be action-oriented and realistic for operations teams.
+5) Do not use vague phrases like "consider sustainability initiatives".
+"""
+    data = call_openai(client, prompt)
+    recommendation = str((data or {}).get("recommendation", "")).strip()
+    if not recommendation:
+        raise HTTPException(status_code=500, detail="OpenAI returned empty recommendation.")
+    return recommendation
+
+
 def build_ai_content(
     client: openai.OpenAI,
     company_name: str,
@@ -769,3 +805,49 @@ async def generate_report(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+
+@router.post("/source-recommendation")
+async def generate_source_recommendation(
+    body: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Generate a one-line AI recommendation for dashboard top emission source card.
+    """
+    uid = current_user.get("uid")
+    company_id, company_data = get_company_id(uid)
+    _ = company_id
+
+    source_name = str(body.get("source_name", "")).strip()
+    month_label = str(body.get("month_label", "")).strip()
+    source_share_pct = float(body.get("source_share_pct", 0) or 0)
+    source_tco2e = float(body.get("source_tco2e", 0) or 0)
+
+    if not source_name:
+        raise HTTPException(status_code=400, detail="source_name is required.")
+    if not month_label:
+        raise HTTPException(status_code=400, detail="month_label is required.")
+
+    basic = company_data.get("basicInfo") or {}
+    industry = basic.get("industry") or "General Industry"
+    locations = company_data.get("locations", [])
+    primary = next((l for l in locations if l.get("isPrimary")), locations[0] if locations else {})
+    city = (primary.get("city") or "global").lower()
+
+    try:
+        client = get_openai_client()
+        recommendation = build_source_recommendation(
+            client,
+            source_name=source_name,
+            source_share_pct=source_share_pct,
+            source_tco2e=source_tco2e,
+            month_label=month_label,
+            industry=industry,
+            city=city,
+        )
+        return {"recommendation": recommendation}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate recommendation: {str(e)}")

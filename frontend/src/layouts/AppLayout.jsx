@@ -38,6 +38,7 @@ export default function AppLayout({ children, pageTitle }) {
       right: 0,
       bottom: 0,
       overflow: "hidden",
+      "--app-sidebar-width": `${sidebarWidth}px`,
     }}>
       {/* Sidebar */}
       <div style={{
