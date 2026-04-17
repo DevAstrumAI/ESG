@@ -11,7 +11,19 @@ import LocationManager from "./LocationManager";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
 import Card from "../ui/Card";
-import { FiCheck, FiArrowRight, FiArrowLeft, FiSave } from "react-icons/fi";
+import {
+  FiCheck,
+  FiArrowRight,
+  FiArrowLeft,
+  FiSave,
+  FiBriefcase,
+  FiGlobe,
+  FiMapPin,
+  FiUsers,
+  FiDollarSign,
+  FiClipboard,
+  FiHome,
+} from "react-icons/fi";
 import { BiLeaf } from "react-icons/bi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
@@ -264,14 +276,14 @@ export default function CompanyWizard() {
   };
 
   const steps = [
-    { id: 1, label: "Company Info", icon: "🏢" },
-    { id: 2, label: "Region", icon: "🌍" },
-    { id: 3, label: "Location", icon: "🗺️" },
-    { id: 4, label: "Industry", icon: "🏭" },
-    { id: 5, label: "Employees", icon: "👥" },
-    { id: 6, label: "Revenue", icon: "💰" },
-    { id: 7, label: "Cities", icon: "🏙️" },
-    { id: 8, label: "Summary", icon: "📋" },
+    { id: 1, label: "Company Info", icon: <FiHome /> },
+    { id: 2, label: "Region", icon: <FiGlobe /> },
+    { id: 3, label: "Location", icon: <FiMapPin /> },
+    { id: 4, label: "Industry", icon: <FiBriefcase /> },
+    { id: 5, label: "Employees", icon: <FiUsers /> },
+    { id: 6, label: "Revenue", icon: <FiDollarSign /> },
+    { id: 7, label: "Cities", icon: <FiMapPin /> },
+    { id: 8, label: "Summary", icon: <FiClipboard /> },
   ];
 
   const validateFacilitiesForSubmit = () => {
@@ -569,7 +581,7 @@ export default function CompanyWizard() {
         )}
         {saveStatus === "saved" && (
           <span className="saved">
-            ✓ Draft saved {saveType === "local" ? "(locally)" : saveType === "backend" ? "(to cloud)" : ""}
+            ✓ Your progress has been saved
           </span>
         )}
         {saveStatus === "error" && (

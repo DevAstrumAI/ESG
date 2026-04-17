@@ -6,11 +6,11 @@ export default function CountrySelector({ data, updateField }) {
   // Countries by region
   const countriesByRegion = {
     "middle-east": [
-      { label: "🇦🇪 United Arab Emirates", value: "uae" },
-      { label: "🇸🇦 Saudi Arabia", value: "saudi-arabia" },
+      { label: "United Arab Emirates", value: "uae" },
+      { label: "Saudi Arabia", value: "saudi-arabia" },
     ],
     "asia-pacific": [
-      { label: "🇸🇬 Singapore", value: "singapore" },
+      { label: "Singapore", value: "singapore" },
     ],
     "eu": [],
     "uk": [],

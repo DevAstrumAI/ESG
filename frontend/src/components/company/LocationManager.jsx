@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import CountrySelector from "./CountrySelector";
 import PrimaryButton from "../ui/PrimaryButton";
+import ThemedSelect from "../ui/ThemedSelect";
 import { FiMapPin, FiTrash2, FiPlus } from "react-icons/fi";
 import { citiesByCountry } from "../../utils/companyLocations";
 
@@ -99,16 +100,13 @@ export default function LocationManager({ data, updateField }) {
           <div className="add-section">
             <div className="field-group">
               <label className="field-label">Select City</label>
-              <select
+              <ThemedSelect
                 className="field-select"
                 value={selectedCity}
-                onChange={(e) => setSelectedCity(e.target.value)}
-              >
-                <option value="">Choose a city</option>
-                {availableCities.map((city) => (
-                  <option key={city} value={city}>{city}</option>
-                ))}
-              </select>
+                onChange={(nextCity) => setSelectedCity(nextCity)}
+                options={availableCities.map((city) => ({ value: city, label: city }))}
+                placeholder="Choose a city"
+              />
             </div>
             <PrimaryButton onClick={addCity} className="add-btn" disabled={!selectedCity}>
               <FiPlus /> Add City
@@ -262,13 +260,22 @@ export default function LocationManager({ data, updateField }) {
           border: 1px solid #E5E7EB;
           border-radius: 8px;
           font-size: 14px;
-          background: white;
+          background: #FFFFFF;
+          color: #111827;
           cursor: pointer;
+          color-scheme: light;
+          -webkit-appearance: none;
+          appearance: none;
         }
 
         .field-select:focus {
           outline: none;
           border-color: #2E7D64;
+        }
+
+        .field-select option {
+          background: #FFFFFF;
+          color: #111827;
         }
 
         .add-btn {

@@ -25,7 +25,7 @@ export default function CompanyInfoForm({ data, updateField }) {
             placeholder="e.g., Acme Corporation"
             onChange={(e) => updateField("name", e.target.value)}
           />
-          {!data.name && <span className="field-hint">This will be used for all reports</span>}
+          <span className="field-hint">This will be used for all reports</span>
         </div>
 
         <div className="field-group">

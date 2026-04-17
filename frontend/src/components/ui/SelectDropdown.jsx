@@ -1,4 +1,5 @@
 import React from "react";
+import ThemedSelect from "./ThemedSelect";
 
 export default function SelectDropdown({
   label,
@@ -24,28 +25,14 @@ export default function SelectDropdown({
       )}
 
       {/* Dropdown */}
-      <select
-        value={value}
-        onChange={onChange}
-        style={{
-          width: "50%",
-          padding: "10px",
-          borderRadius: "8px",
-          border: error ? "1px solid #DC2626" : "1px solid #D1D5DB",
-          fontSize: "14px",
-          backgroundColor: "white",
-        }}
-      >
-        {/* Default Placeholder */}
-        <option value="">Select an option</option>
-
-        {/* Options */}
-        {options.map((opt, index) => (
-          <option key={index} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+      <div style={{ width: "100%", maxWidth: "400px" }}>
+        <ThemedSelect
+          value={value}
+          onChange={(nextValue) => onChange?.({ target: { value: nextValue } })}
+          options={options}
+          placeholder="Select an option"
+        />
+      </div>
 
       {/* Error Message */}
       {error && (

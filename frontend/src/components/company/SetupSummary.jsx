@@ -4,6 +4,7 @@ import { FiCheckCircle, FiMapPin, FiUsers, FiGlobe, FiBriefcase, FiEdit2, FiSave
 import { BiBuilding } from "react-icons/bi";
 import InputField from "../ui/InputField";
 import SelectDropdown from "../ui/SelectDropdown";
+import ThemedSelect from "../ui/ThemedSelect";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
 import { 
@@ -502,19 +503,14 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
             <div className="edit-mode" key="facilities-edit">
               <div className="field-group">
                 <label className="field-label">Country</label>
-                <select
+                <ThemedSelect
                   className="field-select"
                   value={facilitiesEditData.country}
-                  onChange={(e) => handleCountryChange(e.target.value)}
+                  onChange={(nextCountry) => handleCountryChange(nextCountry)}
                   disabled={!data.region}
-                >
-                  <option value="">Select Country</option>
-                  {(countriesByRegion[data.region] || []).map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
+                  options={countriesByRegion[data.region] || []}
+                  placeholder="Select Country"
+                />
               </div>
 
               {facilitiesEditData.country && (
@@ -522,16 +518,13 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
                   <div className="field-group">
                     <label className="field-label">Add City</label>
                     <div className="city-input-group">
-                      <select
+                      <ThemedSelect
                         className="field-select"
                         value={selectedCity}
-                        onChange={(e) => setSelectedCity(e.target.value)}
-                      >
-                        <option value="">Select City</option>
-                        {cities.map(city => (
-                          <option key={city} value={city}>{city}</option>
-                        ))}
-                      </select>
+                        onChange={(nextCity) => setSelectedCity(nextCity)}
+                        options={cities.map((city) => ({ value: city, label: city }))}
+                        placeholder="Select City"
+                      />
                       <button onClick={handleAddCity} className="add-city-btn" disabled={!selectedCity}>
                         <FiPlus /> Add
                       </button>
@@ -733,6 +726,9 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
           font-weight: 500;
           color: #111827;
           background: #FFFFFF;
+          color-scheme: light;
+          -webkit-appearance: none;
+          appearance: none;
           transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
         }
         .field-select:hover {
@@ -744,6 +740,10 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
           border-color: #2E7D64;
           box-shadow: 0 0 0 3px rgba(46, 125, 100, 0.14);
           background: #FFFFFF;
+        }
+        .field-select option {
+          background: #FFFFFF;
+          color: #111827;
         }
 
         .add-city-section { margin-top: 8px; }

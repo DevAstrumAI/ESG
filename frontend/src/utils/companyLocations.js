@@ -5,10 +5,10 @@
 
 export const countriesByRegion = {
   "middle-east": [
-    { label: "🇦🇪 United Arab Emirates", value: "uae" },
-    { label: "🇸🇦 Saudi Arabia", value: "saudi-arabia" },
+    { label: "United Arab Emirates", value: "uae" },
+    { label: "Saudi Arabia", value: "saudi-arabia" },
   ],
-  "asia-pacific": [{ label: "🇸🇬 Singapore", value: "singapore" }],
+  "asia-pacific": [{ label: "Singapore", value: "singapore" }],
 };
 
 export const citiesByCountry = {
