@@ -29,7 +29,7 @@ import {
   getValidCountryValuesForRegion,
 } from "../../utils/companyLocations";
 
-export default function SetupSummary({ data, updateField, mergeCompanyData }) {
+export default function SetupSummary({ data, updateField, mergeCompanyData, onRegionResetLocations }) {
   const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData] = useState({
     name: data.name,
@@ -121,15 +121,32 @@ export default function SetupSummary({ data, updateField, mergeCompanyData }) {
       window.alert("Please select a region.");
       return;
     }
-    const filtered = filterLocationsForRegion(newRegion, data.locations || []);
+    const regionChanged = newRegion !== data.region;
+    if (regionChanged) {
+      const confirmed = window.confirm(
+        "Changing region will clear the selected country and all added cities. You will need to re-select them before completing setup. Continue?"
+      );
+      if (!confirmed) return;
+    }
+
+    const nextLocations = regionChanged
+      ? []
+      : filterLocationsForRegion(newRegion, data.locations || []);
     const validCountries = new Set(getValidCountryValuesForRegion(newRegion));
-    const nextCountry =
-      data.country && validCountries.has(data.country) ? data.country : "";
+    const nextCountry = regionChanged
+      ? ""
+      : (data.country && validCountries.has(data.country) ? data.country : "");
     applyCompanyPatch({
       region: newRegion,
-      locations: filtered,
+      locations: nextLocations,
       country: nextCountry,
     });
+    if (regionChanged) {
+      setFacilitiesEditData({ country: "", locations: [] });
+      setSelectedCity("");
+      setCities([]);
+      if (onRegionResetLocations) onRegionResetLocations();
+    }
     setEditingSection(null);
   };
 

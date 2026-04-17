@@ -30,6 +30,7 @@ export default function CompanyWizard() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("saved"); // 'saving', 'saved', 'error'
   const [saveType, setSaveType] = useState(null); // 'local' or 'backend'
+  const [regionChangeNeedsCities, setRegionChangeNeedsCities] = useState(false);
   const autoSaveTimer = useRef(null);
   const hasHydrated = useRef(false);
   
@@ -102,14 +103,12 @@ export default function CompanyWizard() {
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              basicInfo: {
-                name: data.name,
-                description: data.description,
-                industry: data.industry || "",
-                employees: Number(data.employees) || 0,
-                revenue: Number(data.revenue) || 0,
-                region: data.region || "",
-              },
+              name: data.name,
+              description: data.description || "",
+              industry: data.industry || "",
+              employees: Number(data.employees) || 0,
+              revenue: Number(data.revenue) || 0,
+              region: data.region || "",
               locations: data.locations || [],
             }),
           });
@@ -138,6 +137,9 @@ export default function CompanyWizard() {
   const mergeCompanyData = useCallback((partial) => {
     setCompanyData((prev) => {
       const newData = { ...prev, ...partial };
+      if (Object.prototype.hasOwnProperty.call(partial, "locations")) {
+        setRegionChangeNeedsCities(!(partial.locations || []).length);
+      }
       setTimeout(() => autoSave(newData), 0);
       return newData;
     });
@@ -229,6 +231,9 @@ export default function CompanyWizard() {
     if (!region) return "Please select a region.";
     const locations = filterLocationsForRegion(region, companyData.locations);
     if (locations.length === 0) {
+      if (regionChangeNeedsCities) {
+        return "Region changed. Please re-select country and add city locations before completing setup.";
+      }
       return "Add at least one city (country and city) in your selected region.";
     }
     if (locations.some((l) => !l.city || !l.country)) {
@@ -552,7 +557,14 @@ export default function CompanyWizard() {
           {step === 5 && <EmployeeForm data={companyData} updateField={updateField} />}
           {step === 6 && <RevenueForm data={companyData} updateField={updateField} />}
           {step === 7 && <FacilitiesList locations={companyData.locations} />}
-          {step === 8 && <SetupSummary data={companyData} updateField={updateField} mergeCompanyData={mergeCompanyData} />}
+          {step === 8 && (
+            <SetupSummary
+              data={companyData}
+              updateField={updateField}
+              mergeCompanyData={mergeCompanyData}
+              onRegionResetLocations={() => setRegionChangeNeedsCities(true)}
+            />
+          )}
         </div>
 
         <div className="wizard-footer">
