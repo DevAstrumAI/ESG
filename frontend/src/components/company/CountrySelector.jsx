@@ -93,6 +93,23 @@ export default function CountrySelector({ data, updateField }) {
         .country-grid {
           max-width: 400px;
         }
+
+        @media (max-width: 768px) {
+          .country-selector {
+            margin-top: 18px;
+            padding-top: 18px;
+          }
+          .step-subheader h4 {
+            font-size: 15px;
+          }
+          .sub-description {
+            font-size: 13px;
+            margin-bottom: 14px;
+          }
+          .country-grid {
+            max-width: 100%;
+          }
+        }
       `}</style>
     </div>
   );

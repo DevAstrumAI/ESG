@@ -795,26 +795,66 @@ export default function CompanyWizard() {
           pointer-events: none;
         }
 
+        @media (max-width: 1024px) {
+          .wizard-content-card {
+            padding: 24px !important;
+          }
+          .step-label {
+            font-size: 11px;
+          }
+        }
+
         @media (max-width: 768px) {
+          .wizard-container {
+            max-width: 100%;
+          }
+          .auto-save-status {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+          }
           .steps-progress {
-            flex-wrap: wrap;
-            gap: 10px;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px 8px;
           }
           .step-item {
-            flex: 0 0 calc(33.333% - 10px);
+            min-width: 0;
+          }
+          .step-indicator {
+            width: 34px;
+            height: 34px;
+            font-size: 14px;
+            margin-bottom: 6px;
           }
           .step-label {
             font-size: 10px;
+            line-height: 1.25;
           }
           .wizard-content-card {
-            padding: 20px !important;
+            padding: 16px !important;
+          }
+          .wizard-content {
+            min-height: 0;
+            margin-bottom: 20px;
           }
           .wizard-footer {
             flex-direction: column-reverse;
+            gap: 10px;
           }
           .nav-btn {
             width: 100%;
             justify-content: center;
+            min-height: 42px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .steps-progress {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .step-label {
+            font-size: 11px;
           }
         }
       `}</style>

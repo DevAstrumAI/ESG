@@ -141,6 +141,37 @@ export default function IndustrySelector({ data, updateField }) {
           color: #2E7D64;
           border: 1px solid #E5E7EB;
         }
+
+        @media (max-width: 768px) {
+          .step-header {
+            gap: 10px;
+            margin-bottom: 12px;
+          }
+          .step-icon {
+            font-size: 26px;
+          }
+          .step-header h3 {
+            font-size: 18px;
+          }
+          .step-description {
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+          }
+          .industry-grid {
+            max-width: 100%;
+          }
+          .field-select {
+            width: 100%;
+            font-size: 16px; /* prevent iOS zoom */
+            padding: 11px 12px;
+          }
+          .industry-badge {
+            font-size: 13px;
+            padding: 10px 12px;
+            align-items: flex-start;
+          }
+        }
       `}</style>
     </div>
   );
