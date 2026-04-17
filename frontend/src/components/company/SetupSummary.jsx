@@ -7,6 +7,7 @@ import SelectDropdown from "../ui/SelectDropdown";
 import ThemedSelect from "../ui/ThemedSelect";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
+import ConfirmationDialog from "../ui/ConfirmationDialog";
 import { 
   FiPackage, 
   FiMonitor, 
@@ -48,6 +49,8 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
   });
   const [selectedCity, setSelectedCity] = useState("");
   const [cities, setCities] = useState([]);
+  const [showRegionChangeConfirm, setShowRegionChangeConfirm] = useState(false);
+  const [pendingRegion, setPendingRegion] = useState("");
 
   const regions = [
     { label: " Middle East", value: "middle-east" },
@@ -116,20 +119,8 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
     setEditingSection(null);
   };
 
-  const handleRegionSave = () => {
-    const newRegion = editData.region;
-    if (!newRegion) {
-      window.alert("Please select a region.");
-      return;
-    }
+  const applyRegionChange = (newRegion) => {
     const regionChanged = newRegion !== data.region;
-    if (regionChanged) {
-      const confirmed = window.confirm(
-        "Changing region will clear the selected country and all added cities. You will need to re-select them before completing setup. Continue?"
-      );
-      if (!confirmed) return;
-    }
-
     const nextLocations = regionChanged
       ? []
       : filterLocationsForRegion(newRegion, data.locations || []);
@@ -149,6 +140,20 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
       if (onRegionResetLocations) onRegionResetLocations();
     }
     setEditingSection(null);
+  };
+
+  const handleRegionSave = () => {
+    const newRegion = editData.region;
+    if (!newRegion) {
+      window.alert("Please select a region.");
+      return;
+    }
+    if (newRegion !== data.region) {
+      setPendingRegion(newRegion);
+      setShowRegionChangeConfirm(true);
+      return;
+    }
+    applyRegionChange(newRegion);
   };
 
   const handleFacilitiesSave = () => {
@@ -595,6 +600,24 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
         <p>All information is correct. Click "Complete Setup" to finish.</p>
       </div>
 
+      <ConfirmationDialog
+        isOpen={showRegionChangeConfirm}
+        onClose={() => {
+          setShowRegionChangeConfirm(false);
+          setPendingRegion("");
+        }}
+        onConfirm={() => {
+          if (pendingRegion) applyRegionChange(pendingRegion);
+          setShowRegionChangeConfirm(false);
+          setPendingRegion("");
+        }}
+        title="Confirm Region Change"
+        message="Changing region will clear the selected country and all added cities. You will need to re-select them before completing setup."
+        confirmText="Yes, Change Region"
+        cancelText="Keep Current Region"
+        type="danger"
+      />
+
       <style jsx>{`
         .summary-step {
           animation: fadeIn 0.5s ease;
@@ -716,35 +739,7 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
           letter-spacing: 0.35px;
           margin-bottom: 2px;
         }
-        .field-select {
-          width: 100%;
-          height: 42px;
-          padding: 0 12px;
-          border: 1px solid #D1D5DB;
-          border-radius: 10px;
-          font-size: 14px;
-          font-weight: 500;
-          color: #111827;
-          background: #FFFFFF;
-          color-scheme: light;
-          -webkit-appearance: none;
-          appearance: none;
-          transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-        }
-        .field-select:hover {
-          border-color: #9CA3AF;
-          background: #FCFDFD;
-        }
-        .field-select:focus {
-          outline: none;
-          border-color: #2E7D64;
-          box-shadow: 0 0 0 3px rgba(46, 125, 100, 0.14);
-          background: #FFFFFF;
-        }
-        .field-select option {
-          background: #FFFFFF;
-          color: #111827;
-        }
+        .field-select { width: 100%; }
 
         .add-city-section { margin-top: 8px; }
         .city-input-group {

@@ -21,6 +21,24 @@ MOBILE_FUEL_LOOKUP_KEYS: dict[str, tuple[str, ...]] = {
     "cargo van": ("diesel_van", "diesel", "diesel_car"),
 }
 
+# Default fuel economy assumptions used only when factors are provided in kg CO2e/km
+# but frontend submits litres for road-vehicle records.
+# Formula: kg CO2e/litre = (kg CO2e/km) * (km/litre)
+MOBILE_KM_PER_LITRE_ASSUMPTIONS: dict[str, float] = {
+    "petrol_motorcycle": 35.0,
+    "motorcycle": 35.0,
+    "petrol_car": 12.5,
+    "diesel_car": 14.0,
+    "diesel_bus": 3.0,
+    "diesel_van": 10.0,
+    "diesel_truck": 4.0,
+    "diesel_train": 2.5,
+    "cargo_ship_hfo": 0.35,
+    "marine_hfo": 0.35,
+}
+
+DISTANCE_UNIT_MARKERS = ("/km", "per km")
+
 def _factor_numeric(fd: dict) -> float:
     if not isinstance(fd, dict):
         return 0.0
@@ -55,6 +73,11 @@ def _mobile_factor_keys_for(fuel_type: str) -> tuple[str, ...]:
     return MOBILE_FUEL_LOOKUP_KEYS.get(fuel_type, (fuel_type,))
 
 
+def _is_distance_unit(unit: str) -> bool:
+    unit_l = (unit or "").strip().lower()
+    return any(marker in unit_l for marker in DISTANCE_UNIT_MARKERS)
+
+
 def get_emission_factors(region: str, country: str, city: str, scope: str) -> dict:
     """
     Fetch emission factors from Firestore.
@@ -69,32 +92,38 @@ def get_emission_factors(region: str, country: str, city: str, scope: str) -> di
         if region:
             resolved_region = region
 
-        # Try both path formats
-        path_formats = [
-            # Format 1: with parentheses (Saudi Arabia)
-            f"emissionFactors/regions/{resolved_region}/"
-            f"countries/{resolved_country}/"
-            f"cities/city_data/{resolved_city}/"
-            f"('{scope}',)/"
-            f"factors",
+        # Saudi Arabia factors are maintained at national level under Riyadh.
+        city_candidates = [resolved_city]
+        if resolved_country == "saudi-arabia" and resolved_city != "riyadh":
+            city_candidates.append("riyadh")
 
-            # Format 2: without parentheses (UAE and others)
-            f"emissionFactors/regions/{resolved_region}/"
-            f"countries/{resolved_country}/"
-            f"cities/city_data/{resolved_city}/"
-            f"{scope}/"
-            f"factors"
-        ]
+        for city_key in city_candidates:
+            # Try both path formats
+            path_formats = [
+                # Format 1: with parentheses (Saudi Arabia)
+                f"emissionFactors/regions/{resolved_region}/"
+                f"countries/{resolved_country}/"
+                f"cities/city_data/{city_key}/"
+                f"('{scope}',)/"
+                f"factors",
 
-        # Try each path format
-        for doc_path in path_formats:
-            print(f"🔍 Trying: {doc_path}")
-            doc_ref = db.document(doc_path)
-            doc = doc_ref.get()
+                # Format 2: without parentheses (UAE and others)
+                f"emissionFactors/regions/{resolved_region}/"
+                f"countries/{resolved_country}/"
+                f"cities/city_data/{city_key}/"
+                f"{scope}/"
+                f"factors"
+            ]
 
-            if doc.exists:
-                print(f"✅ Found {len(doc.to_dict())} factors at: {doc_path}")
-                return doc.to_dict() or {}
+            # Try each path format
+            for doc_path in path_formats:
+                print(f"🔍 Trying: {doc_path}")
+                doc_ref = db.document(doc_path)
+                doc = doc_ref.get()
+
+                if doc.exists:
+                    print(f"✅ Found {len(doc.to_dict())} factors at: {doc_path}")
+                    return doc.to_dict() or {}
 
         # If neither format works
         print(f"⚠️ No factors found for {resolved_country}/{resolved_city}/{scope}")
@@ -150,22 +179,44 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
         factor_value = _factor_numeric(factor_data)
         unit = factor_data.get("unit", "") if isinstance(factor_data, dict) else ""
 
-        # Use distance for aviation/marine/rail, litres for road vehicles
-        is_distance_based = fuel_type in DISTANCE_BASED_TYPES
-        if is_distance_based:
-            quantity = float(entry.get("distanceKm", 0))
+        # Prefer whichever user-provided quantity is present.
+        # If factor unit is per-km and litres are supplied, convert factor to per-litre.
+        distance_km = float(entry.get("distanceKm", 0))
+        litres_consumed = float(entry.get("litresConsumed", 0))
+        factor_is_distance = _is_distance_unit(unit) or fuel_type in DISTANCE_BASED_TYPES
+
+        converted_from_distance_factor = False
+        km_per_litre_used = None
+        if factor_is_distance and litres_consumed > 0:
+            if distance_km > 0:
+                km_per_litre_used = distance_km / litres_consumed
+            else:
+                km_per_litre_used = MOBILE_KM_PER_LITRE_ASSUMPTIONS.get(fuel_type, 12.0)
+            factor_value = factor_value * km_per_litre_used
+            unit = "kg CO2e/litre (converted from per-km factor)"
+            converted_from_distance_factor = True
+            quantity = litres_consumed
+        elif factor_is_distance:
+            quantity = distance_km
         else:
-            quantity = float(entry.get("litresConsumed", 0))
+            quantity = litres_consumed
 
         kg_co2e = quantity * factor_value
         mobile_total += kg_co2e
 
-        mobile_entries.append({
+        row = {
             **entry,
             "factorUsed": factor_value,
             "unit": unit,
             "kgCO2e": round(kg_co2e, 4),
-        })
+        }
+        if converted_from_distance_factor:
+            row["factorConversion"] = {
+                "fromUnit": (factor_data.get("unit", "") if isinstance(factor_data, dict) else ""),
+                "toUnit": unit,
+                "kmPerLitreAssumption": km_per_litre_used,
+            }
+        mobile_entries.append(row)
 
     results["mobile"] = {
         "entries": mobile_entries,
