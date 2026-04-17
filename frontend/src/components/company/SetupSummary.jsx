@@ -467,12 +467,12 @@ export default function SetupSummary({ data, updateField, mergeCompanyData }) {
           )}
         </div>
 
-        {/* Facilities Card */}
+        {/* Cities Card */}
         <div className="summary-card facilities-card" key="facilities-card">
           <div className="card-header">
             <div className="card-title">
               <BiBuilding className="title-icon" />
-              <h4>Facilities ({data.locations?.length || 0})</h4>
+              <h4>Cities ({data.locations?.length || 0})</h4>
             </div>
             {editingSection !== 'facilities' && (
               <button onClick={() => handleEdit('facilities')} className="edit-section-btn">
@@ -556,7 +556,7 @@ export default function SetupSummary({ data, updateField, mergeCompanyData }) {
 
               <div className="edit-actions">
                 <PrimaryButton onClick={handleFacilitiesSave} className="save-btn">
-                  <FiSave /> Save Facilities
+                  <FiSave /> Save Cities
                 </PrimaryButton>
                 <SecondaryButton onClick={handleCancel} className="cancel-btn">
                   <FiX /> Cancel
@@ -566,7 +566,7 @@ export default function SetupSummary({ data, updateField, mergeCompanyData }) {
           ) : (
             <div className="facilities-list">
               {!data.locations || data.locations.length === 0 ? (
-                <p className="empty-facilities">No facilities added</p>
+                <p className="empty-facilities">No cities added</p>
               ) : (
                 data.locations.map((loc) => (
                   <div key={loc.id} className="facility-item">

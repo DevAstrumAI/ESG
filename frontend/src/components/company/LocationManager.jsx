@@ -72,7 +72,7 @@ export default function LocationManager({ data, updateField }) {
   return (
     <div className="location-manager">
       <div className="step-header">
-        <h3>Add Facility Locations</h3>
+        <h3>Add City Locations</h3>
         {data.country && (
           <span className="step-badge">
             {data.locations.length} {data.locations.length === 1 ? 'city' : 'cities'} added
@@ -83,7 +83,7 @@ export default function LocationManager({ data, updateField }) {
       {data.region && !data.country && (
         <>
           <p className="step-description">
-            First, select the country where your facilities are located.
+            First, select the country where your cities are located.
           </p>
           <CountrySelector data={data} updateField={updateField} />
         </>

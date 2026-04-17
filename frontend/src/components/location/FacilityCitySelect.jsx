@@ -23,7 +23,7 @@ export default function FacilityCitySelect({ company, disabled }) {
   return (
     <div className="facility-city-select">
       <FiMapPin className="pin" aria-hidden />
-      <label htmlFor="facility-city-select">Facility</label>
+      <label htmlFor="facility-city-select">City</label>
       <select
         id="facility-city-select"
         value={locationKeyVal || locationKey(locs[0].country, locs[0].city)}

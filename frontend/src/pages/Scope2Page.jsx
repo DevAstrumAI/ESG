@@ -139,7 +139,7 @@ export default function Scope2Page() {
           
           const electricityData = dedupeById((data.electricity || []).filter((item) => matchesMonth(item.month))).map((item, index) => ({
             id: item.id || `${Date.now()}-electricity-${index}-${Math.random()}`,
-            facilityName: item.facilityName || 'Main Facility',
+            facilityName: item.facilityName || 'Main City',
             consumption: item.consumption || 0,
             certificateType: item.certificateType || 'grid_average',
             month: item.month,

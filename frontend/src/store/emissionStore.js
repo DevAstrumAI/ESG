@@ -731,7 +731,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
         country,
         city,
         electricity: state.scope2Electricity.map((e) => ({
-          facilityName:    e.facilityName || 'Main Facility',
+          facilityName:    e.facilityName || 'Main City',
           consumptionKwh:  Number(e.consumption || e.kwh || 0),
           method:          e.certificateType === "grid_average" ? "location" : "market",
           certificateType: e.certificateType,

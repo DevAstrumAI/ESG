@@ -34,7 +34,7 @@ export default function CountrySelector({ data, updateField }) {
       </div>
 
       <p className="sub-description">
-        Choose the country where your facilities are located.
+        Choose the country where your cities are located.
       </p>
 
       <div className="country-grid">

@@ -154,7 +154,7 @@ export const normalizeScope2ElectricityEntry = (entry, fallbackId) => {
   const certificateType = entry?.certificateType || "grid_average";
   return {
     id: normalizeId(entry, fallbackId),
-    facilityName: entry?.facilityName || "Main Facility",
+    facilityName: entry?.facilityName || "Main City",
     consumption: entry?.consumptionKwh ?? entry?.consumption ?? entry?.kwh ?? 0,
     certificateType,
     certificateLabel: CERTIFICATE_LABEL_BY_CODE[certificateType] || "Grid Average",

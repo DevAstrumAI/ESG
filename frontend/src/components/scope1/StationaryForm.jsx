@@ -154,7 +154,7 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
       <div className="sf-desc-header">
         <FiBriefcase className="sf-header-icon" />
         <p className="sf-desc">
-          Enter fuel consumption for <strong>fixed equipment</strong> at your facilities — generators, boilers, heaters, and other stationary sources.
+          Enter fuel consumption for <strong>fixed equipment</strong> across your city operations — generators, boilers, heaters, and other stationary sources.
         </p>
       </div>
 

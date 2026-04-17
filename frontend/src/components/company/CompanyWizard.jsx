@@ -220,7 +220,7 @@ export default function CompanyWizard() {
     { id: 4, label: "Industry", icon: "🏭" },
     { id: 5, label: "Employees", icon: "👥" },
     { id: 6, label: "Revenue", icon: "💰" },
-    { id: 7, label: "Facilities", icon: "🏛️" },
+    { id: 7, label: "Cities", icon: "🏙️" },
     { id: 8, label: "Summary", icon: "📋" },
   ];
 
@@ -229,10 +229,10 @@ export default function CompanyWizard() {
     if (!region) return "Please select a region.";
     const locations = filterLocationsForRegion(region, companyData.locations);
     if (locations.length === 0) {
-      return "Add at least one facility (country and city) in your selected region.";
+      return "Add at least one city (country and city) in your selected region.";
     }
     if (locations.some((l) => !l.city || !l.country)) {
-      return "Each facility must include a country and city.";
+      return "Each city entry must include a country and city.";
     }
     return null;
   };
@@ -356,6 +356,11 @@ export default function CompanyWizard() {
       default: return true;
     }
   };
+
+  // Keep final action clickable and validate on submit handler.
+  // This avoids intermittent disabled states after inline summary edits.
+  const isFinalStep = step === steps.length;
+  const isNextDisabled = isFinalStep ? false : !isStepValid();
 
   // Reset draft (clear all saved data)
   const handleResetDraft = () => {
@@ -559,12 +564,12 @@ export default function CompanyWizard() {
           
           <PrimaryButton 
             onClick={nextStep} 
-            className={`nav-btn next-btn ${!isStepValid() ? 'disabled' : ''}`}
-            disabled={!isStepValid()}
+            className={`nav-btn next-btn ${isNextDisabled ? 'disabled' : ''}`}
+            disabled={isNextDisabled}
           >
-            {step === steps.length ? "Complete Setup" : "Continue"} 
-            {step < steps.length && <FiArrowRight />}
-            {step === steps.length && <BiLeaf />}
+            {isFinalStep ? "Complete Setup" : "Continue"} 
+            {!isFinalStep && <FiArrowRight />}
+            {isFinalStep && <BiLeaf />}
           </PrimaryButton>
         </div>
       </Card>

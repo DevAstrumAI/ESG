@@ -68,7 +68,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
         month: effectiveMonth,
         category: "electricity",
         entry: {
-          facilityName: deleted.facilityName || "Main Facility",
+          facilityName: deleted.facilityName || "Main City",
           consumptionKwh: Number(deleted.consumption || deleted.kwh || 0),
           method: deleted.method || (deleted.certificateType === "grid_average" ? "location" : "market"),
           certificateType: deleted.certificateType || "grid_average",
@@ -141,7 +141,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
           month: editValues.month,
           category: "electricity",
           entry: {
-            facilityName: oldEntry.facilityName || "Main Facility",
+            facilityName: oldEntry.facilityName || "Main City",
             consumptionKwh: Number(oldEntry.consumption || 0),
             method: oldEntry.method || "location",
             certificateType: oldEntry.certificateType || "grid_average",
@@ -173,7 +173,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
             country,
             city,
             electricity: [{
-              facilityName: "Main Facility",
+              facilityName: "Main City",
               consumptionKwh: Number(editValues.consumption),
               method: method,
               certificateType: editValues.certificateKey,

@@ -1,5 +1,5 @@
 /**
- * Append company facility country/city filters to emissions API URLs.
+ * Append company city country/city filters to emissions API URLs.
  */
 export function appendLocationQuery(url, country, city) {
   if (!country || !city) return url;
