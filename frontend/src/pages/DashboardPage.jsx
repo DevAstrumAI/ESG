@@ -1,5 +1,5 @@
 // src/pages/DashboardPage.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { 
   FiCalendar, 
   FiDownload,
@@ -28,6 +28,9 @@ import DataCompletenessCalendar from "../components/dashboard/DataCompletenessCa
 import { useAuthStore } from "../store/authStore";
 import { useEmissionStore } from "../store/emissionStore";
 import { useCompanyStore } from "../store/companyStore";
+import { useSelectedLocationStore } from "../store/selectedLocationStore";
+import { appendLocationQuery } from "../utils/locationQuery";
+import FacilityCitySelect from "../components/location/FacilityCitySelect";
 import Card from "../components/ui/Card";
 import {
   ResponsiveContainer,
@@ -41,9 +44,16 @@ import {
   ReferenceArea,
 } from "recharts";
 
+const FISCAL_YEAR_START_MONTH = 6;
+const getCurrentFiscalStartYear = () => {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  return month >= FISCAL_YEAR_START_MONTH ? now.getFullYear() : now.getFullYear() - 1;
+};
+
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(getCurrentFiscalStartYear());
   const [activeView, setActiveView] = useState("overview");
   const [expandedSections, setExpandedSections] = useState({
     targetPeriod: false,
@@ -64,6 +74,12 @@ export default function DashboardPage() {
   const company = useCompanyStore((s) => s.company);
   const fetchCompany = useCompanyStore((s) => s.fetchCompany);
   const targets = useCompanyStore((s) => s.targets);
+  const locationKey = useSelectedLocationStore((s) => s.locationKey);
+  const syncFromCompany = useSelectedLocationStore((s) => s.syncFromCompany);
+  const selectedFacility = useMemo(
+    () => useSelectedLocationStore.getState().getSelectedLocation(company),
+    [company, locationKey]
+  );
 
   // Initial data load on mount and when token changes
   useEffect(() => {
@@ -73,6 +89,7 @@ export default function DashboardPage() {
         
         // Force fetch company data
         await fetchCompany(token, { force: true });
+        useSelectedLocationStore.getState().syncFromCompany(useCompanyStore.getState().company);
         await fetchDirectTargets();
         
         // Fetch emission summary
@@ -86,13 +103,17 @@ export default function DashboardPage() {
     loadInitialData();
   }, [token, fetchCompany, fetchSummary, selectedYear, initialLoadDone]);
 
-  // Fetch data when year changes
+  useEffect(() => {
+    if (company) syncFromCompany(company);
+  }, [company, syncFromCompany]);
+
+  // Fetch data when year or selected facility changes
   useEffect(() => {
     if (token && initialLoadDone) {
       console.log("Year changed, fetching summary for:", selectedYear);
       fetchSummary(token, selectedYear);
     }
-  }, [token, fetchSummary, selectedYear, initialLoadDone]);
+  }, [token, fetchSummary, selectedYear, initialLoadDone, locationKey]);
 
   useEffect(() => {
     const now = new Date();
@@ -143,6 +164,7 @@ export default function DashboardPage() {
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchCompany(token, { force: true });
+    useSelectedLocationStore.getState().syncFromCompany(useCompanyStore.getState().company);
     await fetchDirectTargets();
     await fetchSummary(token, selectedYear);
     setTimeout(() => setRefreshing(false), 500);
@@ -232,15 +254,16 @@ export default function DashboardPage() {
     const loadScope1MonthlyBreakdown = async () => {
       if (!token) return;
       try {
-        const response = await fetch(
-          `${API_URL}/api/emissions/monthly-category-breakdown?year=${selectedYear}&scope=scope1`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        let url1 = `${API_URL}/api/emissions/monthly-category-breakdown?year=${selectedYear}&scope=scope1`;
+        if (selectedFacility?.country && selectedFacility?.city) {
+          url1 = appendLocationQuery(url1, selectedFacility.country, selectedFacility.city);
+        }
+        const response = await fetch(url1, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
         if (!response.ok) {
           throw new Error("Failed to fetch scope1 monthly breakdown");
         }
@@ -253,21 +276,22 @@ export default function DashboardPage() {
     };
 
     loadScope1MonthlyBreakdown();
-  }, [token, selectedYear, API_URL]);
+  }, [token, selectedYear, API_URL, selectedFacility]);
 
   useEffect(() => {
     const loadScope2MonthlyBreakdown = async () => {
       if (!token) return;
       try {
-        const response = await fetch(
-          `${API_URL}/api/emissions/monthly-category-breakdown?year=${selectedYear}&scope=scope2`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        let url2 = `${API_URL}/api/emissions/monthly-category-breakdown?year=${selectedYear}&scope=scope2`;
+        if (selectedFacility?.country && selectedFacility?.city) {
+          url2 = appendLocationQuery(url2, selectedFacility.country, selectedFacility.city);
+        }
+        const response = await fetch(url2, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
         if (!response.ok) {
           throw new Error("Failed to fetch scope2 monthly breakdown");
         }
@@ -280,7 +304,7 @@ export default function DashboardPage() {
     };
 
     loadScope2MonthlyBreakdown();
-  }, [token, selectedYear, API_URL]);
+  }, [token, selectedYear, API_URL, selectedFacility]);
 
   // CORRECTED DATA MAPPING
   const scope1Kg = scope1Results?.total?.kgCO2e || 0;
@@ -674,6 +698,9 @@ export default function DashboardPage() {
             </select>
             <FiChevronDown className="dropdown-icon" />
           </div>
+          {company?.locations?.length > 0 && (
+            <FacilityCitySelect company={company} />
+          )}
           <button onClick={handleRefresh} className="refresh-btn" disabled={refreshing}>
             <FiRefreshCw className={refreshing ? "spin" : ""} />
             <span>Refresh</span>
@@ -894,7 +921,11 @@ export default function DashboardPage() {
       <div className="section-title">Monthly trend</div>
       {/* Data Completeness Calendar */}
       <div className="calendar-section">
-        <DataCompletenessCalendar year={selectedYear} />
+        <DataCompletenessCalendar
+          year={selectedYear}
+          country={selectedFacility?.country}
+          city={selectedFacility?.city}
+        />
       </div>
 
       {/* Charts Grid - Updated with Stacked Category Chart */}
@@ -904,7 +935,11 @@ export default function DashboardPage() {
             <h3>Monthly Emissions by Category</h3>
           </div>
           <div className="chart-wrapper">
-            <StackedCategoryChart year={selectedYear} />
+            <StackedCategoryChart
+              year={selectedYear}
+              country={selectedFacility?.country}
+              city={selectedFacility?.city}
+            />
           </div>
         </Card>
 

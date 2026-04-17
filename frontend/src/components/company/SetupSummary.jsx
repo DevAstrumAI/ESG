@@ -1,5 +1,5 @@
 // src/components/company/SetupSummary.jsx
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { FiCheckCircle, FiMapPin, FiUsers, FiGlobe, FiBriefcase, FiEdit2, FiSave, FiX, FiPlus, FiTrash2 } from "react-icons/fi";
 import { BiBuilding } from "react-icons/bi";
 import InputField from "../ui/InputField";
@@ -22,8 +22,14 @@ import {
   FiDollarSign, 
   FiMoreHorizontal 
 } from "react-icons/fi";
+import {
+  countriesByRegion,
+  citiesByCountry,
+  filterLocationsForRegion,
+  getValidCountryValuesForRegion,
+} from "../../utils/companyLocations";
 
-export default function SetupSummary({ data, updateField }) {
+export default function SetupSummary({ data, updateField, mergeCompanyData }) {
   const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData] = useState({
     name: data.name,
@@ -64,11 +70,11 @@ export default function SetupSummary({ data, updateField }) {
     { label: "Other", value: "other", icon: <FiMoreHorizontal size={16} /> },
   ];
 
-  // Cities by country
-  const citiesByCountry = {
-    uae: ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"],
-    "saudi-arabia": ["Riyadh", "Jeddah", "Dammam", "Khobar", "Medina", "Mecca"],
-    singapore: ["Singapore"],
+  const applyCompanyPatch = (patch) => {
+    if (mergeCompanyData) mergeCompanyData(patch);
+    else {
+      Object.entries(patch).forEach(([key, value]) => updateField(key, value));
+    }
   };
 
   const handleEdit = (section) => {
@@ -82,13 +88,19 @@ export default function SetupSummary({ data, updateField }) {
     });
     
     if (section === 'facilities') {
+      const locs = filterLocationsForRegion(data.region, data.locations || []);
+      const validCountries = new Set(getValidCountryValuesForRegion(data.region));
+      const country =
+        data.country && validCountries.has(data.country)
+          ? data.country
+          : locs.length
+            ? locs[0].country
+            : "";
       setFacilitiesEditData({
-        country: data.country || "",
-        locations: [...(data.locations || [])]
+        country,
+        locations: [...locs],
       });
-      if (data.country) {
-        setCities(citiesByCountry[data.country] || []);
-      }
+      setCities(country ? citiesByCountry[country] || [] : []);
     }
     
     setEditingSection(section);
@@ -103,16 +115,63 @@ export default function SetupSummary({ data, updateField }) {
     setEditingSection(null);
   };
 
+  const handleRegionSave = () => {
+    const newRegion = editData.region;
+    if (!newRegion) {
+      window.alert("Please select a region.");
+      return;
+    }
+    const filtered = filterLocationsForRegion(newRegion, data.locations || []);
+    const validCountries = new Set(getValidCountryValuesForRegion(newRegion));
+    const nextCountry =
+      data.country && validCountries.has(data.country) ? data.country : "";
+    applyCompanyPatch({
+      region: newRegion,
+      locations: filtered,
+      country: nextCountry,
+    });
+    setEditingSection(null);
+  };
+
   const handleFacilitiesSave = () => {
-    updateField("country", facilitiesEditData.country);
-    updateField("locations", facilitiesEditData.locations);
+    if (!data.region) {
+      window.alert("Please set a region first (Region section).");
+      return;
+    }
+    const validCountries = new Set(getValidCountryValuesForRegion(data.region));
+    if (!facilitiesEditData.country || !validCountries.has(facilitiesEditData.country)) {
+      window.alert("Please select a country that belongs to your region.");
+      return;
+    }
+    const cleaned = facilitiesEditData.locations.filter(
+      (loc) => loc?.country && validCountries.has(loc.country) && (loc?.city || loc?.name)
+    );
+    if (cleaned.length === 0) {
+      window.alert("Add at least one city in your region.");
+      return;
+    }
+    const countriesInLocations = new Set(cleaned.map((l) => l.country));
+    if (!countriesInLocations.has(facilitiesEditData.country)) {
+      window.alert(
+        "Added cities must match the selected country, or change the country to match your locations."
+      );
+      return;
+    }
+    applyCompanyPatch({
+      country: facilitiesEditData.country,
+      locations: cleaned,
+    });
     setEditingSection(null);
   };
 
   const handleCancel = () => setEditingSection(null);
 
   const handleCountryChange = (country) => {
-    setFacilitiesEditData(prev => ({ ...prev, country }));
+    setFacilitiesEditData((prev) => ({
+      ...prev,
+      country,
+      locations: prev.locations.filter((loc) => loc.country === country),
+    }));
     setCities(citiesByCountry[country] || []);
     setSelectedCity("");
   };
@@ -274,7 +333,7 @@ export default function SetupSummary({ data, updateField }) {
                 options={regions}
               />
               <div className="edit-actions">
-                <PrimaryButton onClick={handleSave} className="save-btn"><FiSave /> Save</PrimaryButton>
+                <PrimaryButton onClick={handleRegionSave} className="save-btn"><FiSave /> Save</PrimaryButton>
                 <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
               </div>
             </div>
@@ -430,10 +489,13 @@ export default function SetupSummary({ data, updateField }) {
                   className="field-select"
                   value={facilitiesEditData.country}
                   onChange={(e) => handleCountryChange(e.target.value)}
+                  disabled={!data.region}
                 >
                   <option value="">Select Country</option>
-                  {Object.keys(citiesByCountry).map(country => (
-                    <option key={country} value={country}>{getCountryLabel(country)}</option>
+                  {(countriesByRegion[data.region] || []).map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
                   ))}
                 </select>
               </div>

@@ -6,10 +6,11 @@ import { useEmissionStore } from "../../store/emissionStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { FiCalendar, FiAlertCircle, FiCheckCircle, FiMinusCircle } from "react-icons/fi";
 import ConfirmationDialog from "../ui/ConfirmationDialog";
+import { appendLocationQuery } from "../../utils/locationQuery";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
-export default function DataCompletenessCalendar({ year, onMonthClick }) {
+export default function DataCompletenessCalendar({ year, onMonthClick, country, city }) {
   const navigate = useNavigate();
   const token = useAuthStore((s) => s.token);
   const fetchCompany = useCompanyStore((s) => s.fetchCompany);
@@ -43,15 +44,19 @@ export default function DataCompletenessCalendar({ year, onMonthClick }) {
     if (token) {
       fetchMonthStatus();
       // Refresh company data to ensure targets are loaded
-      fetchCompany(token, true);
+      fetchCompany(token, { force: true });
     }
-  }, [token, year]);
+  }, [token, year, country, city]);
 
   const fetchMonthStatus = async () => {
     setLoading(true);
     
     try {
-      const response = await fetch(`${API_URL}/api/emissions/month-status?year=${year}`, {
+      let statusUrl = `${API_URL}/api/emissions/month-status?year=${year}`;
+      if (country && city) {
+        statusUrl = appendLocationQuery(statusUrl, country, city);
+      }
+      const response = await fetch(statusUrl, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

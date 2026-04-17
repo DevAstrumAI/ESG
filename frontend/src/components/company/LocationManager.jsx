@@ -3,16 +3,10 @@ import React, { useState, useEffect } from "react";
 import CountrySelector from "./CountrySelector";
 import PrimaryButton from "../ui/PrimaryButton";
 import { FiMapPin, FiTrash2, FiPlus } from "react-icons/fi";
+import { citiesByCountry } from "../../utils/companyLocations";
 
 export default function LocationManager({ data, updateField }) {
   const [selectedCity, setSelectedCity] = useState("");
-
-  const citiesByCountry = {
-    uae: ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"],
-    qatar: ["Doha", "Al Wakrah", "Al Khor", "Al Rayyan"],
-    "saudi-arabia": ["Riyadh", "Jeddah", "Dammam", "Khobar", "Medina", "Mecca"],
-    singapore: ["Singapore"]
-  };
 
   const getCountryDisplayName = (countryCode) => {
     const names = {

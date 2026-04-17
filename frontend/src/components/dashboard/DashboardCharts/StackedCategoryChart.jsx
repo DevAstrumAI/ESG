@@ -14,11 +14,12 @@ import {
 import { useAuthStore } from "../../../store/authStore";
 import { useEmissionStore } from "../../../store/emissionStore";
 import { FiLayers, FiBarChart2, FiRefreshCw } from "react-icons/fi";
+import { appendLocationQuery } from "../../../utils/locationQuery";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 const KG_TO_TONNES = 1000;
 
-export default function StackedCategoryChart({ year }) {
+export default function StackedCategoryChart({ year, country, city }) {
   const token = useAuthStore((s) => s.token);
   const [scope, setScope] = useState("scope1"); // 'scope1' or 'scope2'
   const [chartData, setChartData] = useState([]);
@@ -54,7 +55,11 @@ export default function StackedCategoryChart({ year }) {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/emissions/monthly-category-breakdown?year=${year}&scope=${scope}`, {
+      let url = `${API_URL}/api/emissions/monthly-category-breakdown?year=${year}&scope=${scope}`;
+      if (country && city) {
+        url = appendLocationQuery(url, country, city);
+      }
+      const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -196,7 +201,7 @@ const createEmptyChartData = () => {
 
   useEffect(() => {
     fetchMonthlyBreakdown();
-  }, [token, year, scope, retryCount]);
+  }, [token, year, scope, retryCount, country, city]);
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);

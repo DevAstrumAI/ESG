@@ -17,6 +17,7 @@ import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useNavigate } from "react-router-dom";
 import { settingsAPI } from "../../services/api";
+import { filterLocationsForRegion } from "../../utils/companyLocations";
 
 // Storage key for localStorage draft - NEVER EXPIRES
 const COMPANY_DRAFT_KEY = "company_setup_draft";
@@ -134,6 +135,14 @@ export default function CompanyWizard() {
     }, 1000);
   }, [token, company, step, API_URL]);
 
+  const mergeCompanyData = useCallback((partial) => {
+    setCompanyData((prev) => {
+      const newData = { ...prev, ...partial };
+      setTimeout(() => autoSave(newData), 0);
+      return newData;
+    });
+  }, [autoSave]);
+
   // Load draft from localStorage (NO EXPIRATION)
   const loadDraftFromLocalStorage = () => {
     try {
@@ -173,15 +182,18 @@ export default function CompanyWizard() {
       // If company exists, use company data
       if (latestCompany && latestCompany.basicInfo?.name && !hasHydrated.current) {
         hasHydrated.current = true;
+        const region = latestCompany.basicInfo?.region || "";
+        const locations = filterLocationsForRegion(region, latestCompany.locations || []);
+        const validFirstCountry = locations[0]?.country || "";
         setCompanyData({
           name: latestCompany.basicInfo?.name || "",
           description: latestCompany.basicInfo?.description || "",
-          region: latestCompany.basicInfo?.region || "",
-          country: latestCompany.locations?.[0]?.country || "",
+          region,
+          country: validFirstCountry,
           industry: latestCompany.basicInfo?.industry || "",
           employees: latestCompany.basicInfo?.employees || "",
           revenue: latestCompany.basicInfo?.revenue || "",
-          locations: latestCompany.locations || [],
+          locations,
         });
         // Clear localStorage draft since company exists
         localStorage.removeItem(COMPANY_DRAFT_KEY);
@@ -212,19 +224,40 @@ export default function CompanyWizard() {
     { id: 8, label: "Summary", icon: "📋" },
   ];
 
+  const validateFacilitiesForSubmit = () => {
+    const region = companyData.region;
+    if (!region) return "Please select a region.";
+    const locations = filterLocationsForRegion(region, companyData.locations);
+    if (locations.length === 0) {
+      return "Add at least one facility (country and city) in your selected region.";
+    }
+    if (locations.some((l) => !l.city || !l.country)) {
+      return "Each facility must include a country and city.";
+    }
+    return null;
+  };
+
   const handleUpdateCompany = async () => {
-    setLoadingSubmit(true);
     setSubmitError(null);
-    
+    const validationError = validateFacilitiesForSubmit();
+    if (validationError) {
+      setSubmitError(validationError);
+      return;
+    }
+    setLoadingSubmit(true);
+
+    const region = companyData.region;
+    const locations = filterLocationsForRegion(region, companyData.locations);
+
     const payload = {
       name: companyData.name,
       description: companyData.description,
       industry: companyData.industry,
       employees: Number(companyData.employees),
       revenue: Number(companyData.revenue),
-      region: companyData.region,
+      region,
       fiscalYear: new Date().getFullYear(),
-      locations: companyData.locations.map((loc) => ({
+      locations: locations.map((loc) => ({
         city: loc.city || loc.name,
         country: loc.country,
         isPrimary: loc.isPrimary || false,
@@ -243,18 +276,26 @@ export default function CompanyWizard() {
   };
 
   const handleCreateCompany = async () => {
-    setLoadingSubmit(true);
     setSubmitError(null);
-    
+    const validationError = validateFacilitiesForSubmit();
+    if (validationError) {
+      setSubmitError(validationError);
+      return;
+    }
+    setLoadingSubmit(true);
+
+    const region = companyData.region;
+    const locations = filterLocationsForRegion(region, companyData.locations);
+
     const payload = {
       name: companyData.name,
       description: companyData.description,
       industry: companyData.industry,
       employees: Number(companyData.employees),
       revenue: Number(companyData.revenue),
-      region: companyData.region,
+      region,
       fiscalYear: new Date().getFullYear(),
-      locations: companyData.locations.map((loc) => ({
+      locations: locations.map((loc) => ({
         city: loc.city || loc.name,
         country: loc.country,
         isPrimary: loc.isPrimary || false,
@@ -304,7 +345,14 @@ export default function CompanyWizard() {
       case 5: return companyData.employees !== "";
       case 6: return companyData.revenue !== "";
       case 7: return companyData.locations.length > 0;
-      case 8: return true;
+      case 8: {
+        const locs = filterLocationsForRegion(companyData.region, companyData.locations);
+        return (
+          companyData.region !== "" &&
+          locs.length > 0 &&
+          locs.every((l) => l.country && (l.city || l.name))
+        );
+      }
       default: return true;
     }
   };
@@ -390,7 +438,7 @@ export default function CompanyWizard() {
           {saveStatus === "error" && <span className="error">⚠️ Unable to save</span>}
         </div>
         
-        <SetupSummary data={companyData} updateField={updateField} />
+        <SetupSummary data={companyData} updateField={updateField} mergeCompanyData={mergeCompanyData} />
         <div className="summary-actions">
           {submitError && (
             <div className="error-message">
@@ -499,7 +547,7 @@ export default function CompanyWizard() {
           {step === 5 && <EmployeeForm data={companyData} updateField={updateField} />}
           {step === 6 && <RevenueForm data={companyData} updateField={updateField} />}
           {step === 7 && <FacilitiesList locations={companyData.locations} />}
-          {step === 8 && <SetupSummary data={companyData} updateField={updateField} />}
+          {step === 8 && <SetupSummary data={companyData} updateField={updateField} mergeCompanyData={mergeCompanyData} />}
         </div>
 
         <div className="wizard-footer">

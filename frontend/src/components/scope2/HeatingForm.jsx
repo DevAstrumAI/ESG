@@ -1,6 +1,7 @@
 // src/components/scope2/HeatingForm.jsx
 import React, { useState, useEffect } from "react";
 import { useCompanyStore } from "../../store/companyStore";
+import { useSelectedLocationStore } from "../../store/selectedLocationStore";
 import { FiTrash2, FiThermometer, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useEmissionStore } from "../../store/emissionStore";
@@ -62,8 +63,9 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
   const token = useAuthStore((s) => s.token);
   const selectedYear = useEmissionStore((s) => s.selectedYear);
   const { company } = useCompanyStore();
-  const primaryLocation = company?.locations?.find(loc => loc.isPrimary) || company?.locations?.[0];
-  const country = primaryLocation?.country || "uae";
+  const getSelectedLocation = useSelectedLocationStore((s) => s.getSelectedLocation);
+  const selectedFacility = getSelectedLocation(company) || company?.locations?.find((loc) => loc.isPrimary) || company?.locations?.[0];
+  const country = selectedFacility?.country || "uae";
   
   const heatingOptions = getHeatingOptions(country);
   const defaultType = getDefaultHeatingType(country);
@@ -122,6 +124,7 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
     const [year] = effectiveMonth.includes("-")
       ? effectiveMonth.split("-").map(Number)
       : [selectedYear];
+    const loc = getSelectedLocation(company);
 
     try {
       await emissionsAPI.deleteScope2Entry(token, {
@@ -132,6 +135,8 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
           energyType: deleted.energyType || "steam_hot_water",
           consumptionKwh: Number(deleted.consumption || 0),
         },
+        country: loc?.country,
+        city: loc?.city,
       });
     } catch (error) {
       const message = String(error?.message || "");

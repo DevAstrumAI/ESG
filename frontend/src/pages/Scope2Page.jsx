@@ -4,6 +4,9 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { useEmissionStore } from "../store/emissionStore";
 import { useCompanyStore } from "../store/companyStore";
+import { useSelectedLocationStore } from "../store/selectedLocationStore";
+import { appendLocationQuery } from "../utils/locationQuery";
+import FacilityCitySelect from "../components/location/FacilityCitySelect";
 import { normalizeScope2ElectricityEntry, normalizeScope2HeatingEntry, normalizeScope2RenewableEntry } from "../utils/emissionHydration";
 import ElectricityForm from "../components/scope2/ElectricityForm";
 import HeatingForm from "../components/scope2/HeatingForm";
@@ -17,11 +20,14 @@ export default function Scope2Page() {
   const [searchParams] = useSearchParams();
   const token = useAuthStore((s) => s.token);
   const { company, fetchCompany, loading: companyLoading, isInitialized: companyInitialized } = useCompanyStore();
+  const locationKey = useSelectedLocationStore((s) => s.locationKey);
+  const syncFromCompany = useSelectedLocationStore((s) => s.syncFromCompany);
   
   const urlMonth = searchParams.get("month");
   const defaultMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   
   const [selectedMonth, setSelectedMonth] = useState(urlMonth || defaultMonth);
+  const dataLoadKey = `${selectedMonth}__${locationKey || ""}`;
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -62,6 +68,10 @@ export default function Scope2Page() {
     }
   }, [token, companyInitialized, fetchCompany]);
 
+  useEffect(() => {
+    if (company) syncFromCompany(company);
+  }, [company, syncFromCompany]);
+
   // Keep selected month synced with URL month query.
   useEffect(() => {
     const resolvedMonth = urlMonth || defaultMonth;
@@ -81,8 +91,8 @@ export default function Scope2Page() {
       }
       
       // ✅ Prevent duplicate loading for same month
-      if (dataLoadedForMonth.current === selectedMonth && !isLoadingRef.current) {
-        console.log("Data already loaded for", selectedMonth, "- skipping");
+      if (dataLoadedForMonth.current === dataLoadKey && !isLoadingRef.current) {
+        console.log("Data already loaded for", dataLoadKey, "- skipping");
         setLoadingData(false);
         return;
       }
@@ -103,12 +113,14 @@ export default function Scope2Page() {
         setRenewables([]);
         
         const [year] = selectedMonth.split("-");
-        const response = await fetch(
-          `${API_URL}/api/emissions/scope2?year=${year}&month=${selectedMonth}`,
-          {
+        let url = `${API_URL}/api/emissions/scope2?year=${year}&month=${encodeURIComponent(selectedMonth)}`;
+        const loc = useSelectedLocationStore.getState().getSelectedLocation(company);
+        if (loc?.country && loc?.city) {
+          url = appendLocationQuery(url, loc.country, loc.city);
+        }
+        const response = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        });
         
         if (response.ok) {
           const data = await response.json();
@@ -152,7 +164,7 @@ export default function Scope2Page() {
           setRenewables(renewableData);
           
           // ✅ Mark this month as loaded
-          dataLoadedForMonth.current = selectedMonth;
+          dataLoadedForMonth.current = dataLoadKey;
         }
       } catch (error) {
         console.error("Error loading Scope 2 data:", error);
@@ -163,7 +175,7 @@ export default function Scope2Page() {
     };
     
     loadScope2Data();
-  }, [token, selectedMonth, hasCompanySetup]);
+  }, [token, selectedMonth, hasCompanySetup, company, locationKey, dataLoadKey]);
   
   // Generate month options
   const generateMonthOptions = () => {
@@ -383,6 +395,7 @@ export default function Scope2Page() {
               ))}
             </select>
           </div>
+          <FacilityCitySelect company={company} />
           <div className="month-hint">
             Data will be saved for {new Date(selectedMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}
           </div>

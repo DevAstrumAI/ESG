@@ -4,6 +4,8 @@ import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiAlertCircle, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
+import { useCompanyStore } from "../../store/companyStore";
+import { useSelectedLocationStore } from "../../store/selectedLocationStore";
 
 const SOURCE_TYPES = [
   { label: "Pipeline Leaks",          key: "methane" },
@@ -42,6 +44,8 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
   const deleteFugitive = useEmissionStore((s) => s.deleteScope1Fugitive);
   const selectedYear = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+  const company = useCompanyStore((s) => s.company);
+  const getSelectedLocation = useSelectedLocationStore((s) => s.getSelectedLocation);
   const [deletingIds, setDeletingIds] = useState(new Set());
   const [editingId, setEditingId] = useState(null);
   const [editValues, setEditValues] = useState({
@@ -56,6 +60,7 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
 
     setDeletingIds((prev) => new Set(prev).add(id));
     const [year] = month ? month.split("-").map(Number) : [selectedYear];
+    const loc = getSelectedLocation(company);
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 220));
@@ -68,6 +73,8 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
           sourceType: deleted.sourceType || "methane",
           emissionKg: Number(deleted.emissionKg || deleted.amount || 0),
         },
+        country: loc?.country,
+        city: loc?.city,
       });
     } catch (error) {
       console.warn("Fugitive deletion sync failed, local row removed:", error);

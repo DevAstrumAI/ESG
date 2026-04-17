@@ -4,6 +4,8 @@ import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiZap, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
+import { useCompanyStore } from "../../store/companyStore";
+import { useSelectedLocationStore } from "../../store/selectedLocationStore";
 
 const CERTIFICATE_TYPES = [
   { label: "Grid Average (Location-based)", key: "grid_average" },
@@ -33,6 +35,8 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
   const deleteElectricity = useEmissionStore((s) => s.deleteScope2Electricity);
   const selectedYear = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+  const company = useCompanyStore((s) => s.company);
+  const getSelectedLocation = useSelectedLocationStore((s) => s.getSelectedLocation);
 
   // Edit mode state
   const [editingId, setEditingId] = useState(null);
@@ -56,6 +60,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
     const [year] = effectiveMonth.includes("-")
       ? effectiveMonth.split("-").map(Number)
       : [selectedYear];
+    const loc = getSelectedLocation(company);
 
     try {
       await emissionsAPI.deleteScope2Entry(token, {
@@ -68,6 +73,8 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
           method: deleted.method || (deleted.certificateType === "grid_average" ? "location" : "market"),
           certificateType: deleted.certificateType || "grid_average",
         },
+        country: loc?.country,
+        city: loc?.city,
       });
     } catch (error) {
       const message = String(error?.message || "");
@@ -128,6 +135,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
 
       try {
         // Delete old entry
+        const locEdit = getSelectedLocation(company);
         await emissionsAPI.deleteScope2Entry(token, {
           year,
           month: editValues.month,
@@ -138,15 +146,20 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
             method: oldEntry.method || "location",
             certificateType: oldEntry.certificateType || "grid_average",
           },
+          country: locEdit?.country,
+          city: locEdit?.city,
         });
         
         // Add new entry
         const { useCompanyStore } = require('../../store/companyStore');
+        const { useSelectedLocationStore } = require('../../store/selectedLocationStore');
         const companyStore = useCompanyStore.getState();
-        const primaryLocation = companyStore.company?.locations?.find((loc) => loc.isPrimary) ||
+        const selectedLoc =
+          useSelectedLocationStore.getState().getSelectedLocation(companyStore.company) ||
+          companyStore.company?.locations?.find((loc) => loc.isPrimary) ||
           companyStore.company?.locations?.[0];
-        const country = primaryLocation?.country || 'uae';
-        const city = (primaryLocation?.city || 'dubai').toLowerCase();
+        const country = selectedLoc?.country || 'uae';
+        const city = (selectedLoc?.city || 'dubai').toLowerCase();
         
         await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8001'}/api/emissions/scope2`, {
           method: 'POST',

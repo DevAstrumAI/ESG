@@ -143,7 +143,7 @@ export const emissionsAPI = {
     return request(`/api/emissions/scope2${query}`, { token });
   },
 
- deleteScope1Entry: async (token, { year, month, category, entry }) => {
+ deleteScope1Entry: async (token, { year, month, category, entry, country, city }) => {
     const response = await fetch(`${API_URL}/api/emissions/scope1`, {
       method: 'DELETE',
       headers: {
@@ -155,6 +155,7 @@ export const emissionsAPI = {
         month,
         category,
         entry,
+        ...(country && city ? { country, city } : {}),
       }),
     });
 
@@ -167,7 +168,7 @@ export const emissionsAPI = {
   },
 
   // Similar for Scope 2 if needed
-  deleteScope2Entry: async (token, { year, month, category, entry }) => {
+  deleteScope2Entry: async (token, { year, month, category, entry, country, city }) => {
     const response = await fetch(`${API_URL}/api/emissions/scope2`, {
       method: 'DELETE',
       headers: {
@@ -179,6 +180,7 @@ export const emissionsAPI = {
         month,
         category,
         entry,
+        ...(country && city ? { country, city } : {}),
       }),
     });
 

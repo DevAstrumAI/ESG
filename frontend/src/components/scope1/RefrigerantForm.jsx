@@ -4,6 +4,8 @@ import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiWind, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
+import { useCompanyStore } from "../../store/companyStore";
+import { useSelectedLocationStore } from "../../store/selectedLocationStore";
 
 const REFRIGERANT_TYPES = [
   { label: "R-134a",  key: "r134a",  gwp: 1300 },
@@ -39,6 +41,8 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const deleteRefrigerant = useEmissionStore((s) => s.deleteScope1Refrigerant);
   const selectedYear  = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+  const company = useCompanyStore((s) => s.company);
+  const getSelectedLocation = useSelectedLocationStore((s) => s.getSelectedLocation);
   const [deletingIds, setDeletingIds] = useState(new Set());
   const [editingId, setEditingId] = useState(null);
   const [editValues, setEditValues] = useState({
@@ -53,6 +57,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
 
     setDeletingIds((prev) => new Set(prev).add(id));
     const [year] = month ? month.split("-").map(Number) : [selectedYear];
+    const loc = getSelectedLocation(company);
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 220));
@@ -65,6 +70,8 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           refrigerantType: deleted.refrigerantKey,
           leakageKg: Number(deleted.leakageKg || 0),
         },
+        country: loc?.country,
+        city: loc?.city,
       });
     } catch (error) {
       console.warn("Refrigerant deletion sync failed, local row removed:", error);
