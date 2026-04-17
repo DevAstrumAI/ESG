@@ -11,6 +11,49 @@ BIOGENIC_FUEL_TYPES = {
     "biodiesel", "bioethanol", "biogas", "wood_pellets"
 }
 
+# UI / form keys may differ from Firestore keys (e.g. petrol_car vs petrol). Try in order.
+MOBILE_FUEL_LOOKUP_KEYS: dict[str, tuple[str, ...]] = {
+    "petrol_car": ("petrol_car", "petrol", "gasoline"),
+    "diesel_car": ("diesel_car", "diesel"),
+    "motorcycle": ("motorcycle", "petrol_motorcycle"),
+    "motorboat_gasoline": ("motorboat_gasoline", "petrol", "gasoline"),
+    "diesel_van": ("diesel_van", "diesel", "diesel_car"),
+    "cargo van": ("diesel_van", "diesel", "diesel_car"),
+}
+
+def _factor_numeric(fd: dict) -> float:
+    if not isinstance(fd, dict):
+        return 0.0
+    for k in ("value", "factor", "emissionFactor"):
+        v = fd.get(k)
+        if v is None:
+            continue
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            continue
+    return 0.0
+
+
+def _coerce_factor_data(raw_factor, default_unit: str = "") -> dict:
+    """
+    Normalize factor nodes that may be stored either as:
+    - object: {"value": 0.2, "unit": "..."}
+    - number/string: 0.2
+    """
+    if isinstance(raw_factor, dict):
+        return raw_factor
+    if raw_factor is None:
+        return {}
+    try:
+        return {"value": float(raw_factor), "unit": default_unit}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _mobile_factor_keys_for(fuel_type: str) -> tuple[str, ...]:
+    return MOBILE_FUEL_LOOKUP_KEYS.get(fuel_type, (fuel_type,))
+
 
 def get_emission_factors(region: str, country: str, city: str, scope: str) -> dict:
     """
@@ -88,9 +131,8 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
         for group_key in group_keys:
             group = factors.get(group_key)
             if isinstance(group, dict) and fuel_key in group:
-                return group.get(fuel_key) or {}
-        direct = factors.get(fuel_key)
-        return direct if isinstance(direct, dict) else {}
+                return _coerce_factor_data(group.get(fuel_key))
+        return _coerce_factor_data(factors.get(fuel_key))
 
     # --- Mobile ---
     mobile_entries = []
@@ -98,9 +140,15 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
 
     for entry in data.get("mobile", []):
         fuel_type = entry.get("fuelType", "")
-        factor_data = _get_factor(fuel_type, ["mobile"])
-        factor_value = float(factor_data.get("value", 0))
-        unit = factor_data.get("unit", "")
+        factor_data: dict = {}
+        for fk in _mobile_factor_keys_for(fuel_type):
+            fd = _get_factor(fk, ["mobile"])
+            if _factor_numeric(fd) > 0:
+                factor_data = fd
+                break
+
+        factor_value = _factor_numeric(factor_data)
+        unit = factor_data.get("unit", "") if isinstance(factor_data, dict) else ""
 
         # Use distance for aviation/marine/rail, litres for road vehicles
         is_distance_based = fuel_type in DISTANCE_BASED_TYPES
@@ -132,7 +180,7 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
         fuel_type = entry.get("fuelType", "")
         consumption = float(entry.get("consumption", 0))
         factor_data = _get_factor(fuel_type, ["stationary"])
-        factor_value = float(factor_data.get("value", 0))
+        factor_value = _factor_numeric(factor_data)
         kg_co2e = consumption * factor_value
         stationary_total += kg_co2e
         stationary_entries.append({
@@ -156,7 +204,7 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
         refrigerant_type = entry.get("refrigerantType", "")
         leakage_kg = float(entry.get("leakageKg", 0))
         factor_data = _get_factor(refrigerant_type, ["refrigerants"])
-        factor_value = float(factor_data.get("value", 0))
+        factor_value = _factor_numeric(factor_data)
         kg_co2e = leakage_kg * factor_value
         refrigerant_total += kg_co2e
         refrigerant_entries.append({
@@ -179,7 +227,7 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
         source_type = entry.get("sourceType", "")
         emission_kg = float(entry.get("emissionKg", 0))
         factor_data = _get_factor(source_type, ["fugitive"])
-        factor_value = float(factor_data.get("value", 0))
+        factor_value = _factor_numeric(factor_data)
         kg_co2e = emission_kg * factor_value
         fugitive_total += kg_co2e
         fugitive_entries.append({
@@ -251,8 +299,8 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
 
         # For market-based entries backed by renewable certificates, apply zero factor.
         # This aligns app behavior with the UX expectation that certified market entries emit 0.
-        location_factor_data = electricity_factors.get("grid_average", {})
-        location_factor_value = float(location_factor_data.get("value", 0))
+        location_factor_data = _coerce_factor_data(electricity_factors.get("grid_average"), "kg CO2e/kWh")
+        location_factor_value = _factor_numeric(location_factor_data)
         if method == "market" and certificate_type and certificate_type != "grid_average":
             location_factor_value = 0.0
         location_kg_co2e = consumption_kwh * location_factor_value
@@ -267,8 +315,8 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
                 market_factor_value = 0.0
             else:
                 # No certificate held — fall back to grid average for market-based too
-                market_factor_data = electricity_factors.get("grid_average", {})
-                market_factor_value = float(market_factor_data.get("value", 0))
+                market_factor_data = _coerce_factor_data(electricity_factors.get("grid_average"), "kg CO2e/kWh")
+                market_factor_value = _factor_numeric(market_factor_data)
         else:
             # method == "location" — entry is not part of market-based accounting
             market_factor_value = 0.0
@@ -306,8 +354,8 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
     for entry in data.get("heating", []):
         energy_type = entry.get("energyType", "")
         consumption_kwh = float(entry.get("consumptionKwh", 0))
-        factor_data = heating_factors.get(energy_type, {})
-        factor_value = float(factor_data.get("value", 0))
+        factor_data = _coerce_factor_data(heating_factors.get(energy_type), "kg CO2e/kWh")
+        factor_value = _factor_numeric(factor_data)
         kg_co2e = consumption_kwh * factor_value
         heating_total += kg_co2e
         heating_entries.append({
@@ -331,8 +379,8 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
     for entry in data.get("renewables", []):
         source_type = entry.get("sourceType", "")
         generation_kwh = float(entry.get("generationKwh", 0))
-        factor_data = electricity_factors.get(source_type, {})
-        factor_value = float(factor_data.get("value", 0))
+        factor_data = _coerce_factor_data(electricity_factors.get(source_type), "kg CO2e/kWh")
+        factor_value = _factor_numeric(factor_data)
         kg_co2e = generation_kwh * factor_value
         renewable_total += kg_co2e
         renewable_entries.append({
