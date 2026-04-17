@@ -704,18 +704,47 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
         .row-value { font-size: 14px; font-weight: 600; color: #1B4D3E; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .size-badge { font-size: 11px; padding: 2px 8px; background: #F8FAF8; color: #2E7D64; border-radius: 30px; font-weight: 500; border: 1px solid #E5E7EB; }
 
-        .edit-mode { display: flex; flex-direction: column; gap: 16px; }
+        .edit-mode {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          background: #FFFFFF;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 16px;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        }
         .field-group { display: flex; flex-direction: column; gap: 8px; }
-        .field-label { font-size: 13px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.3px; }
+        .field-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #6B7280;
+          text-transform: uppercase;
+          letter-spacing: 0.35px;
+          margin-bottom: 2px;
+        }
         .field-select {
           width: 100%;
-          padding: 10px 12px;
-          border: 1px solid #E5E7EB;
-          border-radius: 8px;
+          height: 42px;
+          padding: 0 12px;
+          border: 1px solid #D1D5DB;
+          border-radius: 10px;
           font-size: 14px;
-          background: white;
+          font-weight: 500;
+          color: #111827;
+          background: #FFFFFF;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
         }
-        .field-select:focus { outline: none; border-color: #2E7D64; }
+        .field-select:hover {
+          border-color: #9CA3AF;
+          background: #FCFDFD;
+        }
+        .field-select:focus {
+          outline: none;
+          border-color: #2E7D64;
+          box-shadow: 0 0 0 3px rgba(46, 125, 100, 0.14);
+          background: #FFFFFF;
+        }
 
         .add-city-section { margin-top: 8px; }
         .city-input-group {
@@ -728,17 +757,27 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
           display: flex;
           align-items: center;
           gap: 6px;
-          padding: 10px 16px;
-          background: #2E7D64;
+          height: 42px;
+          padding: 0 16px;
+          background: linear-gradient(135deg, #2E7D64 0%, #1F9D7A 100%);
           color: white;
-          border: none;
-          border-radius: 8px;
+          border: 1px solid #2E7D64;
+          border-radius: 10px;
           cursor: pointer;
           font-size: 13px;
-          font-weight: 500;
+          font-weight: 600;
+          box-shadow: 0 6px 14px rgba(31, 157, 122, 0.2);
+          transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+        }
+        .add-city-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 9px 18px rgba(31, 157, 122, 0.28);
+          filter: saturate(1.03);
         }
         .add-city-btn:disabled {
           background: #9CA3AF;
+          border-color: #9CA3AF;
+          box-shadow: none;
           cursor: not-allowed;
         }
 
@@ -775,8 +814,49 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
           border-radius: 8px;
         }
 
-        .edit-actions { display: flex; gap: 12px; margin-top: 8px; }
-        .save-btn, .cancel-btn { flex: 1; padding: 10px !important; font-size: 14px !important; }
+        .edit-actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 10px;
+          padding-top: 12px;
+          border-top: 1px solid #F3F4F6;
+        }
+        .save-btn,
+        .cancel-btn {
+          flex: 1;
+          min-height: 40px;
+          border-radius: 10px !important;
+          font-size: 14px !important;
+          font-weight: 600 !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 8px !important;
+          transition: all 0.18s ease !important;
+        }
+        .save-btn {
+          background: linear-gradient(135deg, #2E7D64 0%, #1F9D7A 100%) !important;
+          color: #FFFFFF !important;
+          border: 1px solid #2E7D64 !important;
+          box-shadow: 0 6px 16px rgba(31, 157, 122, 0.22);
+        }
+        .save-btn:hover {
+          border-color: #1F9D7A !important;
+          box-shadow: 0 10px 20px rgba(31, 157, 122, 0.28);
+          transform: translateY(-1px);
+        }
+        .cancel-btn {
+          background: #FFFFFF !important;
+          color: #4B5563 !important;
+          border: 1px solid #D1D5DB !important;
+          box-shadow: 0 3px 8px rgba(15, 23, 42, 0.06);
+        }
+        .cancel-btn:hover {
+          color: #1F2937 !important;
+          border-color: #9CA3AF !important;
+          background: #F9FAFB !important;
+          transform: translateY(-1px);
+        }
 
         .facilities-list { display: flex; flex-direction: column; gap: 12px; }
         .facility-item {

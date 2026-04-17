@@ -1,5 +1,5 @@
 // src/components/company/CompanyWizard.jsx
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import CompanyInfoForm from "./CompanyInfoForm";
 import RegionSelector from "./RegionSelector";
 import IndustrySelector from "./IndustrySelector";
@@ -31,6 +31,7 @@ export default function CompanyWizard() {
   const [saveStatus, setSaveStatus] = useState("saved"); // 'saving', 'saved', 'error'
   const [saveType, setSaveType] = useState(null); // 'local' or 'backend'
   const [regionChangeNeedsCities, setRegionChangeNeedsCities] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState(null);
   const autoSaveTimer = useRef(null);
   const hasHydrated = useRef(false);
   
@@ -49,6 +50,37 @@ export default function CompanyWizard() {
   const token = useAuthStore((state) => state.token);
 
   const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
+
+  const toCleanString = (value) => (value ?? "").toString().trim();
+  const toNumberOrNull = (value) => {
+    if (value === "" || value === null || value === undefined) return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const buildSnapshot = useCallback((data) => {
+    const region = toCleanString(data?.region);
+    const normalizedLocations = (filterLocationsForRegion(region, data?.locations || []) || [])
+      .map((loc) => ({
+        country: toCleanString(loc?.country),
+        city: toCleanString(loc?.city || loc?.name),
+        isPrimary: Boolean(loc?.isPrimary),
+      }))
+      .filter((loc) => loc.country && loc.city)
+      .sort((a, b) => {
+        const ka = `${a.country}|${a.city}|${a.isPrimary ? 1 : 0}`;
+        const kb = `${b.country}|${b.city}|${b.isPrimary ? 1 : 0}`;
+        return ka.localeCompare(kb);
+      });
+    return {
+      name: toCleanString(data?.name),
+      description: toCleanString(data?.description),
+      region,
+      industry: toCleanString(data?.industry),
+      employees: toNumberOrNull(data?.employees),
+      revenue: toNumberOrNull(data?.revenue),
+      locations: normalizedLocations,
+    };
+  }, []);
 
   // Update field and trigger auto-save
   const updateField = (field, value) => {
@@ -197,6 +229,15 @@ export default function CompanyWizard() {
           revenue: latestCompany.basicInfo?.revenue || "",
           locations,
         });
+        setSavedSnapshot(buildSnapshot({
+          name: latestCompany.basicInfo?.name || "",
+          description: latestCompany.basicInfo?.description || "",
+          region,
+          industry: latestCompany.basicInfo?.industry || "",
+          employees: latestCompany.basicInfo?.employees || "",
+          revenue: latestCompany.basicInfo?.revenue || "",
+          locations,
+        }));
         // Clear localStorage draft since company exists
         localStorage.removeItem(COMPANY_DRAFT_KEY);
       } else {
@@ -208,7 +249,14 @@ export default function CompanyWizard() {
     };
 
     loadInitialData();
-  }, [token, fetchCompany]);
+  }, [token, fetchCompany, buildSnapshot]);
+
+  const hasSummaryChanges = useMemo(() => {
+    if (!(company && company.basicInfo?.name)) return true;
+    if (!savedSnapshot) return false;
+    const currentSnapshot = buildSnapshot(companyData);
+    return JSON.stringify(currentSnapshot) !== JSON.stringify(savedSnapshot);
+  }, [company, companyData, savedSnapshot, buildSnapshot]);
 
   // Clear draft on successful completion
   const clearDraft = () => {
@@ -273,6 +321,11 @@ export default function CompanyWizard() {
     setLoadingSubmit(false);
     
     if (result.success) {
+      setSavedSnapshot(buildSnapshot({
+        ...companyData,
+        region,
+        locations,
+      }));
       clearDraft(); // Clear draft on success
       navigate("/dashboard");
     } else {
@@ -458,7 +511,7 @@ export default function CompanyWizard() {
           <PrimaryButton 
             onClick={handleUpdateCompany} 
             className="update-btn"
-            disabled={loadingSubmit}
+            disabled={loadingSubmit || !hasSummaryChanges}
           >
             {loadingSubmit ? "Saving..." : "Save Changes"}
           </PrimaryButton>
