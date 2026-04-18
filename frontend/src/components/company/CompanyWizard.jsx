@@ -1,5 +1,5 @@
 // src/components/company/CompanyWizard.jsx
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import CompanyInfoForm from "./CompanyInfoForm";
 import RegionSelector from "./RegionSelector";
 import IndustrySelector from "./IndustrySelector";
@@ -11,12 +11,25 @@ import LocationManager from "./LocationManager";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
 import Card from "../ui/Card";
-import { FiCheck, FiArrowRight, FiArrowLeft, FiSave } from "react-icons/fi";
+import {
+  FiCheck,
+  FiArrowRight,
+  FiArrowLeft,
+  FiSave,
+  FiBriefcase,
+  FiGlobe,
+  FiMapPin,
+  FiUsers,
+  FiDollarSign,
+  FiClipboard,
+  FiHome,
+} from "react-icons/fi";
 import { BiLeaf } from "react-icons/bi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useNavigate } from "react-router-dom";
 import { settingsAPI } from "../../services/api";
+import { filterLocationsForRegion } from "../../utils/companyLocations";
 
 // Storage key for localStorage draft - NEVER EXPIRES
 const COMPANY_DRAFT_KEY = "company_setup_draft";
@@ -29,6 +42,8 @@ export default function CompanyWizard() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("saved"); // 'saving', 'saved', 'error'
   const [saveType, setSaveType] = useState(null); // 'local' or 'backend'
+  const [regionChangeNeedsCities, setRegionChangeNeedsCities] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState(null);
   const autoSaveTimer = useRef(null);
   const hasHydrated = useRef(false);
   
@@ -47,6 +62,37 @@ export default function CompanyWizard() {
   const token = useAuthStore((state) => state.token);
 
   const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
+
+  const toCleanString = (value) => (value ?? "").toString().trim();
+  const toNumberOrNull = (value) => {
+    if (value === "" || value === null || value === undefined) return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const buildSnapshot = useCallback((data) => {
+    const region = toCleanString(data?.region);
+    const normalizedLocations = (filterLocationsForRegion(region, data?.locations || []) || [])
+      .map((loc) => ({
+        country: toCleanString(loc?.country),
+        city: toCleanString(loc?.city || loc?.name),
+        isPrimary: Boolean(loc?.isPrimary),
+      }))
+      .filter((loc) => loc.country && loc.city)
+      .sort((a, b) => {
+        const ka = `${a.country}|${a.city}|${a.isPrimary ? 1 : 0}`;
+        const kb = `${b.country}|${b.city}|${b.isPrimary ? 1 : 0}`;
+        return ka.localeCompare(kb);
+      });
+    return {
+      name: toCleanString(data?.name),
+      description: toCleanString(data?.description),
+      region,
+      industry: toCleanString(data?.industry),
+      employees: toNumberOrNull(data?.employees),
+      revenue: toNumberOrNull(data?.revenue),
+      locations: normalizedLocations,
+    };
+  }, []);
 
   // Update field and trigger auto-save
   const updateField = (field, value) => {
@@ -101,14 +147,12 @@ export default function CompanyWizard() {
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              basicInfo: {
-                name: data.name,
-                description: data.description,
-                industry: data.industry || "",
-                employees: Number(data.employees) || 0,
-                revenue: Number(data.revenue) || 0,
-                region: data.region || "",
-              },
+              name: data.name,
+              description: data.description || "",
+              industry: data.industry || "",
+              employees: Number(data.employees) || 0,
+              revenue: Number(data.revenue) || 0,
+              region: data.region || "",
               locations: data.locations || [],
             }),
           });
@@ -133,6 +177,17 @@ export default function CompanyWizard() {
       }, 2000);
     }, 1000);
   }, [token, company, step, API_URL]);
+
+  const mergeCompanyData = useCallback((partial) => {
+    setCompanyData((prev) => {
+      const newData = { ...prev, ...partial };
+      if (Object.prototype.hasOwnProperty.call(partial, "locations")) {
+        setRegionChangeNeedsCities(!(partial.locations || []).length);
+      }
+      setTimeout(() => autoSave(newData), 0);
+      return newData;
+    });
+  }, [autoSave]);
 
   // Load draft from localStorage (NO EXPIRATION)
   const loadDraftFromLocalStorage = () => {
@@ -173,16 +228,28 @@ export default function CompanyWizard() {
       // If company exists, use company data
       if (latestCompany && latestCompany.basicInfo?.name && !hasHydrated.current) {
         hasHydrated.current = true;
+        const region = latestCompany.basicInfo?.region || "";
+        const locations = filterLocationsForRegion(region, latestCompany.locations || []);
+        const validFirstCountry = locations[0]?.country || "";
         setCompanyData({
           name: latestCompany.basicInfo?.name || "",
           description: latestCompany.basicInfo?.description || "",
-          region: latestCompany.basicInfo?.region || "",
-          country: latestCompany.locations?.[0]?.country || "",
+          region,
+          country: validFirstCountry,
           industry: latestCompany.basicInfo?.industry || "",
           employees: latestCompany.basicInfo?.employees || "",
           revenue: latestCompany.basicInfo?.revenue || "",
-          locations: latestCompany.locations || [],
+          locations,
         });
+        setSavedSnapshot(buildSnapshot({
+          name: latestCompany.basicInfo?.name || "",
+          description: latestCompany.basicInfo?.description || "",
+          region,
+          industry: latestCompany.basicInfo?.industry || "",
+          employees: latestCompany.basicInfo?.employees || "",
+          revenue: latestCompany.basicInfo?.revenue || "",
+          locations,
+        }));
         // Clear localStorage draft since company exists
         localStorage.removeItem(COMPANY_DRAFT_KEY);
       } else {
@@ -194,7 +261,14 @@ export default function CompanyWizard() {
     };
 
     loadInitialData();
-  }, [token, fetchCompany]);
+  }, [token, fetchCompany, buildSnapshot]);
+
+  const hasSummaryChanges = useMemo(() => {
+    if (!(company && company.basicInfo?.name)) return true;
+    if (!savedSnapshot) return false;
+    const currentSnapshot = buildSnapshot(companyData);
+    return JSON.stringify(currentSnapshot) !== JSON.stringify(savedSnapshot);
+  }, [company, companyData, savedSnapshot, buildSnapshot]);
 
   // Clear draft on successful completion
   const clearDraft = () => {
@@ -202,29 +276,53 @@ export default function CompanyWizard() {
   };
 
   const steps = [
-    { id: 1, label: "Company Info", icon: "🏢" },
-    { id: 2, label: "Region", icon: "🌍" },
-    { id: 3, label: "Location", icon: "🗺️" },
-    { id: 4, label: "Industry", icon: "🏭" },
-    { id: 5, label: "Employees", icon: "👥" },
-    { id: 6, label: "Revenue", icon: "💰" },
-    { id: 7, label: "Facilities", icon: "🏛️" },
-    { id: 8, label: "Summary", icon: "📋" },
+    { id: 1, label: "Company Info", icon: <FiHome /> },
+    { id: 2, label: "Region", icon: <FiGlobe /> },
+    { id: 3, label: "Location", icon: <FiMapPin /> },
+    { id: 4, label: "Industry", icon: <FiBriefcase /> },
+    { id: 5, label: "Employees", icon: <FiUsers /> },
+    { id: 6, label: "Revenue", icon: <FiDollarSign /> },
+    { id: 7, label: "Cities", icon: <FiMapPin /> },
+    { id: 8, label: "Summary", icon: <FiClipboard /> },
   ];
 
+  const validateFacilitiesForSubmit = () => {
+    const region = companyData.region;
+    if (!region) return "Please select a region.";
+    const locations = filterLocationsForRegion(region, companyData.locations);
+    if (locations.length === 0) {
+      if (regionChangeNeedsCities) {
+        return "Region changed. Please re-select country and add city locations before completing setup.";
+      }
+      return "Add at least one city (country and city) in your selected region.";
+    }
+    if (locations.some((l) => !l.city || !l.country)) {
+      return "Each city entry must include a country and city.";
+    }
+    return null;
+  };
+
   const handleUpdateCompany = async () => {
-    setLoadingSubmit(true);
     setSubmitError(null);
-    
+    const validationError = validateFacilitiesForSubmit();
+    if (validationError) {
+      setSubmitError(validationError);
+      return;
+    }
+    setLoadingSubmit(true);
+
+    const region = companyData.region;
+    const locations = filterLocationsForRegion(region, companyData.locations);
+
     const payload = {
       name: companyData.name,
       description: companyData.description,
       industry: companyData.industry,
       employees: Number(companyData.employees),
       revenue: Number(companyData.revenue),
-      region: companyData.region,
+      region,
       fiscalYear: new Date().getFullYear(),
-      locations: companyData.locations.map((loc) => ({
+      locations: locations.map((loc) => ({
         city: loc.city || loc.name,
         country: loc.country,
         isPrimary: loc.isPrimary || false,
@@ -235,6 +333,11 @@ export default function CompanyWizard() {
     setLoadingSubmit(false);
     
     if (result.success) {
+      setSavedSnapshot(buildSnapshot({
+        ...companyData,
+        region,
+        locations,
+      }));
       clearDraft(); // Clear draft on success
       navigate("/dashboard");
     } else {
@@ -243,18 +346,26 @@ export default function CompanyWizard() {
   };
 
   const handleCreateCompany = async () => {
-    setLoadingSubmit(true);
     setSubmitError(null);
-    
+    const validationError = validateFacilitiesForSubmit();
+    if (validationError) {
+      setSubmitError(validationError);
+      return;
+    }
+    setLoadingSubmit(true);
+
+    const region = companyData.region;
+    const locations = filterLocationsForRegion(region, companyData.locations);
+
     const payload = {
       name: companyData.name,
       description: companyData.description,
       industry: companyData.industry,
       employees: Number(companyData.employees),
       revenue: Number(companyData.revenue),
-      region: companyData.region,
+      region,
       fiscalYear: new Date().getFullYear(),
-      locations: companyData.locations.map((loc) => ({
+      locations: locations.map((loc) => ({
         city: loc.city || loc.name,
         country: loc.country,
         isPrimary: loc.isPrimary || false,
@@ -304,10 +415,22 @@ export default function CompanyWizard() {
       case 5: return companyData.employees !== "";
       case 6: return companyData.revenue !== "";
       case 7: return companyData.locations.length > 0;
-      case 8: return true;
+      case 8: {
+        const locs = filterLocationsForRegion(companyData.region, companyData.locations);
+        return (
+          companyData.region !== "" &&
+          locs.length > 0 &&
+          locs.every((l) => l.country && (l.city || l.name))
+        );
+      }
       default: return true;
     }
   };
+
+  // Keep final action clickable and validate on submit handler.
+  // This avoids intermittent disabled states after inline summary edits.
+  const isFinalStep = step === steps.length;
+  const isNextDisabled = isFinalStep ? false : !isStepValid();
 
   // Reset draft (clear all saved data)
   const handleResetDraft = () => {
@@ -390,7 +513,7 @@ export default function CompanyWizard() {
           {saveStatus === "error" && <span className="error">⚠️ Unable to save</span>}
         </div>
         
-        <SetupSummary data={companyData} updateField={updateField} />
+        <SetupSummary data={companyData} updateField={updateField} mergeCompanyData={mergeCompanyData} />
         <div className="summary-actions">
           {submitError && (
             <div className="error-message">
@@ -400,7 +523,7 @@ export default function CompanyWizard() {
           <PrimaryButton 
             onClick={handleUpdateCompany} 
             className="update-btn"
-            disabled={loadingSubmit}
+            disabled={loadingSubmit || !hasSummaryChanges}
           >
             {loadingSubmit ? "Saving..." : "Save Changes"}
           </PrimaryButton>
@@ -458,7 +581,7 @@ export default function CompanyWizard() {
         )}
         {saveStatus === "saved" && (
           <span className="saved">
-            ✓ Draft saved {saveType === "local" ? "(locally)" : saveType === "backend" ? "(to cloud)" : ""}
+            ✓ Your progress has been saved
           </span>
         )}
         {saveStatus === "error" && (
@@ -499,7 +622,14 @@ export default function CompanyWizard() {
           {step === 5 && <EmployeeForm data={companyData} updateField={updateField} />}
           {step === 6 && <RevenueForm data={companyData} updateField={updateField} />}
           {step === 7 && <FacilitiesList locations={companyData.locations} />}
-          {step === 8 && <SetupSummary data={companyData} updateField={updateField} />}
+          {step === 8 && (
+            <SetupSummary
+              data={companyData}
+              updateField={updateField}
+              mergeCompanyData={mergeCompanyData}
+              onRegionResetLocations={() => setRegionChangeNeedsCities(true)}
+            />
+          )}
         </div>
 
         <div className="wizard-footer">
@@ -511,12 +641,12 @@ export default function CompanyWizard() {
           
           <PrimaryButton 
             onClick={nextStep} 
-            className={`nav-btn next-btn ${!isStepValid() ? 'disabled' : ''}`}
-            disabled={!isStepValid()}
+            className={`nav-btn next-btn ${isNextDisabled ? 'disabled' : ''}`}
+            disabled={isNextDisabled}
           >
-            {step === steps.length ? "Complete Setup" : "Continue"} 
-            {step < steps.length && <FiArrowRight />}
-            {step === steps.length && <BiLeaf />}
+            {isFinalStep ? "Complete Setup" : "Continue"} 
+            {!isFinalStep && <FiArrowRight />}
+            {isFinalStep && <BiLeaf />}
           </PrimaryButton>
         </div>
       </Card>
@@ -677,26 +807,66 @@ export default function CompanyWizard() {
           pointer-events: none;
         }
 
+        @media (max-width: 1024px) {
+          .wizard-content-card {
+            padding: 24px !important;
+          }
+          .step-label {
+            font-size: 11px;
+          }
+        }
+
         @media (max-width: 768px) {
+          .wizard-container {
+            max-width: 100%;
+          }
+          .auto-save-status {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+          }
           .steps-progress {
-            flex-wrap: wrap;
-            gap: 10px;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px 8px;
           }
           .step-item {
-            flex: 0 0 calc(33.333% - 10px);
+            min-width: 0;
+          }
+          .step-indicator {
+            width: 34px;
+            height: 34px;
+            font-size: 14px;
+            margin-bottom: 6px;
           }
           .step-label {
             font-size: 10px;
+            line-height: 1.25;
           }
           .wizard-content-card {
-            padding: 20px !important;
+            padding: 16px !important;
+          }
+          .wizard-content {
+            min-height: 0;
+            margin-bottom: 20px;
           }
           .wizard-footer {
             flex-direction: column-reverse;
+            gap: 10px;
           }
           .nav-btn {
             width: 100%;
             justify-content: center;
+            min-height: 42px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .steps-progress {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .step-label {
+            font-size: 11px;
           }
         }
       `}</style>

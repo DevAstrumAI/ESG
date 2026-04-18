@@ -247,7 +247,7 @@ export default function UserGuide() {
                   <div className="setup-step-number">2</div>
                   <div className="setup-step-content">
                     <h4>Location</h4>
-                    <p>Select region, country, and add facility cities</p>
+                    <p>Select region, country, and add cities</p>
                   </div>
                 </div>
 

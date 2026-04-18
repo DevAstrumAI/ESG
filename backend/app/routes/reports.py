@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response
 from app.middleware.auth import get_current_user
 from app.utils.firebase import get_db
 from datetime import datetime
@@ -7,6 +7,7 @@ import os
 import json
 
 router = APIRouter(tags=["Reports"])
+FISCAL_YEAR_START_MONTH = 6  # June
 
 # ---------------------------------------------------------------------------
 # Regional financial constants
@@ -86,7 +87,18 @@ def fetch_scope_docs(company_id: str, scope: str, year: int, month: str | None) 
             if d.get("month") == month:
                 results.append(d)
         else:
-            if d.get("year") == year:
+            month_value = d.get("month")
+            if month_value and "-" in str(month_value):
+                try:
+                    y_str, m_str = str(month_value).split("-")
+                    y_num = int(y_str)
+                    m_num = int(m_str)
+                    in_fiscal_year = (y_num == year and m_num >= FISCAL_YEAR_START_MONTH) or (y_num == year + 1 and m_num < FISCAL_YEAR_START_MONTH)
+                    if in_fiscal_year:
+                        results.append(d)
+                except (ValueError, TypeError):
+                    pass
+            elif d.get("year") == year:
                 results.append(d)
     return results
 
@@ -447,6 +459,42 @@ def call_openai(client: openai.OpenAI, user_prompt: str) -> dict:
         raise HTTPException(status_code=500, detail=f"OpenAI returned invalid JSON: {raw[:300]}")
 
 
+def build_source_recommendation(
+    client: openai.OpenAI,
+    *,
+    source_name: str,
+    source_share_pct: float,
+    source_tco2e: float,
+    month_label: str,
+    industry: str,
+    city: str,
+) -> str:
+    prompt = f"""
+You are an experienced sustainability advisor.
+Write ONE human, practical recommendation sentence for the largest current-month emission source.
+
+Context:
+- Industry: {industry}
+- City/region: {city}
+- Month: {month_label}
+- Largest source: {source_name}
+- Source emissions: {source_tco2e:.2f} tCO2e
+- Source share of total monthly emissions: {source_share_pct:.1f}%
+
+Rules:
+1) Return JSON only: {{"recommendation":"..."}}
+2) Recommendation must be one sentence, 16-30 words, clear and natural.
+3) Mention the source category by name.
+4) Must be action-oriented and realistic for operations teams.
+5) Do not use vague phrases like "consider sustainability initiatives".
+"""
+    data = call_openai(client, prompt)
+    recommendation = str((data or {}).get("recommendation", "")).strip()
+    if not recommendation:
+        raise HTTPException(status_code=500, detail="OpenAI returned empty recommendation.")
+    return recommendation
+
+
 def build_ai_content(
     client: openai.OpenAI,
     company_name: str,
@@ -769,3 +817,54 @@ async def generate_report(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+
+@router.post("/source-recommendation")
+async def generate_source_recommendation(
+    body: dict,
+    current_user: dict = Depends(get_current_user),
+    response: Response = None,
+):
+    """
+    Generate a one-line AI recommendation for dashboard top emission source card.
+    """
+    uid = current_user.get("uid")
+    company_id, company_data = get_company_id(uid)
+    _ = company_id
+
+    source_name = str(body.get("source_name", "")).strip()
+    month_label = str(body.get("month_label", "")).strip()
+    source_share_pct = float(body.get("source_share_pct", 0) or 0)
+    source_tco2e = float(body.get("source_tco2e", 0) or 0)
+
+    if not source_name:
+        raise HTTPException(status_code=400, detail="source_name is required.")
+    if not month_label:
+        raise HTTPException(status_code=400, detail="month_label is required.")
+
+    basic = company_data.get("basicInfo") or {}
+    industry = basic.get("industry") or "General Industry"
+    locations = company_data.get("locations", [])
+    primary = next((l for l in locations if l.get("isPrimary")), locations[0] if locations else {})
+    city = (primary.get("city") or "global").lower()
+
+    try:
+        client = get_openai_client()
+        recommendation = build_source_recommendation(
+            client,
+            source_name=source_name,
+            source_share_pct=source_share_pct,
+            source_tco2e=source_tco2e,
+            month_label=month_label,
+            industry=industry,
+            city=city,
+        )
+        if response is not None:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return {"recommendation": recommendation}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate recommendation: {str(e)}")

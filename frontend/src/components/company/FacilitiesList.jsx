@@ -18,25 +18,25 @@ export default function FacilitiesList({ locations }) {
   return (
     <div className="facilities-step">
       <div className="step-header">
-        <span className="step-icon">🏛️</span>
-        <h3>Facilities & Locations</h3>
+        <span className="step-icon">🏙️</span>
+        <h3>Cities & Locations</h3>
       </div>
 
       <p className="step-description">
-        Review the facilities and locations you've added for your company.
+        Review the cities and locations you've added for your company.
       </p>
 
       <Card className="facilities-list-card">
         <div className="list-header">
           <div>
-            <h4>Your Facilities</h4>
+            <h4>Your Cities</h4>
             <p className="list-subtitle">Summary of all registered locations</p>
           </div>
-          <span className="facility-count">{locations.length} {locations.length === 1 ? 'facility' : 'facilities'}</span>
+          <span className="facility-count">{locations.length} {locations.length === 1 ? 'city' : 'cities'}</span>
         </div>
 
         {locations.length === 0 ? (
-          <EmptyState message="No facilities added yet" />
+          <EmptyState message="No cities added yet" />
         ) : (
           <div className="table-wrapper">
             <table className="facilities-table">

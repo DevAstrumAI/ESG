@@ -1,11 +1,13 @@
 // src/components/company/SetupSummary.jsx
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { FiCheckCircle, FiMapPin, FiUsers, FiGlobe, FiBriefcase, FiEdit2, FiSave, FiX, FiPlus, FiTrash2 } from "react-icons/fi";
 import { BiBuilding } from "react-icons/bi";
 import InputField from "../ui/InputField";
 import SelectDropdown from "../ui/SelectDropdown";
+import ThemedSelect from "../ui/ThemedSelect";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
+import ConfirmationDialog from "../ui/ConfirmationDialog";
 import { 
   FiPackage, 
   FiMonitor, 
@@ -22,8 +24,14 @@ import {
   FiDollarSign, 
   FiMoreHorizontal 
 } from "react-icons/fi";
+import {
+  countriesByRegion,
+  citiesByCountry,
+  filterLocationsForRegion,
+  getValidCountryValuesForRegion,
+} from "../../utils/companyLocations";
 
-export default function SetupSummary({ data, updateField }) {
+export default function SetupSummary({ data, updateField, mergeCompanyData, onRegionResetLocations }) {
   const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData] = useState({
     name: data.name,
@@ -41,6 +49,8 @@ export default function SetupSummary({ data, updateField }) {
   });
   const [selectedCity, setSelectedCity] = useState("");
   const [cities, setCities] = useState([]);
+  const [showRegionChangeConfirm, setShowRegionChangeConfirm] = useState(false);
+  const [pendingRegion, setPendingRegion] = useState("");
 
   const regions = [
     { label: " Middle East", value: "middle-east" },
@@ -64,11 +74,11 @@ export default function SetupSummary({ data, updateField }) {
     { label: "Other", value: "other", icon: <FiMoreHorizontal size={16} /> },
   ];
 
-  // Cities by country
-  const citiesByCountry = {
-    uae: ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"],
-    "saudi-arabia": ["Riyadh", "Jeddah", "Dammam", "Khobar", "Medina", "Mecca"],
-    singapore: ["Singapore"],
+  const applyCompanyPatch = (patch) => {
+    if (mergeCompanyData) mergeCompanyData(patch);
+    else {
+      Object.entries(patch).forEach(([key, value]) => updateField(key, value));
+    }
   };
 
   const handleEdit = (section) => {
@@ -82,13 +92,19 @@ export default function SetupSummary({ data, updateField }) {
     });
     
     if (section === 'facilities') {
+      const locs = filterLocationsForRegion(data.region, data.locations || []);
+      const validCountries = new Set(getValidCountryValuesForRegion(data.region));
+      const country =
+        data.country && validCountries.has(data.country)
+          ? data.country
+          : locs.length
+            ? locs[0].country
+            : "";
       setFacilitiesEditData({
-        country: data.country || "",
-        locations: [...(data.locations || [])]
+        country,
+        locations: [...locs],
       });
-      if (data.country) {
-        setCities(citiesByCountry[data.country] || []);
-      }
+      setCities(country ? citiesByCountry[country] || [] : []);
     }
     
     setEditingSection(section);
@@ -103,16 +119,82 @@ export default function SetupSummary({ data, updateField }) {
     setEditingSection(null);
   };
 
+  const applyRegionChange = (newRegion) => {
+    const regionChanged = newRegion !== data.region;
+    const nextLocations = regionChanged
+      ? []
+      : filterLocationsForRegion(newRegion, data.locations || []);
+    const validCountries = new Set(getValidCountryValuesForRegion(newRegion));
+    const nextCountry = regionChanged
+      ? ""
+      : (data.country && validCountries.has(data.country) ? data.country : "");
+    applyCompanyPatch({
+      region: newRegion,
+      locations: nextLocations,
+      country: nextCountry,
+    });
+    if (regionChanged) {
+      setFacilitiesEditData({ country: "", locations: [] });
+      setSelectedCity("");
+      setCities([]);
+      if (onRegionResetLocations) onRegionResetLocations();
+    }
+    setEditingSection(null);
+  };
+
+  const handleRegionSave = () => {
+    const newRegion = editData.region;
+    if (!newRegion) {
+      window.alert("Please select a region.");
+      return;
+    }
+    if (newRegion !== data.region) {
+      setPendingRegion(newRegion);
+      setShowRegionChangeConfirm(true);
+      return;
+    }
+    applyRegionChange(newRegion);
+  };
+
   const handleFacilitiesSave = () => {
-    updateField("country", facilitiesEditData.country);
-    updateField("locations", facilitiesEditData.locations);
+    if (!data.region) {
+      window.alert("Please set a region first (Region section).");
+      return;
+    }
+    const validCountries = new Set(getValidCountryValuesForRegion(data.region));
+    if (!facilitiesEditData.country || !validCountries.has(facilitiesEditData.country)) {
+      window.alert("Please select a country that belongs to your region.");
+      return;
+    }
+    const cleaned = facilitiesEditData.locations.filter(
+      (loc) => loc?.country && validCountries.has(loc.country) && (loc?.city || loc?.name)
+    );
+    if (cleaned.length === 0) {
+      window.alert("Add at least one city in your region.");
+      return;
+    }
+    const countriesInLocations = new Set(cleaned.map((l) => l.country));
+    if (!countriesInLocations.has(facilitiesEditData.country)) {
+      window.alert(
+        "Added cities must match the selected country, or change the country to match your locations."
+      );
+      return;
+    }
+    applyCompanyPatch({
+      country: facilitiesEditData.country,
+      locations: cleaned,
+    });
     setEditingSection(null);
   };
 
   const handleCancel = () => setEditingSection(null);
 
   const handleCountryChange = (country) => {
-    setFacilitiesEditData(prev => ({ ...prev, country }));
+    setFacilitiesEditData((prev) => ({
+      ...prev,
+      country,
+      locations: prev.locations.filter((loc) => loc.country === country),
+    }));
     setCities(citiesByCountry[country] || []);
     setSelectedCity("");
   };
@@ -274,7 +356,7 @@ export default function SetupSummary({ data, updateField }) {
                 options={regions}
               />
               <div className="edit-actions">
-                <PrimaryButton onClick={handleSave} className="save-btn"><FiSave /> Save</PrimaryButton>
+                <PrimaryButton onClick={handleRegionSave} className="save-btn"><FiSave /> Save</PrimaryButton>
                 <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
               </div>
             </div>
@@ -408,12 +490,12 @@ export default function SetupSummary({ data, updateField }) {
           )}
         </div>
 
-        {/* Facilities Card */}
+        {/* Cities Card */}
         <div className="summary-card facilities-card" key="facilities-card">
           <div className="card-header">
             <div className="card-title">
               <BiBuilding className="title-icon" />
-              <h4>Facilities ({data.locations?.length || 0})</h4>
+              <h4>Cities ({data.locations?.length || 0})</h4>
             </div>
             {editingSection !== 'facilities' && (
               <button onClick={() => handleEdit('facilities')} className="edit-section-btn">
@@ -426,16 +508,14 @@ export default function SetupSummary({ data, updateField }) {
             <div className="edit-mode" key="facilities-edit">
               <div className="field-group">
                 <label className="field-label">Country</label>
-                <select
+                <ThemedSelect
                   className="field-select"
                   value={facilitiesEditData.country}
-                  onChange={(e) => handleCountryChange(e.target.value)}
-                >
-                  <option value="">Select Country</option>
-                  {Object.keys(citiesByCountry).map(country => (
-                    <option key={country} value={country}>{getCountryLabel(country)}</option>
-                  ))}
-                </select>
+                  onChange={(nextCountry) => handleCountryChange(nextCountry)}
+                  disabled={!data.region}
+                  options={countriesByRegion[data.region] || []}
+                  placeholder="Select Country"
+                />
               </div>
 
               {facilitiesEditData.country && (
@@ -443,16 +523,13 @@ export default function SetupSummary({ data, updateField }) {
                   <div className="field-group">
                     <label className="field-label">Add City</label>
                     <div className="city-input-group">
-                      <select
+                      <ThemedSelect
                         className="field-select"
                         value={selectedCity}
-                        onChange={(e) => setSelectedCity(e.target.value)}
-                      >
-                        <option value="">Select City</option>
-                        {cities.map(city => (
-                          <option key={city} value={city}>{city}</option>
-                        ))}
-                      </select>
+                        onChange={(nextCity) => setSelectedCity(nextCity)}
+                        options={cities.map((city) => ({ value: city, label: city }))}
+                        placeholder="Select City"
+                      />
                       <button onClick={handleAddCity} className="add-city-btn" disabled={!selectedCity}>
                         <FiPlus /> Add
                       </button>
@@ -494,7 +571,7 @@ export default function SetupSummary({ data, updateField }) {
 
               <div className="edit-actions">
                 <PrimaryButton onClick={handleFacilitiesSave} className="save-btn">
-                  <FiSave /> Save Facilities
+                  <FiSave /> Save Cities
                 </PrimaryButton>
                 <SecondaryButton onClick={handleCancel} className="cancel-btn">
                   <FiX /> Cancel
@@ -504,7 +581,7 @@ export default function SetupSummary({ data, updateField }) {
           ) : (
             <div className="facilities-list">
               {!data.locations || data.locations.length === 0 ? (
-                <p className="empty-facilities">No facilities added</p>
+                <p className="empty-facilities">No cities added</p>
               ) : (
                 data.locations.map((loc) => (
                   <div key={loc.id} className="facility-item">
@@ -522,6 +599,24 @@ export default function SetupSummary({ data, updateField }) {
         <FiCheckCircle className="note-icon" />
         <p>All information is correct. Click "Complete Setup" to finish.</p>
       </div>
+
+      <ConfirmationDialog
+        isOpen={showRegionChangeConfirm}
+        onClose={() => {
+          setShowRegionChangeConfirm(false);
+          setPendingRegion("");
+        }}
+        onConfirm={() => {
+          if (pendingRegion) applyRegionChange(pendingRegion);
+          setShowRegionChangeConfirm(false);
+          setPendingRegion("");
+        }}
+        title="Confirm Region Change"
+        message="Changing region will clear the selected country and all added cities. You will need to re-select them before completing setup."
+        confirmText="Yes, Change Region"
+        cancelText="Keep Current Region"
+        type="danger"
+      />
 
       <style jsx>{`
         .summary-step {
@@ -625,18 +720,26 @@ export default function SetupSummary({ data, updateField }) {
         .row-value { font-size: 14px; font-weight: 600; color: #1B4D3E; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .size-badge { font-size: 11px; padding: 2px 8px; background: #F8FAF8; color: #2E7D64; border-radius: 30px; font-weight: 500; border: 1px solid #E5E7EB; }
 
-        .edit-mode { display: flex; flex-direction: column; gap: 16px; }
-        .field-group { display: flex; flex-direction: column; gap: 8px; }
-        .field-label { font-size: 13px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.3px; }
-        .field-select {
-          width: 100%;
-          padding: 10px 12px;
+        .edit-mode {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          background: #FFFFFF;
           border: 1px solid #E5E7EB;
-          border-radius: 8px;
-          font-size: 14px;
-          background: white;
+          border-radius: 12px;
+          padding: 16px;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
         }
-        .field-select:focus { outline: none; border-color: #2E7D64; }
+        .field-group { display: flex; flex-direction: column; gap: 8px; }
+        .field-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #6B7280;
+          text-transform: uppercase;
+          letter-spacing: 0.35px;
+          margin-bottom: 2px;
+        }
+        .field-select { width: 100%; }
 
         .add-city-section { margin-top: 8px; }
         .city-input-group {
@@ -649,17 +752,27 @@ export default function SetupSummary({ data, updateField }) {
           display: flex;
           align-items: center;
           gap: 6px;
-          padding: 10px 16px;
-          background: #2E7D64;
+          height: 42px;
+          padding: 0 16px;
+          background: linear-gradient(135deg, #2E7D64 0%, #1F9D7A 100%);
           color: white;
-          border: none;
-          border-radius: 8px;
+          border: 1px solid #2E7D64;
+          border-radius: 10px;
           cursor: pointer;
           font-size: 13px;
-          font-weight: 500;
+          font-weight: 600;
+          box-shadow: 0 6px 14px rgba(31, 157, 122, 0.2);
+          transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+        }
+        .add-city-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 9px 18px rgba(31, 157, 122, 0.28);
+          filter: saturate(1.03);
         }
         .add-city-btn:disabled {
           background: #9CA3AF;
+          border-color: #9CA3AF;
+          box-shadow: none;
           cursor: not-allowed;
         }
 
@@ -696,8 +809,49 @@ export default function SetupSummary({ data, updateField }) {
           border-radius: 8px;
         }
 
-        .edit-actions { display: flex; gap: 12px; margin-top: 8px; }
-        .save-btn, .cancel-btn { flex: 1; padding: 10px !important; font-size: 14px !important; }
+        .edit-actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 10px;
+          padding-top: 12px;
+          border-top: 1px solid #F3F4F6;
+        }
+        .save-btn,
+        .cancel-btn {
+          flex: 1;
+          min-height: 40px;
+          border-radius: 10px !important;
+          font-size: 14px !important;
+          font-weight: 600 !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 8px !important;
+          transition: all 0.18s ease !important;
+        }
+        .save-btn {
+          background: linear-gradient(135deg, #2E7D64 0%, #1F9D7A 100%) !important;
+          color: #FFFFFF !important;
+          border: 1px solid #2E7D64 !important;
+          box-shadow: 0 6px 16px rgba(31, 157, 122, 0.22);
+        }
+        .save-btn:hover {
+          border-color: #1F9D7A !important;
+          box-shadow: 0 10px 20px rgba(31, 157, 122, 0.28);
+          transform: translateY(-1px);
+        }
+        .cancel-btn {
+          background: #FFFFFF !important;
+          color: #4B5563 !important;
+          border: 1px solid #D1D5DB !important;
+          box-shadow: 0 3px 8px rgba(15, 23, 42, 0.06);
+        }
+        .cancel-btn:hover {
+          color: #1F2937 !important;
+          border-color: #9CA3AF !important;
+          background: #F9FAFB !important;
+          transform: translateY(-1px);
+        }
 
         .facilities-list { display: flex; flex-direction: column; gap: 12px; }
         .facility-item {

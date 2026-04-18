@@ -4,6 +4,8 @@ import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
 import { FiTrash2, FiBriefcase, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
+import { useCompanyStore } from "../../store/companyStore";
+import { useSelectedLocationStore } from "../../store/selectedLocationStore";
 
 const EQUIPMENT_TYPES = [
   "Generators", "Stove", "Heater", "Oven", "Boiler",
@@ -46,6 +48,8 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
   const deleteStationary = useEmissionStore((s) => s.deleteScope1Stationary);
   const selectedYear  = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
+  const company = useCompanyStore((s) => s.company);
+  const getSelectedLocation = useSelectedLocationStore((s) => s.getSelectedLocation);
   const [deletingIds, setDeletingIds] = useState(new Set());
   const [editingId, setEditingId] = useState(null);
   const [editValues, setEditValues] = useState({
@@ -61,6 +65,7 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
 
     setDeletingIds((prev) => new Set(prev).add(id));
     const [year] = month ? month.split("-").map(Number) : [selectedYear];
+    const loc = getSelectedLocation(company);
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 220));
@@ -73,6 +78,8 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
           fuelType: deleted.fuelType,
           consumption: Number(deleted.consumption || 0),
         },
+        country: loc?.country,
+        city: loc?.city,
       });
     } catch (error) {
       console.warn("Stationary deletion sync failed, local row removed:", error);
@@ -147,7 +154,7 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
       <div className="sf-desc-header">
         <FiBriefcase className="sf-header-icon" />
         <p className="sf-desc">
-          Enter fuel consumption for <strong>fixed equipment</strong> at your facilities — generators, boilers, heaters, and other stationary sources.
+          Enter fuel consumption for <strong>fixed equipment</strong> across your city operations — generators, boilers, heaters, and other stationary sources.
         </p>
       </div>
 

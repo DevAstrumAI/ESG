@@ -10,6 +10,7 @@ import {
   normalizeScope2RenewableEntry,
 } from '../utils/emissionHydration';
 import { getApiBaseUrl } from '../utils/getApiBaseUrl';
+import { appendLocationQuery } from '../utils/locationQuery';
 
 const API_URL = getApiBaseUrl('http://localhost:8001');
 
@@ -21,6 +22,22 @@ const DISTANCE_BASED_TYPES = new Set([
   "diesel_train",
   "diesel_bus",
 ]);
+const FISCAL_YEAR_START_MONTH = 6;
+
+function getCurrentFiscalStartYear() {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  return month >= FISCAL_YEAR_START_MONTH ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function getFiscalStartYearFromMonth(monthString, fallbackYear) {
+  if (typeof monthString !== 'string' || !monthString.includes('-')) return fallbackYear;
+  const [yearPart, monthPart] = monthString.split('-');
+  const y = Number(yearPart);
+  const m = Number(monthPart);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return fallbackYear;
+  return m >= FISCAL_YEAR_START_MONTH ? y : y - 1;
+}
 
 function mapVehicleFuelType(vehicleType, fuelTypeUI) {
   const type = (vehicleType || "").toLowerCase();
@@ -59,7 +76,7 @@ export const useEmissionStore = create((set, get) => ({
   scope1Results:     null,
   scope2Results:     null,
   scope2Total:       0,
-  selectedYear:      new Date().getFullYear(),
+  selectedYear:      getCurrentFiscalStartYear(),
   selectedMonth:     null,
   loading:           false,
   error:             null,
@@ -78,7 +95,7 @@ export const useEmissionStore = create((set, get) => ({
       scope1Results:     null,
       scope2Results:     null,
       scope2Total:       0,
-      selectedYear:      new Date().getFullYear(),
+      selectedYear:      getCurrentFiscalStartYear(),
       selectedMonth:     null,
       loading:           false,
       error:             null,
@@ -484,7 +501,13 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
     try {
       let url = `${API_URL}/api/emissions/scope1?year=${year}`;
       if (month) {
-        url += `&month=${month}`;
+        url += `&month=${encodeURIComponent(month)}`;
+      }
+      const { useSelectedLocationStore } = require('./selectedLocationStore');
+      const { useCompanyStore } = require('./companyStore');
+      const loc = useSelectedLocationStore.getState().getSelectedLocation(useCompanyStore.getState().company);
+      if (loc?.country && loc?.city) {
+        url = appendLocationQuery(url, loc.country, loc.city);
       }
       
       const response = await fetch(url, {
@@ -533,7 +556,13 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
     try {
       let url = `${API_URL}/api/emissions/scope2?year=${year}`;
       if (month) {
-        url += `&month=${month}`;
+        url += `&month=${encodeURIComponent(month)}`;
+      }
+      const { useSelectedLocationStore } = require('./selectedLocationStore');
+      const { useCompanyStore } = require('./companyStore');
+      const loc = useSelectedLocationStore.getState().getSelectedLocation(useCompanyStore.getState().company);
+      if (loc?.country && loc?.city) {
+        url = appendLocationQuery(url, loc.country, loc.city);
       }
       
       const response = await fetch(url, {
@@ -587,14 +616,17 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
       const state = get();
 
       const { useCompanyStore } = require('./companyStore');
+      const { useSelectedLocationStore } = require('./selectedLocationStore');
       const companyStore = useCompanyStore.getState();
-      const primaryLocation =
+      const selectedLoc =
+        useSelectedLocationStore.getState().getSelectedLocation(companyStore.company) ||
         companyStore.company?.locations?.find((loc) => loc.isPrimary) ||
         companyStore.company?.locations?.[0];
 
-      const country = primaryLocation?.country || 'uae';
-      const city    = (primaryLocation?.city || 'dubai').toLowerCase();
-      const region  = getRegionFromCountry(country);
+      const country = selectedLoc?.country || 'uae';
+      const city = (selectedLoc?.city || 'dubai').toLowerCase();
+      const region =
+        companyStore.company?.basicInfo?.region || getRegionFromCountry(country);
 
       const payload = {
         year,
@@ -643,6 +675,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
 
       const data = await response.json();
 
+      const summaryYear = getFiscalStartYearFromMonth(monthString, year);
       set({
         scope1Results: {
           mobile:       { kgCO2e: data.results?.mobile?.totalKgCO2e       || 0 },
@@ -651,12 +684,12 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
           fugitive:     { kgCO2e: data.results?.fugitive?.totalKgCO2e     || 0 },
           total:        { kgCO2e: data.results?.totalKgCO2e               || 0 },
         },
-        selectedYear: year,
+        selectedYear: summaryYear,
         isSubmitting: false,
         loading: false,
       });
 
-      await get().fetchSummary(token, year);
+      await get().fetchSummary(token, summaryYear);
       return { success: true, results: data.results };
     } catch (error) {
       set({ error: error.message, loading: false, isSubmitting: false });
@@ -679,14 +712,17 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
       const state = get();
 
       const { useCompanyStore } = require('./companyStore');
+      const { useSelectedLocationStore } = require('./selectedLocationStore');
       const companyStore = useCompanyStore.getState();
-      const primaryLocation =
+      const selectedLoc =
+        useSelectedLocationStore.getState().getSelectedLocation(companyStore.company) ||
         companyStore.company?.locations?.find((loc) => loc.isPrimary) ||
         companyStore.company?.locations?.[0];
 
-      const country = primaryLocation?.country || 'uae';
-      const city    = (primaryLocation?.city || 'dubai').toLowerCase();
-      const region  = getRegionFromCountry(country);
+      const country = selectedLoc?.country || 'uae';
+      const city = (selectedLoc?.city || 'dubai').toLowerCase();
+      const region =
+        companyStore.company?.basicInfo?.region || getRegionFromCountry(country);
 
       const payload = {
         year,
@@ -695,7 +731,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
         country,
         city,
         electricity: state.scope2Electricity.map((e) => ({
-          facilityName:    e.facilityName || 'Main Facility',
+          facilityName:    e.facilityName || 'Main City',
           consumptionKwh:  Number(e.consumption || e.kwh || 0),
           method:          e.certificateType === "grid_average" ? "location" : "market",
           certificateType: e.certificateType,
@@ -726,6 +762,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
 
       const data = await response.json();
 
+      const summaryYear = getFiscalStartYearFromMonth(monthString, year);
       set({
         scope2Results: {
           electricity: { 
@@ -738,12 +775,12 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
           marketBasedKgCO2e: data.results?.marketBasedKgCO2e || 0,
         },
         scope2Total: data.results?.locationBasedKgCO2e || 0,
-        selectedYear: year,
+        selectedYear: summaryYear,
         isSubmitting: false,
         loading: false,
       });
 
-      await get().fetchSummary(token, year);
+      await get().fetchSummary(token, summaryYear);
       return { success: true, results: data.results };
     } catch (error) {
       set({ error: error.message, loading: false, isSubmitting: false });
@@ -754,16 +791,41 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
   // ─── Fetch Summary ──────────────────────────────────────────────────────
   fetchSummary: async (token, year) => {
     const resolvedYear = year || get().selectedYear;
+    const emptyScope1 = {
+      mobile: { kgCO2e: 0 },
+      stationary: { kgCO2e: 0 },
+      refrigerants: { kgCO2e: 0 },
+      fugitive: { kgCO2e: 0 },
+      total: { kgCO2e: 0 },
+      monthsCount: 0,
+    };
+    const emptyScope2 = {
+      electricity: {
+        locationBasedKgCO2e: 0,
+        marketBasedKgCO2e: 0,
+      },
+      heating: { kgCO2e: 0 },
+      renewables: { kgCO2e: 0 },
+      locationBasedKgCO2e: 0,
+      marketBasedKgCO2e: 0,
+      monthsCount: 0,
+    };
     try {
-      const response = await fetch(
-        `${API_URL}/api/emissions/summary?year=${resolvedYear}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const { useSelectedLocationStore } = require('./selectedLocationStore');
+      const { useCompanyStore } = require('./companyStore');
+      const loc = useSelectedLocationStore.getState().getSelectedLocation(useCompanyStore.getState().company);
+
+      let summaryUrl = `${API_URL}/api/emissions/summary?year=${resolvedYear}`;
+      if (loc?.country && loc?.city) {
+        summaryUrl = appendLocationQuery(summaryUrl, loc.country, loc.city);
+      }
+
+      const response = await fetch(summaryUrl, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -782,7 +844,11 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
 
       let monthsCount = 0;
       try {
-        const monthStatusResponse = await fetch(`${API_URL}/api/emissions/month-status?year=${resolvedYear}`, {
+        let monthStatusUrl = `${API_URL}/api/emissions/month-status?year=${resolvedYear}`;
+        if (loc?.country && loc?.city) {
+          monthStatusUrl = appendLocationQuery(monthStatusUrl, loc.country, loc.city);
+        }
+        const monthStatusResponse = await fetch(monthStatusUrl, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (monthStatusResponse.ok) {
@@ -826,6 +892,12 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
       return { success: true };
     } catch (error) {
       console.error("Fetch summary error:", error);
+      // Clear stale totals so year-switch never shows previous year's data.
+      set({
+        scope1Results: emptyScope1,
+        scope2Results: emptyScope2,
+        selectedYear: resolvedYear,
+      });
       return { success: false, error: error.message };
     }
   },
@@ -843,7 +915,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
       scope1Results:     null,
       scope2Results:     null,
       scope2Total:       0,
-      selectedYear:      new Date().getFullYear(),
+      selectedYear:      getCurrentFiscalStartYear(),
       selectedMonth:     null,
       loading:           false,
       error:             null,

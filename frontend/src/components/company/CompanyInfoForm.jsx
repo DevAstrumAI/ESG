@@ -25,7 +25,7 @@ export default function CompanyInfoForm({ data, updateField }) {
             placeholder="e.g., Acme Corporation"
             onChange={(e) => updateField("name", e.target.value)}
           />
-          {!data.name && <span className="field-hint">This will be used for all reports</span>}
+          <span className="field-hint">This will be used for all reports</span>
         </div>
 
         <div className="field-group">
@@ -126,6 +126,35 @@ export default function CompanyInfoForm({ data, updateField }) {
           align-items: center;
           gap: 4px;
           margin-top: 4px;
+        }
+
+        @media (max-width: 768px) {
+          .step-header {
+            gap: 10px;
+            margin-bottom: 12px;
+          }
+          .step-icon {
+            font-size: 26px;
+          }
+          .step-header h3 {
+            font-size: 18px;
+          }
+          .step-description {
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+          }
+          .form-fields {
+            gap: 16px;
+          }
+          .field-input,
+          .field-textarea {
+            font-size: 16px; /* prevent iOS zoom */
+            padding: 11px 12px;
+          }
+          .field-hint {
+            align-items: flex-start;
+          }
         }
       `}</style>
     </div>

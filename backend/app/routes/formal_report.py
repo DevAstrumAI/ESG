@@ -13,6 +13,7 @@ from datetime import datetime
 
 router = APIRouter()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+FISCAL_YEAR_START_MONTH = 6  # June
 
 # ---------------------------------------------------------------------------
 # Helper functions (copied from reports.py)
@@ -29,7 +30,18 @@ def fetch_scope_docs(company_id: str, scope: str, year: int, month: str | None) 
             if d.get("month") == month:
                 results.append(d)
         else:
-            if d.get("year") == year:
+            month_value = d.get("month")
+            if month_value and "-" in str(month_value):
+                try:
+                    y_str, m_str = str(month_value).split("-")
+                    y_num = int(y_str)
+                    m_num = int(m_str)
+                    in_fiscal_year = (y_num == year and m_num >= FISCAL_YEAR_START_MONTH) or (y_num == year + 1 and m_num < FISCAL_YEAR_START_MONTH)
+                    if in_fiscal_year:
+                        results.append(d)
+                except (ValueError, TypeError):
+                    pass
+            elif d.get("year") == year:
                 results.append(d)
     return results
 

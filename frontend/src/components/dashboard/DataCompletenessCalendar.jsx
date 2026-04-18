@@ -6,10 +6,11 @@ import { useEmissionStore } from "../../store/emissionStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { FiCalendar, FiAlertCircle, FiCheckCircle, FiMinusCircle } from "react-icons/fi";
 import ConfirmationDialog from "../ui/ConfirmationDialog";
+import { appendLocationQuery } from "../../utils/locationQuery";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
-export default function DataCompletenessCalendar({ year, onMonthClick }) {
+export default function DataCompletenessCalendar({ year, onMonthClick, country, city }) {
   const navigate = useNavigate();
   const token = useAuthStore((s) => s.token);
   const fetchCompany = useCompanyStore((s) => s.fetchCompany);
@@ -25,24 +26,37 @@ export default function DataCompletenessCalendar({ year, onMonthClick }) {
     onConfirm: null
   });
 
-  const months = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-  ];
+  // Fiscal year starts in June: Jun..May
+  const fiscalMonths = Array.from({ length: 12 }, (_, idx) => {
+    const monthNum = ((5 + idx) % 12) + 1; // 6..12,1..5
+    const yearNum = monthNum >= 6 ? year : year + 1;
+    const date = new Date(yearNum, monthNum - 1, 1);
+    return {
+      label: date.toLocaleString("en-US", { month: "short" }),
+      yearNum,
+      monthNum,
+      monthKey: `${yearNum}-${String(monthNum).padStart(2, "0")}`,
+    };
+  });
+  const months = fiscalMonths.map((m) => m.label);
 
   useEffect(() => {
     if (token) {
       fetchMonthStatus();
       // Refresh company data to ensure targets are loaded
-      fetchCompany(token, true);
+      fetchCompany(token, { force: true });
     }
-  }, [token, year]);
+  }, [token, year, country, city]);
 
   const fetchMonthStatus = async () => {
     setLoading(true);
     
     try {
-      const response = await fetch(`${API_URL}/api/emissions/month-status?year=${year}`, {
+      let statusUrl = `${API_URL}/api/emissions/month-status?year=${year}`;
+      if (country && city) {
+        statusUrl = appendLocationQuery(statusUrl, country, city);
+      }
+      const response = await fetch(statusUrl, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -96,8 +110,10 @@ export default function DataCompletenessCalendar({ year, onMonthClick }) {
   };
 
   const handleMonthClick = (monthIndex, status) => {
-    const monthStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
-    const monthName = months[monthIndex];
+    const meta = fiscalMonths[monthIndex];
+    const monthStr = meta.monthKey;
+    const monthName = meta.label;
+    const displayYear = meta.yearNum;
     
     if (status === "none") {
       // Missing month pills should open data entry directly with month prefilled.
@@ -107,8 +123,8 @@ export default function DataCompletenessCalendar({ year, onMonthClick }) {
       // Only Scope 1 exists, offer to add Scope 2
       setDialogConfig({
         isOpen: true,
-        title: `Add Scope 2 Data for ${monthName} ${year}`,
-        message: `Scope 1 data exists for ${monthName} ${year}. Would you like to add Scope 2 data?`,
+        title: `Add Scope 2 Data for ${monthName} ${displayYear}`,
+        message: `Scope 1 data exists for ${monthName} ${displayYear}. Would you like to add Scope 2 data?`,
         options: [
           { label: "⚡ Add Scope 2 Data", value: "scope2" },
           { label: "📊 View Scope 1 Data", value: "scope1_view" }
@@ -125,8 +141,8 @@ export default function DataCompletenessCalendar({ year, onMonthClick }) {
       // Only Scope 2 exists, offer to add Scope 1
       setDialogConfig({
         isOpen: true,
-        title: `Add Scope 1 Data for ${monthName} ${year}`,
-        message: `Scope 2 data exists for ${monthName} ${year}. Would you like to add Scope 1 data?`,
+        title: `Add Scope 1 Data for ${monthName} ${displayYear}`,
+        message: `Scope 2 data exists for ${monthName} ${displayYear}. Would you like to add Scope 1 data?`,
         options: [
           { label: "📊 Add Scope 1 Data", value: "scope1" },
           { label: "⚡ View Scope 2 Data", value: "scope2_view" }
@@ -143,8 +159,8 @@ export default function DataCompletenessCalendar({ year, onMonthClick }) {
       // Both exist - ask what to do
       setDialogConfig({
         isOpen: true,
-        title: `${monthName} ${year} - Data Exists`,
-        message: `Both Scope 1 and Scope 2 data exist for ${monthName} ${year}. What would you like to do?`,
+        title: `${monthName} ${displayYear} - Data Exists`,
+        message: `Both Scope 1 and Scope 2 data exist for ${monthName} ${displayYear}. What would you like to do?`,
         options: [
           { label: "📊 Edit Scope 1 Data", value: "scope1" },
           { label: "⚡ Edit Scope 2 Data", value: "scope2" },
@@ -263,7 +279,7 @@ export default function DataCompletenessCalendar({ year, onMonthClick }) {
                 color: colors.text
               }}
               onClick={() => handleMonthClick(index, status)}
-              title={`${month} ${year}: ${colors.label}`}
+              title={`${month} ${fiscalMonths[index]?.yearNum || year}: ${colors.label}`}
             >
               <span className="month-name">{month}</span>
               {status === "both" && <FiCheckCircle className="status-icon" />}
