@@ -64,6 +64,17 @@ CITY_DISPLAY_NAMES = {
     "singapore": "Singapore",
 }
 
+COUNTRY_ALIASES = {
+    "saudi": "saudi-arabia",
+    "saudi arabia": "saudi-arabia",
+    "united arab emirates": "uae",
+    "uae": "uae",
+}
+
+
+def _slugify(value: str) -> str:
+    return (value or "").strip().lower().replace("_", "-").replace(" ", "-")
+
 
 def resolve_location(country: str, city: str = None) -> Tuple[str, str, str]:
     """
@@ -77,9 +88,10 @@ def resolve_location(country: str, city: str = None) -> Tuple[str, str, str]:
         Tuple of (region, normalized_country, normalized_city)
     """
     # Normalize inputs
-    country = country.lower().strip()
+    country = _slugify(country)
+    country = COUNTRY_ALIASES.get(country, country)
     if city:
-        city = city.lower().strip()
+        city = _slugify(city)
     
     # Get region from country mapping
     region = COUNTRY_REGION_MAP.get(country, "middle-east")  # Default to middle-east
