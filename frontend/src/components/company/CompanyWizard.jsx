@@ -283,7 +283,7 @@ export default function CompanyWizard() {
     { id: 4, label: "Industry", icon: <FiBriefcase /> },
     { id: 5, label: "Employees", icon: <FiUsers /> },
     { id: 6, label: "Revenue", icon: <FiDollarSign /> },
-    { id: 7, label: "Cities", icon: <FiMapPin /> },
+    { id: 7, label: "Locations", icon: <FiMapPin /> },
     { id: 8, label: "Summary", icon: <FiClipboard /> },
   ];
 
@@ -426,7 +426,7 @@ export default function CompanyWizard() {
     switch(step) {
       case 1: return companyData.name.trim() !== "";
       case 2: return companyData.region !== "";
-      case 3: return companyData.country !== "";
+      case 3: return filterLocationsForRegion(companyData.region, companyData.locations).length > 0;
       case 4: return companyData.industry !== "";
       case 5: return companyData.employees !== "";
       case 6: return companyData.revenue !== "";
