@@ -272,13 +272,14 @@ export default function SignupPage() {
           justify-content: center;
           background: #F8FAF8;
           padding: 20px;
+          overflow-x: auto;
         }
 
         .signup-card {
           background: white;
           padding: 40px;
           border-radius: 12px;
-          width: 100%;
+          width: min(100%, 440px);
           max-width: 440px;
           border: 1px solid #E5E7EB;
           transform: translateY(20px);
@@ -430,6 +431,8 @@ export default function SignupPage() {
           font-size: 14px;
           color: #4A5568;
           cursor: pointer;
+          line-height: 1.45;
+          overflow-wrap: anywhere;
         }
 
         .checkbox-label input[type="checkbox"] {
@@ -488,13 +491,31 @@ export default function SignupPage() {
           text-decoration: underline;
         }
 
-        @media (max-width: 480px) {
+        @media (max-width: 768px) {
+          .signup-container {
+            align-items: flex-start;
+            padding: 14px;
+          }
+
           .signup-card {
-            padding: 30px 20px;
+            padding: 24px 16px;
+            border-radius: 10px;
+            margin: 0;
           }
 
           .welcome-text {
-            font-size: 24px;
+            font-size: 32px;
+            line-height: 1.12;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .signup-card {
+            padding: 20px 14px;
+          }
+
+          .welcome-text {
+            font-size: 28px;
           }
 
           .logo-text {
