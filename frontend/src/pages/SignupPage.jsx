@@ -39,10 +39,13 @@ export default function SignupPage() {
     if (!email || !email.includes("@") || !email.includes(".")) {
       errors.email = "Enter a valid email address.";
     }
-    if (!password || password.length < 8) {
-      errors.password = "Password must be at least 8 characters.";
-    } else if (!/[A-Z]/.test(password)) {
-      errors.password = "Password must contain at least one uppercase letter.";
+    const passwordChecks = [
+      { ok: (password || "").length >= 8, message: "at least 8 characters" },
+      { ok: /[A-Za-z]/.test(password || ""), message: "at least one alphabet letter" },
+    ];
+    const missingPasswordRules = passwordChecks.filter((rule) => !rule.ok).map((rule) => rule.message);
+    if (missingPasswordRules.length > 0) {
+      errors.password = `Password must include ${missingPasswordRules.join(", ")}.`;
     }
     if (password !== confirmPassword) {
       errors.confirmPassword = "Passwords do not match.";
@@ -186,6 +189,9 @@ export default function SignupPage() {
               >
                 {showPassword ? <FiEyeOff /> : <FiEye />}
               </button>
+            </div>
+            <div className="password-helper">
+              Password must be at least 8 characters and include at least one alphabet letter.
             </div>
             {fieldErrors.password && (
               <div className="field-error">{fieldErrors.password}</div>
@@ -410,6 +416,13 @@ export default function SignupPage() {
         .password-match {
           margin-top: 6px;
           font-size: 12px;
+        }
+
+        .password-helper {
+          margin-top: 6px;
+          font-size: 12px;
+          color: #6B7280;
+          line-height: 1.45;
         }
 
         .match-success {
