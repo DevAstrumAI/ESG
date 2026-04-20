@@ -525,6 +525,16 @@ export default function SetupSummary({
                     placeholder="Select City"
                   />
                 </div>
+                <div className="field-group add-inline-group">
+                  <label className="field-label"> </label>
+                  <button
+                    onClick={handleAddLocationPair}
+                    className="add-city-btn"
+                    disabled={!selectedCountry || !selectedCity}
+                  >
+                    <FiPlus /> Add more 
+                  </button>
+                </div>
               </div>
 
               {facilitiesEditData.locations.length > 0 && (
@@ -548,19 +558,9 @@ export default function SetupSummary({
 
               {facilitiesEditData.locations.length === 0 && (
                 <div className="empty-locations">
-                  <p>No entries added yet. Select country and city, then click Add more +.</p>
+                  <p>No entries added yet. Select country and city, then click Add more .</p>
                 </div>
               )}
-
-              <div className="add-more-row">
-                <button
-                  onClick={handleAddLocationPair}
-                  className="add-city-btn"
-                  disabled={!selectedCountry || !selectedCity}
-                >
-                  <FiPlus /> Add more
-                </button>
-              </div>
 
               <div className="edit-actions">
                 <PrimaryButton onClick={handleFacilitiesSave} className="save-btn">
@@ -745,8 +745,14 @@ export default function SetupSummary({
         .field-select { width: 100%; }
         .pair-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: 1fr 1fr auto;
           gap: 12px;
+        }
+        .add-inline-group {
+          justify-content: flex-end;
+        }
+        .add-inline-group .field-label {
+          visibility: hidden;
         }
         .add-city-btn {
           display: flex;
@@ -774,10 +780,6 @@ export default function SetupSummary({
           border-color: #9CA3AF;
           box-shadow: none;
           cursor: not-allowed;
-        }
-        .add-more-row {
-          display: flex;
-          justify-content: flex-end;
         }
 
         .locations-list { margin-top: 8px; }
@@ -900,8 +902,8 @@ export default function SetupSummary({
           .card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
           .edit-section-btn { align-self: flex-start; }
           .pair-grid { grid-template-columns: 1fr; }
+          .add-inline-group .field-label { display: none; }
           .add-city-btn { width: 100%; justify-content: center; }
-          .add-more-row { justify-content: stretch; }
         }
       `}</style>
     </div>
