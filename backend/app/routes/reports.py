@@ -103,6 +103,37 @@ def fetch_scope_docs(company_id: str, scope: str, year: int, month: str | None) 
     return results
 
 
+def calculate_data_coverage_months(scope1_docs: list[dict], scope2_docs: list[dict], year: int, month: str | None) -> int:
+    """
+    Return the number of distinct reporting months with submitted data.
+    For annual/fiscal reports: count distinct YYYY-MM months in the fiscal window (max 12).
+    For month-specific reports: return 1 when any data exists for that month, else 0.
+    """
+    if month:
+        return 1 if (scope1_docs or scope2_docs) else 0
+
+    covered = set()
+    for doc in [*scope1_docs, *scope2_docs]:
+        month_value = str(doc.get("month") or "")
+        if "-" not in month_value:
+            continue
+        try:
+            y_str, m_str = month_value.split("-")
+            y_num = int(y_str)
+            m_num = int(m_str)
+        except (ValueError, TypeError):
+            continue
+
+        in_fiscal_year = (
+            (y_num == year and m_num >= FISCAL_YEAR_START_MONTH)
+            or (y_num == year + 1 and m_num < FISCAL_YEAR_START_MONTH)
+        )
+        if in_fiscal_year:
+            covered.add(f"{y_num}-{m_num:02d}")
+
+    return min(len(covered), 12)
+
+
 def aggregate_scope1(docs: list[dict]) -> dict:
     cats = {"mobile": 0.0, "stationary": 0.0, "refrigerants": 0.0, "fugitive": 0.0}
     for doc in docs:
@@ -727,8 +758,10 @@ async def generate_report(
         fin       = {**REGIONAL_FINANCIALS.get(city, DEFAULT_FINANCIALS), "city": city}
 
         # ── Fetch & aggregate ─────────────────────────────────────────────
-        s1 = aggregate_scope1(fetch_scope_docs(company_id, "scope1", year, month))
-        s2 = aggregate_scope2(fetch_scope_docs(company_id, "scope2", year, month))
+        scope1_docs = fetch_scope_docs(company_id, "scope1", year, month)
+        scope2_docs = fetch_scope_docs(company_id, "scope2", year, month)
+        s1 = aggregate_scope1(scope1_docs)
+        s2 = aggregate_scope2(scope2_docs)
 
         if s1["total"] == 0 and s2["total_location"] == 0:
             raise HTTPException(
@@ -770,6 +803,33 @@ async def generate_report(
         enriched_recs = financial.pop("recommendations_with_financials", raw_recs)
 
         total_kg = s1["total"] + s2["total_location"]
+
+        # Executive-summary metrics (Card 15)
+        yoy_change_pct = carbon_score.get("dimensions", {}).get("trajectory_score", {}).get("yoy_change_pct")
+        if yoy_change_pct is not None:
+            try:
+                yoy_change_pct = round(float(yoy_change_pct), 2)
+            except (TypeError, ValueError):
+                yoy_change_pct = None
+        yoy_direction = (
+            "up" if (yoy_change_pct is not None and yoy_change_pct > 0)
+            else "down" if (yoy_change_pct is not None and yoy_change_pct < 0)
+            else "flat"
+        )
+        zone = str(carbon_score.get("zone") or "").strip().lower()
+        if zone in {"climate leader", "on track"}:
+            danger_level = "Green"
+        elif zone == "needs attention":
+            danger_level = "Amber"
+        else:
+            danger_level = "Red"
+
+        data_coverage_months = calculate_data_coverage_months(
+            scope1_docs,
+            scope2_docs,
+            year,
+            month,
+        )
         def t(kg): return round(kg / 1000, 4)
 
         trend_milestone_years = {2025, 2026, 2027, 2028, 2029, 2030, 2035, 2040, 2045, 2050}
@@ -823,6 +883,18 @@ async def generate_report(
                 },
                 "combined_total_kg": round(total_kg, 2),
                 "combined_total_t":  t(total_kg),
+            },
+
+            # Card 15 - Executive Summary structured metrics
+            "executive_metrics": {
+                "total_tco2e": round(total_kg / 1000, 4),
+                "yoy_change_pct": yoy_change_pct,
+                "yoy_direction": yoy_direction,
+                "danger_level": danger_level,
+                "scope1_tco2e": round(s1["total"] / 1000, 4),
+                "scope2_tco2e": round(s2["total_location"] / 1000, 4),
+                "data_coverage_months": data_coverage_months,
+                "data_coverage_statement": f"{data_coverage_months} of 12 months",
             },
 
             # Carbon Score

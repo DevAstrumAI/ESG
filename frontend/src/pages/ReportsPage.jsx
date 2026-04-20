@@ -142,6 +142,13 @@ export default function ReportsPage() {
     }
   };
 
+  const getDangerLevelClass = (dangerLevel) => {
+    const level = String(dangerLevel || "").toLowerCase();
+    if (level === "green") return "green";
+    if (level === "amber") return "amber";
+    return "red";
+  };
+
   return (
     <div className="reports-page">
 
@@ -197,34 +204,78 @@ export default function ReportsPage() {
               <span>📅 {aiReport.meta?.generated_at ? new Date(aiReport.meta.generated_at).toLocaleString() : new Date().toLocaleString()}</span>
             </div>
 
-            <div className="total-emissions-banner">
-              <div className="total-value">{aiReport.breakdown?.combined_total_t?.toFixed(2) || 0}</div>
-              <div className="total-label">tonnes CO₂e</div>
-              <div className="total-sub">Total Emissions (Scope 1 + Scope 2)</div>
-            </div>
-
-            {aiReport.executive_summary && (
-              <div className="report-section highlight">
-                <h4>📋 Executive Summary</h4>
-                <p>{aiReport.executive_summary}</p>
-              </div>
-            )}
-
-            <div className="dual-summary">
-              <div className="scope-card">
-                <h4>Scope 1 — Direct Emissions</h4>
-                <div className="scope-value">{aiReport.breakdown?.scope1?.total_t?.toFixed(2) || 0} tCO₂e</div>
-                <div className="scope-percent">
-                  {((aiReport.breakdown?.scope1?.total_kg || 0) / (aiReport.breakdown?.combined_total_kg || 1) * 100).toFixed(0)}% of total
+            <div className="executive-summary-card">
+              <div className="exec-header">
+                <div>
+                  <div className="exec-label">Total Emissions</div>
+                  <div className="exec-total-value">
+                    {(
+                      aiReport.executive_metrics?.total_tco2e
+                      ?? aiReport.breakdown?.combined_total_t
+                      ?? 0
+                    ).toFixed(2)}
+                    <span className="exec-total-unit"> tCO₂e</span>
+                  </div>
+                </div>
+                <div className="exec-right">
+                  {aiReport.executive_metrics?.yoy_change_pct !== null && aiReport.executive_metrics?.yoy_change_pct !== undefined ? (
+                    <div
+                      className={`exec-yoy ${
+                        Number(aiReport.executive_metrics?.yoy_change_pct) > 0
+                          ? "up"
+                          : Number(aiReport.executive_metrics?.yoy_change_pct) < 0
+                          ? "down"
+                          : "flat"
+                      }`}
+                    >
+                      <span className="exec-yoy-arrow">
+                        {Number(aiReport.executive_metrics?.yoy_change_pct) > 0
+                          ? "↑"
+                          : Number(aiReport.executive_metrics?.yoy_change_pct) < 0
+                          ? "↓"
+                          : "→"}
+                      </span>
+                      <span>{Math.abs(Number(aiReport.executive_metrics?.yoy_change_pct)).toFixed(2)}% YoY</span>
+                    </div>
+                  ) : (
+                    <div className="exec-yoy flat"><span className="exec-yoy-arrow">→</span><span>YoY N/A</span></div>
+                  )}
+                  <span className={`danger-pill ${getDangerLevelClass(aiReport.executive_metrics?.danger_level)}`}>
+                    Danger Level: {aiReport.executive_metrics?.danger_level || "Red"}
+                  </span>
                 </div>
               </div>
-              <div className="scope-card">
-                <h4>Scope 2 — Indirect Emissions</h4>
-                <div className="scope-value">{aiReport.breakdown?.scope2?.total_location_t?.toFixed(2) || 0} tCO₂e</div>
-                <div className="scope-percent">
-                  {((aiReport.breakdown?.scope2?.total_location_kg || 0) / (aiReport.breakdown?.combined_total_kg || 1) * 100).toFixed(0)}% of total
+
+              <div className="dual-summary">
+                <div className="scope-card">
+                  <h4>Scope 1 Total</h4>
+                  <div className="scope-value">
+                    {(aiReport.executive_metrics?.scope1_tco2e ?? aiReport.breakdown?.scope1?.total_t ?? 0).toFixed(2)} tCO₂e
+                  </div>
+                  <div className="scope-percent">
+                    {((aiReport.breakdown?.scope1?.total_kg || 0) / (aiReport.breakdown?.combined_total_kg || 1) * 100).toFixed(0)}% of total
+                  </div>
+                </div>
+                <div className="scope-card">
+                  <h4>Scope 2 Total</h4>
+                  <div className="scope-value">
+                    {(aiReport.executive_metrics?.scope2_tco2e ?? aiReport.breakdown?.scope2?.total_location_t ?? 0).toFixed(2)} tCO₂e
+                  </div>
+                  <div className="scope-percent">
+                    {((aiReport.breakdown?.scope2?.total_location_kg || 0) / (aiReport.breakdown?.combined_total_kg || 1) * 100).toFixed(0)}% of total
+                  </div>
                 </div>
               </div>
+
+              <div className="data-coverage-chip">
+                Data coverage: {aiReport.executive_metrics?.data_coverage_statement || "0 of 12 months"}
+              </div>
+              {aiReport.executive_summary && (
+                <>
+                  <div className="exec-summary-heading">Executive Summary</div>
+                  <p className="exec-summary-text">{aiReport.executive_summary}</p>
+                </>
+              )}
             </div>
 
             {/* Carbon Score */}
@@ -564,15 +615,29 @@ export default function ReportsPage() {
         .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #9CA3AF; padding: 0 8px; }
         .ai-report-content { max-height: 600px; overflow-y: auto; margin-bottom: 20px; }
         .report-metadata { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px; background: #F8FAF8; border-radius: 8px; margin-bottom: 20px; font-size: 12px; color: #6B7280; }
-        .total-emissions-banner { text-align: center; padding: 24px; background: linear-gradient(135deg, #1B4D3E, #2E7D64); border-radius: 12px; margin-bottom: 24px; color: white; }
-        .total-value { font-size: 48px; font-weight: 700; }
-        .total-label { font-size: 14px; opacity: 0.9; }
-        .total-sub { font-size: 12px; opacity: 0.7; }
+        .executive-summary-card { background: #F8FAF8; border: 1px solid #E5E7EB; border-radius: 12px; padding: 18px; margin-bottom: 24px; }
+        .exec-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+        .exec-label { font-size: 12px; font-weight: 700; color: #1B4D3E; text-transform: uppercase; letter-spacing: 0.04em; }
+        .exec-total-value { font-size: 38px; font-weight: 700; color: #1B4D3E; line-height: 1.1; margin-top: 4px; }
+        .exec-total-unit { font-size: 14px; font-weight: 600; color: #4B5563; }
+        .exec-right { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+        .exec-yoy { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+        .exec-yoy.up { background: #FEE2E2; color: #991B1B; }
+        .exec-yoy.down { background: #DCFCE7; color: #166534; }
+        .exec-yoy.flat { background: #F3F4F6; color: #4B5563; }
+        .exec-yoy-arrow { font-size: 13px; font-weight: 700; }
+        .danger-pill { padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid transparent; }
+        .danger-pill.green { background: #DCFCE7; color: #166534; border-color: #BBF7D0; }
+        .danger-pill.amber { background: #FEF3C7; color: #92400E; border-color: #FDE68A; }
+        .danger-pill.red { background: #FEE2E2; color: #991B1B; border-color: #FECACA; }
         .dual-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
         .scope-card { background: #F8FAF8; border-radius: 12px; padding: 16px; text-align: center; border: 1px solid #E5E7EB; }
         .scope-card h4 { margin: 0 0 8px; font-size: 14px; color: #6B7280; }
         .scope-value { font-size: 24px; font-weight: 700; color: #1B4D3E; }
         .scope-percent { font-size: 12px; color: #2E7D64; margin-top: 4px; }
+        .data-coverage-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #374151; background: white; border: 1px solid #E5E7EB; border-radius: 999px; padding: 6px 12px; margin-bottom: 12px; }
+        .exec-summary-heading { margin: 4px 0 8px; font-size: 12px; font-weight: 700; color: #1B4D3E; text-transform: uppercase; letter-spacing: 0.04em; }
+        .exec-summary-text { margin: 0; color: #4B5563; font-size: 14px; line-height: 1.6; }
         .report-section { margin-bottom: 24px; }
         .report-section.highlight { background: #F0FDF4; padding: 16px; border-radius: 12px; border-left: 4px solid #10B981; }
         .report-section h4 { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 12px; }
@@ -638,6 +703,8 @@ export default function ReportsPage() {
           .templates-grid { grid-template-columns: 1fr; }
           .dual-summary { grid-template-columns: 1fr; }
           .quarterly-grid { grid-template-columns: 1fr; }
+          .exec-total-value { font-size: 30px; }
+          .exec-right { align-items: flex-start; }
         }
         .carbon-score-card { background: #F9FAFB; border-radius: 12px; padding: 20px; margin-bottom: 24px; border: 1px solid #E5E7EB; }
         .score-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
