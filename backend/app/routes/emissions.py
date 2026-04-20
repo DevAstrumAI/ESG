@@ -299,6 +299,7 @@ async def get_scope1_data(
     country: Optional[str] = None,
     city: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
+    response: Response = None,
 ):
     """
     Get existing Scope 1 data for the current user.
@@ -399,6 +400,10 @@ async def get_scope1_data(
                 "kgCO2e": entry.get("kgCO2e", 0)
             })
 
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return result
 
 
@@ -409,6 +414,7 @@ async def get_scope2_data(
     country: Optional[str] = None,
     city: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
+    response: Response = None,
 ):
     """
     Get existing Scope 2 data for the current user.
@@ -492,6 +498,10 @@ async def get_scope2_data(
                 "kgCO2e": entry.get("kgCO2e", 0)
             })
 
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return result
 
 

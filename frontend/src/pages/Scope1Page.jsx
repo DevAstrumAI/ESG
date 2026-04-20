@@ -127,6 +127,7 @@ export default function Scope1Page() {
           url = appendLocationQuery(url, loc.country, loc.city);
         }
         const response = await fetch(url, {
+          cache: "no-store",
           headers: { Authorization: `Bearer ${token}` },
         });
         
@@ -195,6 +196,15 @@ export default function Scope1Page() {
   
   const handleMonthChange = (newMonth) => {
     if (newMonth === selectedMonth) return;
+    // Clear previous month rows immediately to avoid stale UI.
+    setScope1Vehicles([]);
+    setScope1Stationary([]);
+    setScope1Refrigerants([]);
+    setScope1Fugitive([]);
+    setShowSummary(false);
+    setSubmitSuccess(false);
+    setSubmitError(null);
+    setLoadingData(true);
     setSelectedMonth(newMonth);
     // ✅ Reset loaded flag when month changes
     dataLoadedForMonth.current = null;
@@ -463,7 +473,7 @@ export default function Scope1Page() {
           )}
         </div>
         
-        <div className="step-content">
+        <div className="step-content" key={selectedMonth}>
           {steps[currentStep].component}
         </div>
         

@@ -120,6 +120,7 @@ export default function Scope2Page() {
           url = appendLocationQuery(url, loc.country, loc.city);
         }
         const response = await fetch(url, {
+          cache: "no-store",
           headers: { Authorization: `Bearer ${token}` },
         });
         
@@ -196,6 +197,14 @@ export default function Scope2Page() {
   
   const handleMonthChange = (newMonth) => {
     if (newMonth === selectedMonth) return;
+    // Clear previous month rows immediately to avoid stale UI.
+    setElectricity([]);
+    setHeating([]);
+    setRenewables([]);
+    setShowSummary(false);
+    setSubmitSuccess(false);
+    setSubmitError(null);
+    setLoadingData(true);
     setSelectedMonth(newMonth);
     // ✅ Reset loaded flag when month changes
     dataLoadedForMonth.current = null;
@@ -438,7 +447,7 @@ export default function Scope2Page() {
           )}
         </div>
         
-        <div className="step-content">
+        <div className="step-content" key={selectedMonth}>
           {steps[currentStep].component}
         </div>
         
