@@ -43,6 +43,7 @@ export default function CompanyWizard() {
   const [saveStatus, setSaveStatus] = useState("saved"); // 'saving', 'saved', 'error'
   const [saveType, setSaveType] = useState(null); // 'local' or 'backend'
   const [regionChangeNeedsCities, setRegionChangeNeedsCities] = useState(false);
+  const [summaryValidationFocus, setSummaryValidationFocus] = useState(null);
   const [savedSnapshot, setSavedSnapshot] = useState(null);
   const autoSaveTimer = useRef(null);
   const hasHydrated = useRef(false);
@@ -286,29 +287,42 @@ export default function CompanyWizard() {
     { id: 8, label: "Summary", icon: <FiClipboard /> },
   ];
 
+  const clearSummaryValidationFeedback = useCallback(() => {
+    setSubmitError(null);
+    setSummaryValidationFocus(null);
+  }, []);
+
   const validateFacilitiesForSubmit = () => {
     const region = companyData.region;
-    if (!region) return "Please select a region.";
+    if (!region) return { message: "Please select a region.", field: "region" };
     const locations = filterLocationsForRegion(region, companyData.locations);
     if (locations.length === 0) {
       if (regionChangeNeedsCities) {
-        return "Region changed. Please re-select country and add city locations before completing setup.";
+        return {
+          message: "Region changed. Please add at least one city to complete setup.",
+          field: "cities",
+        };
       }
-      return "Add at least one city (country and city) in your selected region.";
+      return {
+        message: "Please add at least one city to complete setup.",
+        field: "cities",
+      };
     }
     if (locations.some((l) => !l.city || !l.country)) {
-      return "Each city entry must include a country and city.";
+      return { message: "Each city entry must include a country and city.", field: "cities" };
     }
-    return null;
+    return { message: null, field: null };
   };
 
   const handleUpdateCompany = async () => {
     setSubmitError(null);
-    const validationError = validateFacilitiesForSubmit();
+    const { message: validationError, field: validationField } = validateFacilitiesForSubmit();
     if (validationError) {
       setSubmitError(validationError);
+      setSummaryValidationFocus(validationField);
       return;
     }
+    setSummaryValidationFocus(null);
     setLoadingSubmit(true);
 
     const region = companyData.region;
@@ -347,11 +361,13 @@ export default function CompanyWizard() {
 
   const handleCreateCompany = async () => {
     setSubmitError(null);
-    const validationError = validateFacilitiesForSubmit();
+    const { message: validationError, field: validationField } = validateFacilitiesForSubmit();
     if (validationError) {
       setSubmitError(validationError);
+      setSummaryValidationFocus(validationField);
       return;
     }
+    setSummaryValidationFocus(null);
     setLoadingSubmit(true);
 
     const region = companyData.region;
@@ -513,7 +529,14 @@ export default function CompanyWizard() {
           {saveStatus === "error" && <span className="error">⚠️ Unable to save</span>}
         </div>
         
-        <SetupSummary data={companyData} updateField={updateField} mergeCompanyData={mergeCompanyData} />
+        <SetupSummary
+          data={companyData}
+          updateField={updateField}
+          mergeCompanyData={mergeCompanyData}
+          validationFocus={summaryValidationFocus}
+          validationMessage={summaryValidationFocus === "cities" ? submitError : ""}
+          onClearValidationFeedback={clearSummaryValidationFeedback}
+        />
         <div className="summary-actions">
           {submitError && (
             <div className="error-message">
@@ -628,9 +651,18 @@ export default function CompanyWizard() {
               updateField={updateField}
               mergeCompanyData={mergeCompanyData}
               onRegionResetLocations={() => setRegionChangeNeedsCities(true)}
+              validationFocus={summaryValidationFocus}
+              validationMessage={summaryValidationFocus === "cities" ? submitError : ""}
+              onClearValidationFeedback={clearSummaryValidationFeedback}
             />
           )}
         </div>
+
+        {step === 8 && submitError && (
+          <div className="summary-inline-error">
+            ⚠️ {submitError}
+          </div>
+        )}
 
         <div className="wizard-footer">
           {step > 1 && (
@@ -775,6 +807,17 @@ export default function CompanyWizard() {
           gap: 16px;
           padding-top: 24px;
           border-top: 1px solid #E5E7EB;
+        }
+        .summary-inline-error {
+          margin-top: -8px;
+          margin-bottom: 16px;
+          background: #FEF2F2;
+          border: 1px solid #FECACA;
+          color: #B91C1C;
+          padding: 12px 14px;
+          border-radius: 10px;
+          font-size: 14px;
+          font-weight: 500;
         }
 
         .nav-btn {

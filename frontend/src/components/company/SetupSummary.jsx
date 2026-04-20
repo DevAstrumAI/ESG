@@ -31,7 +31,15 @@ import {
   getValidCountryValuesForRegion,
 } from "../../utils/companyLocations";
 
-export default function SetupSummary({ data, updateField, mergeCompanyData, onRegionResetLocations }) {
+export default function SetupSummary({
+  data,
+  updateField,
+  mergeCompanyData,
+  onRegionResetLocations,
+  validationFocus,
+  validationMessage,
+  onClearValidationFeedback,
+}) {
   const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData] = useState({
     name: data.name,
@@ -82,6 +90,7 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
   };
 
   const handleEdit = (section) => {
+    if (onClearValidationFeedback) onClearValidationFeedback();
     setEditData({
       name: data.name,
       description: data.description,
@@ -491,7 +500,10 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
         </div>
 
         {/* Cities Card */}
-        <div className="summary-card facilities-card" key="facilities-card">
+        <div
+          className={`summary-card facilities-card ${validationFocus === "cities" ? "validation-error" : ""}`}
+          key="facilities-card"
+        >
           <div className="card-header">
             <div className="card-title">
               <BiBuilding className="title-icon" />
@@ -580,6 +592,11 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
             </div>
           ) : (
             <div className="facilities-list">
+              {validationFocus === "cities" && validationMessage && (
+                <div className="validation-note">
+                  ⚠️ {validationMessage}
+                </div>
+              )}
               {!data.locations || data.locations.length === 0 ? (
                 <p className="empty-facilities">No cities added</p>
               ) : (
@@ -669,6 +686,11 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
           transform: translateY(-2px);
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
           border-color: #2E7D64;
+        }
+        .summary-card.validation-error {
+          border-color: #EF4444;
+          background: #FFF7F7;
+          box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
         }
 
         .facilities-card {
@@ -854,6 +876,15 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
         }
 
         .facilities-list { display: flex; flex-direction: column; gap: 12px; }
+        .validation-note {
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 10px 12px;
+          font-size: 13px;
+          font-weight: 500;
+        }
         .facility-item {
           display: flex;
           align-items: center;
