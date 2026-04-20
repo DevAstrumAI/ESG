@@ -44,7 +44,8 @@ export default function FacilityCitySelect({ company, disabled }) {
           display: flex;
           align-items: center;
           gap: 8px;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
+          white-space: nowrap;
         }
         .pin {
           color: #2e7d64;
@@ -56,13 +57,16 @@ export default function FacilityCitySelect({ company, disabled }) {
           color: #374151;
         }
         select {
-          min-width: 200px;
+          min-width: 220px;
+          width: fit-content;
+          max-width: 320px;
           padding: 8px 12px;
           border: 1px solid #e5e7eb;
           border-radius: 8px;
           font-size: 14px;
           background: #fff;
           cursor: pointer;
+          text-align: left;
         }
         select:disabled {
           opacity: 0.6;
