@@ -15,7 +15,6 @@ import {
   FiSun,
   FiBarChart2,
   FiActivity,
-  FiChevronDown,
   FiRefreshCw,
   FiTrendingUp
 } from "react-icons/fi";
@@ -32,6 +31,7 @@ import { useSelectedLocationStore } from "../store/selectedLocationStore";
 import { appendLocationQuery } from "../utils/locationQuery";
 import FacilityCitySelect from "../components/location/FacilityCitySelect";
 import Card from "../components/ui/Card";
+import ThemedSelect from "../components/ui/ThemedSelect";
 import {
   ResponsiveContainer,
   LineChart,
@@ -684,19 +684,16 @@ export default function DashboardPage() {
         </div>
         <div className="header-actions">
           <div className="year-selector">
-            <FiCalendar className="year-icon" />
-            <select 
-              value={selectedYear} 
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className="year-dropdown"
-            >
-              {availableYears.map((year) => (
-                <option key={year} value={year}>
-                  {year}-{year + 1} Overview
-                </option>
-              ))}
-            </select>
-            <FiChevronDown className="dropdown-icon" />
+            <ThemedSelect
+              value={selectedYear}
+              onChange={(value) => setSelectedYear(Number(value))}
+              options={availableYears.map((year) => ({
+                value: year,
+                label: `${year}-${year + 1} Overview`,
+              }))}
+              placeholder="Reporting Year"
+              className="year-themed-select"
+            />
           </div>
           {company?.locations?.length > 0 && (
             <FacilityCitySelect company={company} />
@@ -1390,56 +1387,27 @@ export default function DashboardPage() {
         }
 
         .year-selector {
-          position: relative;
           display: flex;
           align-items: center;
+          min-width: 220px;
         }
 
-        .year-icon {
-          position: absolute;
-          left: 14px;
-          color: #2E7D64;
-          font-size: 16px;
-          pointer-events: none;
-          z-index: 1;
-        }
-
-        .year-dropdown {
-          padding: 10px 32px 10px 40px;
-          border: 1px solid #E5E7EB;
-          border-radius: 30px;
-          background: white;
-          color: #374151;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          appearance: none;
-          transition: all 0.2s ease;
-        }
-
-        .year-dropdown:hover {
-          border-color: #2E7D64;
-          background: #F8FAF8;
-        }
-
-        .dropdown-icon {
-          position: absolute;
-          right: 14px;
-          color: #9CA3AF;
-          font-size: 14px;
-          pointer-events: none;
+        .year-themed-select {
+          width: 100%;
         }
 
         .refresh-btn {
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 10px 20px;
+          min-height: 38px;
+          padding: 9px 14px;
           border: 1px solid #E5E7EB;
-          border-radius: 30px;
+          border-radius: 10px;
           background: white;
           color: #374151;
-          font-size: 14px;
+          font-size: 13px;
+          font-weight: 600;
           cursor: pointer;
           transition: all 0.2s ease;
         }
@@ -1474,8 +1442,8 @@ export default function DashboardPage() {
           border: 1px solid #D1D5DB;
           background: #fff;
           color: #374151;
-          border-radius: 999px;
-          padding: 8px 14px;
+          border-radius: 10px;
+          padding: 8px 13px;
           font-size: 13px;
           font-weight: 600;
           cursor: pointer;
@@ -1507,10 +1475,11 @@ export default function DashboardPage() {
           border: 1px solid #D1D5DB;
           background: #fff;
           color: #374151;
-          border-radius: 7px;
-          font-size: 12px;
+          border-radius: 10px;
+          font-size: 13px;
           font-weight: 600;
-          padding: 6px 10px;
+          min-height: 34px;
+          padding: 7px 12px;
           cursor: pointer;
         }
         .collapse-btn:hover {
@@ -1730,15 +1699,15 @@ export default function DashboardPage() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          min-height: 30px;
-          padding: 6px 12px;
+          min-height: 36px;
+          padding: 8px 14px;
           border: 1px solid #1B4D3E;
-          border-radius: 7px;
+          border-radius: 10px;
           background: #1B4D3E;
           color: #FFFFFF;
           cursor: pointer;
-          font-size: 12px;
-          font-weight: 500;
+          font-size: 13px;
+          font-weight: 600;
           transition: background 0.15s ease, border-color 0.15s ease;
         }
         .set-target-btn:hover {
@@ -1782,9 +1751,11 @@ export default function DashboardPage() {
           border: 1px solid #1B4D3E;
           background: #1B4D3E;
           color: #fff;
-          border-radius: 7px;
-          padding: 6px 12px;
-          font-size: 12px;
+          border-radius: 10px;
+          min-height: 36px;
+          padding: 8px 14px;
+          font-size: 13px;
+          font-weight: 600;
           cursor: pointer;
         }
         .set-target-btn-inline:hover { background: #2E7D64; border-color: #2E7D64; }
