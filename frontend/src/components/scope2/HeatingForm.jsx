@@ -6,6 +6,7 @@ import { FiTrash2, FiThermometer, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useEmissionStore } from "../../store/emissionStore";
 import { emissionsAPI } from "../../services/api";
+import ThemedSelect from "../ui/ThemedSelect";
 
 // Get default heating type based on company country
 const getDefaultHeatingType = (country) => {
@@ -204,11 +205,13 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
               editingId === entry.id ? (
                 <tr key={entry.id}>
                   <td>
-                    <select value={editValues.energyType} onChange={(e) => setEditValues({ ...editValues, energyType: e.target.value })} className="ht-select">
-                      {heatingOptions.map((opt) => (
-                        <option key={opt.key} value={opt.key}>{opt.label}</option>
-                      ))}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.energyType}
+                      onChange={(nextValue) => setEditValues({ ...editValues, energyType: nextValue })}
+                      options={heatingOptions.map((opt) => ({ value: opt.key, label: opt.label }))}
+                      placeholder="Heating Type"
+                      className="ht-select"
+                    />
                   </td>
                   <td>
                     <div className="ht-qty-input">
@@ -217,11 +220,13 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
                     </div>
                   </td>
                   <td>
-                    <select value={editValues.month} onChange={(e) => setEditValues({ ...editValues, month: e.target.value })} className="ht-select">
-                      {MONTHS.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.month}
+                      onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                      options={MONTHS.map((m) => ({ value: m, label: m }))}
+                      placeholder="Month"
+                      className="ht-select"
+                    />
                   </td>
                   <td>
                     <button className="ht-action-btn ht-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
@@ -257,17 +262,13 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
             {/* Add Row */}
             <tr className="ht-add-row">
               <td>
-                <select
+                <ThemedSelect
                   value={energyType}
-                  onChange={(e) => setEnergyType(e.target.value)}
+                  onChange={setEnergyType}
+                  options={heatingOptions.map((opt) => ({ value: opt.key, label: opt.label }))}
+                  placeholder="Heating Type"
                   className="ht-select"
-                >
-                  {heatingOptions.map((opt) => (
-                    <option key={opt.key} value={opt.key}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <div className="ht-qty-input">
@@ -283,15 +284,13 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
                 </div>
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={month}
-                  onChange={(e) => setMonth(e.target.value)}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
                   className="ht-select"
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <button className="ht-add-btn-inline" onClick={handleAddRow}>

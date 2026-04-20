@@ -6,6 +6,7 @@ import { FiTrash2, FiTruck, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
 const DISTANCE_BASED_TYPES = new Set([
   "jet_aircraft_per_km",
@@ -203,16 +204,22 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
                 return (
                   <tr key={v.id}>
                     <td>
-                      <select value={editValues.vehicleType} onChange={(e) => setEditValues({ ...editValues, vehicleType: e.target.value })} className="vt-select">
-                        <option value="">Vehicle Type</option>
-                        {VEHICLE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
+                      <ThemedSelect
+                        value={editValues.vehicleType}
+                        onChange={(nextValue) => setEditValues({ ...editValues, vehicleType: nextValue })}
+                        options={VEHICLE_OPTIONS.map((opt) => ({ value: opt, label: opt }))}
+                        placeholder="Vehicle Type"
+                        className="vt-select"
+                      />
                     </td>
                     <td>
-                      <select value={editValues.fuelType} onChange={(e) => setEditValues({ ...editValues, fuelType: e.target.value })} className="vt-select">
-                        <option value="">Fuel Type</option>
-                        {FUEL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
+                      <ThemedSelect
+                        value={editValues.fuelType}
+                        onChange={(nextValue) => setEditValues({ ...editValues, fuelType: nextValue })}
+                        options={FUEL_OPTIONS.map((opt) => ({ value: opt, label: opt }))}
+                        placeholder="Fuel Type"
+                        className="vt-select"
+                      />
                     </td>
                     <td>
                       <div className="vt-qty-input">
@@ -221,9 +228,13 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
                       </div>
                     </td>
                     <td>
-                      <select value={editValues.month} onChange={(e) => setEditValues({ ...editValues, month: e.target.value })} className="vt-select">
-                        {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                      </select>
+                      <ThemedSelect
+                        value={editValues.month}
+                        onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                        options={MONTHS.map((m) => ({ value: m, label: m }))}
+                        placeholder="Month"
+                        className="vt-select"
+                      />
                     </td>
                     <td>
                       <button className="vt-action-btn vt-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
@@ -265,28 +276,22 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
             {/* ── Inline Add Row ── */}
             <tr className="vt-add-row">
               <td>
-                <select
+                <ThemedSelect
                   value={vehicleType}
-                  onChange={(e) => setVehicleType(e.target.value)}
+                  onChange={setVehicleType}
+                  options={VEHICLE_OPTIONS.map((v) => ({ value: v, label: v }))}
+                  placeholder="Vehicle Type"
                   className="vt-select"
-                >
-                  <option value="">Vehicle Type</option>
-                  {VEHICLE_OPTIONS.map((v) => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={fuelType}
-                  onChange={(e) => setFuelType(e.target.value)}
+                  onChange={setFuelType}
+                  options={FUEL_OPTIONS.map((f) => ({ value: f, label: f }))}
+                  placeholder="Fuel Type"
                   className="vt-select"
-                >
-                  <option value="">Fuel Type</option>
-                  {FUEL_OPTIONS.map((f) => (
-                    <option key={f} value={f}>{f}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <div className="vt-qty-input">
@@ -304,15 +309,13 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
                 </div>
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={month}
-                  onChange={(e) => setMonth(e.target.value)}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
                   className="vt-select"
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
+                />
               </td>
               {/* ── Add button at end of row ── */}
               <td>

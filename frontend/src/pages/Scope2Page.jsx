@@ -13,6 +13,7 @@ import HeatingForm from "../components/scope2/HeatingForm";
 import RenewableForm from "../components/scope2/RenewableForm";
 import Scope2Summary from "../components/scope2/Scope2Summary";
 import Card from "../components/ui/Card";
+import ThemedSelect from "../components/ui/ThemedSelect";
 import { FiZap, FiThermometer, FiSun, FiCalendar, FiArrowLeft, FiAlertCircle } from "react-icons/fi";
 
 export default function Scope2Page() {
@@ -389,11 +390,12 @@ export default function Scope2Page() {
           <div className="month-selector">
             <FiCalendar className="selector-icon" />
             <label>Reporting Period:</label>
-            <select value={selectedMonth} onChange={(e) => handleMonthChange(e.target.value)}>
-              {monthOptions.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
+            <ThemedSelect
+              value={selectedMonth}
+              onChange={handleMonthChange}
+              options={monthOptions}
+              placeholder="Reporting Period"
+            />
           </div>
           <FacilityCitySelect company={company} />
           <div className="month-hint">

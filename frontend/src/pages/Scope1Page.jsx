@@ -14,6 +14,7 @@ import RefrigerantForm from "../components/scope1/RefrigerantForm";
 import FugitiveForm from "../components/scope1/FugitiveForm";
 import Scope1Summary from "../components/scope1/Scope1Summary";
 import Card from "../components/ui/Card";
+import ThemedSelect from "../components/ui/ThemedSelect";
 import { FiTruck, FiBriefcase, FiWind, FiAlertCircle, FiCalendar, FiArrowLeft, FiSave } from "react-icons/fi";
 
 export default function Scope1Page() {
@@ -414,11 +415,12 @@ export default function Scope1Page() {
           <div className="month-selector">
             <FiCalendar className="selector-icon" />
             <label>Reporting Period:</label>
-            <select value={selectedMonth} onChange={(e) => handleMonthChange(e.target.value)}>
-              {monthOptions.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
+            <ThemedSelect
+              value={selectedMonth}
+              onChange={handleMonthChange}
+              options={monthOptions}
+              placeholder="Reporting Period"
+            />
           </div>
           <FacilityCitySelect company={company} />
           <div className="month-hint">

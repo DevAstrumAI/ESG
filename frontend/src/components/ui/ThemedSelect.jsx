@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FiChevronDown } from "react-icons/fi";
+import { createPortal } from "react-dom";
 
 export default function ThemedSelect({
   value,
@@ -11,6 +12,9 @@ export default function ThemedSelect({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+  const [menuStyle, setMenuStyle] = useState({});
 
   const selectedLabel = useMemo(() => {
     const selected = options.find((opt) => opt.value === value);
@@ -19,12 +23,35 @@ export default function ThemedSelect({
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (!rootRef.current) return;
-      if (!rootRef.current.contains(event.target)) setOpen(false);
+      const target = event.target;
+      const clickedInsideRoot = rootRef.current?.contains(target);
+      const clickedInsideMenu = menuRef.current?.contains(target);
+      if (!clickedInsideRoot && !clickedInsideMenu) setOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const updateMenuPosition = () => {
+      const triggerEl = triggerRef.current;
+      if (!triggerEl) return;
+      const rect = triggerEl.getBoundingClientRect();
+      setMenuStyle({
+        bottom: window.innerHeight - rect.top + 6,
+        left: rect.left,
+        width: rect.width,
+      });
+    };
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open]);
 
   const handleSelect = (nextValue) => {
     setOpen(false);
@@ -34,6 +61,7 @@ export default function ThemedSelect({
   return (
     <div ref={rootRef} className={`ts-root ${className}`.trim()}>
       <button
+        ref={triggerRef}
         type="button"
         className={`ts-trigger ${open ? "open" : ""}`}
         disabled={disabled}
@@ -43,32 +71,43 @@ export default function ThemedSelect({
         <FiChevronDown className={`ts-chevron ${open ? "open" : ""}`} />
       </button>
 
-      {open && !disabled && (
-        <div className="ts-menu" role="listbox">
-          <button
-            type="button"
-            className={`ts-option ${value === "" ? "active" : ""}`}
-            onClick={() => handleSelect("")}
-          >
-            {placeholder}
-          </button>
-          {options.map((opt) => (
+      {open &&
+        !disabled &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div ref={menuRef} className="ts-menu" role="listbox" style={menuStyle}>
             <button
-              key={opt.value}
               type="button"
-              className={`ts-option ${value === opt.value ? "active" : ""}`}
-              onClick={() => handleSelect(opt.value)}
+              className={`ts-option ${value === "" ? "active" : ""}`}
+              onClick={() => handleSelect("")}
             >
-              {opt.label}
+              {placeholder}
             </button>
-          ))}
-        </div>
-      )}
+            {options.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`ts-option ${value === opt.value ? "active" : ""}`}
+                onClick={() => handleSelect(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
 
       <style jsx>{`
         .ts-root {
           position: relative;
           width: 100%;
+          /* Prevent legacy select classes from creating double borders/wrappers */
+          border: 0 !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
         }
         .ts-trigger {
           width: 100%;
@@ -116,11 +155,8 @@ export default function ThemedSelect({
           transform: rotate(180deg);
         }
         .ts-menu {
-          position: absolute;
-          z-index: 50;
-          left: 0;
-          right: 0;
-          margin-top: 6px;
+          position: fixed;
+          z-index: 1000;
           max-height: 260px;
           overflow-y: auto;
           background: #FFFFFF;

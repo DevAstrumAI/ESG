@@ -6,6 +6,7 @@ import { FiTrash2, FiWind, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
 const REFRIGERANT_TYPES = [
   { label: "R-134a",  key: "r134a",  gwp: 1300 },
@@ -172,10 +173,16 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
               editingId === r.id ? (
                 <tr key={r.id}>
                   <td>
-                    <select value={editValues.refrigerantKey} onChange={(ev) => setEditValues({ ...editValues, refrigerantKey: ev.target.value })} className="rf-select">
-                      <option value="">Select Refrigerant</option>
-                      {REFRIGERANT_TYPES.map((item) => <option key={item.key} value={item.key}>{item.label} (GWP: {item.gwp})</option>)}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.refrigerantKey}
+                      onChange={(nextValue) => setEditValues({ ...editValues, refrigerantKey: nextValue })}
+                      options={REFRIGERANT_TYPES.map((item) => ({
+                        value: item.key,
+                        label: `${item.label} (GWP: ${item.gwp})`,
+                      }))}
+                      placeholder="Select Refrigerant"
+                      className="rf-select"
+                    />
                   </td>
                   <td>
                     <div className="rf-qty-input">
@@ -192,9 +199,13 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                     </span>
                   </td>
                   <td>
-                    <select value={editValues.month} onChange={(ev) => setEditValues({ ...editValues, month: ev.target.value })} className="rf-select">
-                      {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.month}
+                      onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                      options={MONTHS.map((m) => ({ value: m, label: m }))}
+                      placeholder="Month"
+                      className="rf-select"
+                    />
                   </td>
                   <td>
                     <button className="rf-action-btn rf-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
@@ -228,12 +239,16 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
 
             <tr className="rf-add-row">
               <td>
-                <select value={refrigerantKey} onChange={(e) => setRefrigerantKey(e.target.value)} className="rf-select">
-                  <option value="">Select Refrigerant</option>
-                  {REFRIGERANT_TYPES.map((r) => (
-                    <option key={r.key} value={r.key}>{r.label} (GWP: {r.gwp})</option>
-                  ))}
-                </select>
+                <ThemedSelect
+                  value={refrigerantKey}
+                  onChange={setRefrigerantKey}
+                  options={REFRIGERANT_TYPES.map((r) => ({
+                    value: r.key,
+                    label: `${r.label} (GWP: ${r.gwp})`,
+                  }))}
+                  placeholder="Select Refrigerant"
+                  className="rf-select"
+                />
               </td>
               <td>
                 <div className="rf-qty-input">
@@ -262,9 +277,13 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                 </span>
               </td>
               <td>
-                <select value={month} onChange={(e) => setMonth(e.target.value)} className="rf-select">
-                  {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <ThemedSelect
+                  value={month}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
+                  className="rf-select"
+                />
               </td>
               <td>
                 <button className="rf-add-btn-inline" onClick={handleAddRow}>
