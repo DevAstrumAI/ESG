@@ -256,8 +256,15 @@ def calculate_financial_impact(
             },
         })
 
-    # Sort by annual saving descending (CFO view)
-    enriched.sort(key=lambda r: r["financial"]["annual_saving_usd"], reverse=True)
+    # Card 14: keep recommendation order by emissions impact first.
+    # Financial values are still provided, but sorting is by tCO2e impact.
+    enriched.sort(
+        key=lambda r: (
+            float(r.get("estimated_reduction_tco2e", 0) or 0),
+            r["financial"]["annual_saving_usd"],
+        ),
+        reverse=True,
+    )
 
     return {
         "carbon_cost_exposure": {
@@ -426,6 +433,85 @@ def calculate_carbon_score(
             {"label": "Climate Leader",  "min": 80, "max": 100, "color": "#22c55e"},
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Deterministic Category-Level Recommendations (Card 14)
+# ---------------------------------------------------------------------------
+
+def build_category_level_recommendations(s1: dict, s2: dict) -> list[dict]:
+    """
+    Build recommendations from fixed trigger rules:
+      1) Mobile >30% of total            -> fleet electrification
+      2) Electricity location > market   -> REC/PPA procurement
+      3) Refrigerant leakage >10% total  -> low-GWP refrigerant switch
+    Sorted by estimated_reduction_tco2e DESC.
+    """
+    total_kg = (s1.get("total") or 0.0) + (s2.get("total_location") or 0.0)
+    if total_kg <= 0:
+        return []
+
+    mobile_kg = float(s1.get("mobile") or 0.0)
+    refrigerants_kg = float(s1.get("refrigerants") or 0.0)
+    electricity_location_kg = float(s2.get("electricity_location") or 0.0)
+    electricity_market_kg = float(s2.get("electricity_market") or 0.0)
+
+    mobile_share = mobile_kg / total_kg
+    refrigerant_share = refrigerants_kg / total_kg
+    elec_gap_kg = max(electricity_location_kg - electricity_market_kg, 0.0)
+
+    recs: list[dict] = []
+
+    # Trigger 1: Mobile >30% -> fleet electrification
+    if mobile_share > 0.30:
+        estimated_reduction_t = round((mobile_kg * 0.50) / 1000, 3)  # assume 50% cut
+        recs.append({
+            "title": "Electrify Priority Fleet",
+            "category": "Fleet & Transport",
+            "description": "Mobile emissions exceed 30% of total. Prioritize EV transition for high-mileage vehicles and phase combustion vehicles with charging and route planning support.",
+            "estimated_reduction_tco2e": estimated_reduction_t,
+            "reduction_percentage_of_category": 50.0,
+            "effort": "High",
+            "implementation_timeline": "1-2 years",
+            "why_this_company": f"Mobile combustion is {mobile_share * 100:.1f}% of total emissions.",
+            "trigger": "mobile_share_gt_30pct",
+        })
+
+    # Trigger 2: Electricity location > market -> REC/PPA
+    if electricity_location_kg > electricity_market_kg:
+        location_t = electricity_location_kg / 1000
+        market_t = electricity_market_kg / 1000
+        estimated_reduction_t = round(elec_gap_kg / 1000, 3)
+        recs.append({
+            "title": "Scale REC/PPA Procurement",
+            "category": "Renewable Energy",
+            "description": "Location-based electricity emissions are higher than market-based results. Expand REC/PPA coverage for grid consumption to close the residual emissions gap.",
+            "estimated_reduction_tco2e": estimated_reduction_t,
+            "reduction_percentage_of_category": round((elec_gap_kg / electricity_location_kg) * 100, 1) if electricity_location_kg > 0 else 0.0,
+            "effort": "Medium",
+            "implementation_timeline": "6-12 months",
+            "why_this_company": f"Electricity location-based is {location_t:.2f} tCO2e vs market-based {market_t:.2f} tCO2e.",
+            "trigger": "electricity_location_gt_market",
+        })
+
+    # Trigger 3: Refrigerants >10% -> low-GWP switch
+    if refrigerant_share > 0.10:
+        estimated_reduction_t = round((refrigerants_kg * 0.60) / 1000, 3)  # assume 60% cut
+        recs.append({
+            "title": "Switch to Low-GWP Refrigerants",
+            "category": "Refrigerant Management",
+            "description": "Refrigerant leakage is a material share of emissions. Adopt low-GWP refrigerants with enhanced leak detection and preventive maintenance protocols.",
+            "estimated_reduction_tco2e": estimated_reduction_t,
+            "reduction_percentage_of_category": 60.0,
+            "effort": "Medium",
+            "implementation_timeline": "6-12 months",
+            "why_this_company": f"Refrigerant leakage contributes {refrigerant_share * 100:.1f}% of total emissions.",
+            "trigger": "refrigerant_share_gt_10pct",
+        })
+
+    # Card 14 requirement: sort by estimated impact descending.
+    recs.sort(key=lambda r: float(r.get("estimated_reduction_tco2e", 0) or 0), reverse=True)
+    return recs
 
 
 # ---------------------------------------------------------------------------
@@ -678,7 +764,8 @@ async def generate_report(
         )
 
         # ── Financial impact (enriches AI recommendations) ────────────────
-        raw_recs      = ai.get("recommendations", [])
+        card14_recs   = build_category_level_recommendations(s1, s2)
+        raw_recs      = card14_recs if card14_recs else ai.get("recommendations", [])
         financial     = calculate_financial_impact(s1, s2, city, raw_recs)
         enriched_recs = financial.pop("recommendations_with_financials", raw_recs)
 
