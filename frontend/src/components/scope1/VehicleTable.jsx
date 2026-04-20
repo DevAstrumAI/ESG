@@ -12,7 +12,6 @@ const DISTANCE_BASED_TYPES = new Set([
   "cargo_ship_hfo",
   "marine_hfo",
   "diesel_train",
-  "diesel_bus",
 ]);
 
 function mapVehicleFuelType(vehicleType, fuelTypeUI) {
