@@ -110,7 +110,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
 
   const saveEdit = async () => {
     if (!editValues.consumption || editValues.consumption <= 0) {
-      alert("Please fill all fields");
+      setAddRowError("Please enter a valid electricity consumption.");
       return;
     }
 
@@ -200,6 +200,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
   const [consumption, setConsumption] = useState("");
   const [certificateKey, setCertificateKey] = useState("grid_average");
   const [month, setMonth] = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
 
   useEffect(() => {
     if (reportingMonth) {
@@ -211,7 +212,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
 
   const handleAddRow = () => {
     if (!consumption || Number(consumption) <= 0) {
-      alert("Please fill all fields");
+      setAddRowError("Please enter a valid electricity consumption.");
       return;
     }
     
@@ -223,7 +224,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
     );
     
     if (isDuplicate) {
-      alert("This entry already exists for this month");
+      setAddRowError("This entry already exists for the selected month.");
       return;
     }
     
@@ -240,6 +241,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
     
     setConsumption("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
 
   return (
@@ -401,6 +403,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
           </tbody>
         </table>
       </div>
+      {addRowError && <div className="el-inline-error">⚠️ {addRowError}</div>}
 
       <style jsx>{`
         .el-wrap { width: 100%; }
@@ -567,6 +570,16 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
           transition: background 0.15s;
         }
         .el-add-btn-inline:hover { background: #2E7D64; }
+        .el-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
 
         @media (max-width: 640px) {
           .el-table th:nth-child(2),

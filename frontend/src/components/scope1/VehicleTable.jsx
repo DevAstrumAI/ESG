@@ -107,6 +107,7 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
   const [fuelType, setFuelType]       = useState("");
   const [quantity, setQuantity]       = useState("");
   const [month, setMonth]             = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
 
   useEffect(() => {
     if (reportingMonth) {
@@ -153,7 +154,18 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
   };
 
   const handleAddRow = () => {
-    if (!vehicleType || !fuelType || quantity === "") return;
+    if (!vehicleType) {
+      setAddRowError("Please select a vehicle type.");
+      return;
+    }
+    if (!fuelType) {
+      setAddRowError("Please select a fuel type.");
+      return;
+    }
+    if (quantity === "" || Number(quantity) <= 0) {
+      setAddRowError("Please enter a valid quantity.");
+      return;
+    }
     addVehicle({
       id: Date.now(),
       vehicleType,
@@ -166,6 +178,7 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
     setFuelType("");
     setQuantity("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
 
   return (
@@ -176,6 +189,7 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
           Road vehicles use <strong>litres consumed</strong>. Aviation, marine, and rail use <strong>distance (km)</strong>.
         </p>
       </div>
+      {addRowError && <div className="vt-inline-error">⚠️ {addRowError}</div>}
 
       <div className="vt-table-wrap">
         <table className="vt-table">
@@ -483,6 +497,16 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
           transition: background 0.15s;
         }
         .vt-add-btn-inline:hover { background: #2E7D64; }
+        .vt-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
 
         .vt-footer {
           display: flex;

@@ -74,6 +74,7 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
   const [energyType, setEnergyType] = useState(defaultType);
   const [consumption, setConsumption] = useState("");
   const [month, setMonth] = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const updateHeating = useEmissionStore((s) => s.updateScope2Heating);
   const [editingId, setEditingId] = useState(null);
@@ -94,7 +95,8 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
   }, [reportingMonth]);
   const handleAddRow = async () => {
     if (!energyType || !consumption || Number(consumption) <= 0) {
-      alert("Please fill in all fields");
+      if (!energyType) setAddRowError("Please select an energy type.");
+      else setAddRowError("Please enter a valid consumption value.");
       return;
     }
     
@@ -111,6 +113,7 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
     // Reset form
     setConsumption("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
     // Keep the same energy type (don't reset)
   };
 
@@ -301,6 +304,7 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
           </tbody>
         </table>
       </div>
+      {addRowError && <div className="ht-inline-error">⚠️ {addRowError}</div>}
 
       <style jsx>{`
         .ht-wrap { width: 100%; }
@@ -456,6 +460,16 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
           font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
         .ht-add-btn-inline:hover { background: #2E7D64; }
+        .ht-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
         .ht-error { font-size: 13px; color: #DC2626; }
 
         .ht-submit-btn {

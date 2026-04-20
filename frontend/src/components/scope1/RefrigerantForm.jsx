@@ -88,6 +88,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const [refrigerantKey, setRefrigerantKey] = useState("");
   const [quantity, setQuantity]             = useState("");
   const [month, setMonth]                   = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
 
   useEffect(() => {
     if (reportingMonth) {
@@ -98,7 +99,14 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const selectedRefrigerant = REFRIGERANT_TYPES.find((r) => r.key === refrigerantKey);
 
   const handleAddRow = () => {
-    if (!refrigerantKey || quantity === "") return;
+    if (!refrigerantKey) {
+      setAddRowError("Please select a refrigerant type.");
+      return;
+    }
+    if (quantity === "" || Number(quantity) <= 0) {
+      setAddRowError("Please enter a valid leakage quantity.");
+      return;
+    }
     addRefrigerant({
       id: Date.now(),
       refrigerantType: selectedRefrigerant.label,
@@ -110,6 +118,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
     setRefrigerantKey("");
     setQuantity("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
   const startEdit = (entry) => {
     setEditingId(entry.id);
@@ -148,6 +157,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           Enter <strong>refrigerant leakage</strong> from cooling equipment. Each refrigerant has a specific Global Warming Potential (GWP).
         </p>
       </div>
+      {addRowError && <div className="rf-inline-error">⚠️ {addRowError}</div>}
 
       <div className="rf-table-wrap">
         <table className="rf-table">
@@ -407,6 +417,16 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
         .rf-add-btn-inline:hover { background: #2E7D64; }
+        .rf-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
                 .rf-error { font-size: 13px; color: #DC2626; }
 
         .rf-submit-btn {

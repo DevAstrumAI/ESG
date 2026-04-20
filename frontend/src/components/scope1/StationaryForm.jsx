@@ -97,6 +97,7 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
   const [fuelKey, setFuelKey]     = useState("");
   const [quantity, setQuantity]   = useState("");
   const [month, setMonth]         = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
 
   useEffect(() => {
     if (reportingMonth) {
@@ -107,7 +108,18 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
   const selectedFuel = FUEL_TYPES.find((f) => f.key === fuelKey);
 
   const handleAddRow = () => {
-    if (!equipment || !fuelKey || quantity === "") return;
+    if (!equipment) {
+      setAddRowError("Please select an equipment type.");
+      return;
+    }
+    if (!fuelKey) {
+      setAddRowError("Please select a fuel type.");
+      return;
+    }
+    if (quantity === "" || Number(quantity) <= 0) {
+      setAddRowError("Please enter a valid quantity.");
+      return;
+    }
     addStationary({
       id: Date.now(),
       equipment,
@@ -121,6 +133,7 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
     setFuelKey("");
     setQuantity("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
   const startEdit = (entry) => {
     setEditingId(entry.id);
@@ -158,6 +171,7 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
           Enter fuel consumption for <strong>fixed equipment</strong> across your city operations — generators, boilers, heaters, and other stationary sources.
         </p>
       </div>
+      {addRowError && <div className="sf-inline-error">⚠️ {addRowError}</div>}
 
       <div className="sf-table-wrap">
         <table className="sf-table">
@@ -458,6 +472,16 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
           font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
         .sf-add-btn-inline:hover { background: #2E7D64; }
+        .sf-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
 
         .sf-error { font-size: 13px; color: #DC2626; }
 

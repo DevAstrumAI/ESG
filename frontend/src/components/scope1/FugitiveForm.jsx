@@ -91,6 +91,7 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
   const [source, setSource]           = useState("");
   const [quantity, setQuantity]       = useState("");
   const [month, setMonth]             = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
 
   useEffect(() => {
     if (reportingMonth) {
@@ -101,7 +102,14 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
   const selectedSource = SOURCE_TYPES.find((s) => s.label === source);
 
   const handleAddRow = () => {
-    if (!source || quantity === "") return;
+    if (!source) {
+      setAddRowError("Please select an emission source.");
+      return;
+    }
+    if (quantity === "" || Number(quantity) <= 0) {
+      setAddRowError("Please enter a valid quantity.");
+      return;
+    }
     addFugitive({
       id: Date.now(),
       source,
@@ -113,6 +121,7 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
     setSource("");
     setQuantity("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
   const startEdit = (entry) => {
     setEditingId(entry.id);
@@ -148,6 +157,7 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
           Track <strong>fugitive emissions</strong> — unintentional leaks from equipment, pipelines, valves, and other industrial sources.
         </p>
       </div>
+      {addRowError && <div className="fg-inline-error">⚠️ {addRowError}</div>}
 
       <div className="fg-table-wrap">
         <table className="fg-table">
@@ -385,6 +395,16 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
           font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
         .fg-add-btn-inline:hover { background: #2E7D64; }
+        .fg-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
                 .fg-error { font-size: 13px; color: #DC2626; }
 
         .fg-submit-btn {
