@@ -300,9 +300,14 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
         }
         .rf-desc strong { color: #1B4D3E; }
 
-        .rf-table-wrap { border: 1px solid #E5E7EB; border-radius: 10px; overflow: hidden; }
+        .rf-table-wrap {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          overflow-x: auto;
+          overflow-y: hidden;
+        }
 
-        .rf-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .rf-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 14px; }
         .rf-table thead tr { background: #F9FAFB; }
         .rf-table th {
           text-align: left; padding: 11px 14px; font-size: 12px;

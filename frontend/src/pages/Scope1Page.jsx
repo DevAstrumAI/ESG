@@ -18,7 +18,7 @@ import { FiTruck, FiBriefcase, FiWind, FiAlertCircle, FiCalendar, FiArrowLeft, F
 
 export default function Scope1Page() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const token = useAuthStore((s) => s.token);
   const { company, fetchCompany, loading: companyLoading, isInitialized: companyInitialized } = useCompanyStore();
   const locationKey = useSelectedLocationStore((s) => s.locationKey);
@@ -85,7 +85,7 @@ export default function Scope1Page() {
       setSelectedMonth(resolvedMonth);
       dataLoadedForMonth.current = null;
     }
-  }, [urlMonth, defaultMonth, selectedMonth]);
+  }, [urlMonth, defaultMonth]);
   
   // Load Scope 1 data when month changes
   useEffect(() => {
@@ -197,9 +197,9 @@ export default function Scope1Page() {
     setSelectedMonth(newMonth);
     // ✅ Reset loaded flag when month changes
     dataLoadedForMonth.current = null;
-    const url = new URL(window.location);
-    url.searchParams.set('month', newMonth);
-    window.history.replaceState({}, '', url);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("month", newMonth);
+    setSearchParams(nextParams, { replace: true });
   };
   
   const handleNext = () => {

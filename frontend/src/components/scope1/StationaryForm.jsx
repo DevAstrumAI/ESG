@@ -321,11 +321,13 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
         .sf-table-wrap {
           border: 1px solid #E5E7EB;
           border-radius: 10px;
-          overflow: hidden;
+          overflow-x: auto;
+          overflow-y: hidden;
         }
 
         .sf-table {
           width: 100%;
+          min-width: 820px;
           border-collapse: collapse;
           font-size: 14px;
         }

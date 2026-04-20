@@ -286,9 +286,14 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
         }
         .fg-desc strong { color: #1B4D3E; }
 
-        .fg-table-wrap { border: 1px solid #E5E7EB; border-radius: 10px; overflow: hidden; }
+        .fg-table-wrap {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          overflow-x: auto;
+          overflow-y: hidden;
+        }
 
-        .fg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .fg-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 14px; }
         .fg-table thead tr { background: #F9FAFB; }
         .fg-table th {
           text-align: left; padding: 11px 14px; font-size: 12px;
