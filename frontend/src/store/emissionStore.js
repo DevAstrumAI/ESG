@@ -20,7 +20,6 @@ const DISTANCE_BASED_TYPES = new Set([
   "cargo_ship_hfo",
   "marine_hfo",
   "diesel_train",
-  "diesel_bus",
 ]);
 const FISCAL_YEAR_START_MONTH = 6;
 

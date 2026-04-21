@@ -1,5 +1,5 @@
-import { FiMapPin } from "react-icons/fi";
 import { useSelectedLocationStore, locationKey } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
 const COUNTRY_LABEL = {
   uae: "UAE",
@@ -13,60 +13,146 @@ function labelForLocation(loc) {
   return `${loc.city}, ${c}`;
 }
 
-export default function FacilityCitySelect({ company, disabled }) {
+export default function FacilityCitySelect({ company, disabled, menuDirection = "up" }) {
   const locationKeyVal = useSelectedLocationStore((s) => s.locationKey);
   const setLocationKey = useSelectedLocationStore((s) => s.setLocationKey);
   const locs = company?.locations || [];
 
+  const selectedLocation = (() => {
+    const found = locs.find((l) => locationKey(l.country, l.city) === locationKeyVal);
+    return found || locs[0];
+  })();
+
+  const countryOptions = (() => {
+    const seen = new Set();
+    return locs
+      .filter((loc) => {
+        const key = (loc.country || "").toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((loc) => ({
+        value: loc.country,
+        label: COUNTRY_LABEL[loc.country] || loc.country,
+      }));
+  })();
+
+  const cityOptions = (() => {
+    const country = selectedLocation?.country || countryOptions[0]?.value;
+    return locs
+      .filter((loc) => loc.country === country)
+      .map((loc) => ({
+        value: loc.city,
+        label: loc.city,
+      }));
+  })();
+
   if (!locs.length) return null;
+
+  const handleCountryChange = (country) => {
+    if (!country) return;
+    const firstCityForCountry = locs.find((loc) => loc.country === country)?.city;
+    if (!firstCityForCountry) return;
+    setLocationKey(locationKey(country, firstCityForCountry));
+  };
+
+  const handleCityChange = (city) => {
+    if (!city) return;
+    const country = selectedLocation?.country || countryOptions[0]?.value;
+    if (!country) return;
+    setLocationKey(locationKey(country, city));
+  };
 
   return (
     <div className="facility-city-select">
-      <FiMapPin className="pin" aria-hidden />
-      <label htmlFor="facility-city-select">City</label>
-      <select
-        id="facility-city-select"
+      <div className="selector-block">
+        <label>Country</label>
+        <ThemedSelect
+          value={selectedLocation?.country || ""}
+          onChange={handleCountryChange}
+          options={countryOptions}
+          placeholder="Select Country"
+          disabled={disabled}
+          className="location-select"
+          menuDirection={menuDirection}
+        />
+      </div>
+      <div className="selector-block">
+        <label>City</label>
+        <ThemedSelect
+          value={selectedLocation?.city || ""}
+          onChange={handleCityChange}
+          options={cityOptions}
+          placeholder="Select City"
+          disabled={disabled}
+          className="location-select"
+          menuDirection={menuDirection}
+        />
+      </div>
+      <div className="selected-text" title={labelForLocation(selectedLocation || locs[0])}>
+        {labelForLocation(selectedLocation || locs[0])}
+      </div>
+      <input
+        type="hidden"
         value={locationKeyVal || locationKey(locs[0].country, locs[0].city)}
-        onChange={(e) => setLocationKey(e.target.value)}
         disabled={disabled}
-      >
-        {locs.map((loc) => {
-          const v = locationKey(loc.country, loc.city);
-          return (
-            <option key={v} value={v}>
-              {labelForLocation(loc)}
-            </option>
-          );
-        })}
-      </select>
+        readOnly
+      />
       <style jsx>{`
         .facility-city-select {
           display: flex;
           align-items: center;
-          gap: 8px;
-          flex-wrap: wrap;
+          gap: 12px;
+          flex-wrap: nowrap;
+          min-width: 0;
         }
-        .pin {
-          color: #2e7d64;
-          flex-shrink: 0;
+        .selector-block {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex: 0 0 auto;
+          min-width: 0;
         }
         label {
           font-size: 13px;
           font-weight: 600;
           color: #374151;
+          white-space: nowrap;
         }
-        select {
-          min-width: 200px;
-          padding: 8px 12px;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          font-size: 14px;
-          background: #fff;
-          cursor: pointer;
+        .location-select {
+          width: 200px;
+          min-width: 180px;
+          max-width: 240px;
         }
-        select:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
+        .selected-text {
+          flex: 0 1 auto;
+          min-width: 0;
+          font-size: 12px;
+          color: #6b7280;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          text-align: left;
+        }
+        @media (max-width: 960px) {
+          .facility-city-select {
+            overflow-x: auto;
+            padding-bottom: 2px;
+          }
+          .selected-text {
+            display: none;
+          }
+          .location-select {
+            width: 180px;
+            min-width: 170px;
+          }
+        }
+        @media (max-width: 640px) {
+          .location-select {
+            width: 170px;
+            min-width: 160px;
+          }
         }
       `}</style>
     </div>

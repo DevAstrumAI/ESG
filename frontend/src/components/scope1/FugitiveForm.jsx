@@ -6,6 +6,7 @@ import { FiTrash2, FiAlertCircle, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
 const SOURCE_TYPES = [
   { label: "Pipeline Leaks",          key: "methane" },
@@ -90,6 +91,7 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
   const [source, setSource]           = useState("");
   const [quantity, setQuantity]       = useState("");
   const [month, setMonth]             = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
 
   useEffect(() => {
     if (reportingMonth) {
@@ -100,7 +102,14 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
   const selectedSource = SOURCE_TYPES.find((s) => s.label === source);
 
   const handleAddRow = () => {
-    if (!source || quantity === "") return;
+    if (!source) {
+      setAddRowError("Please select an emission source.");
+      return;
+    }
+    if (quantity === "" || Number(quantity) <= 0) {
+      setAddRowError("Please enter a valid quantity.");
+      return;
+    }
     addFugitive({
       id: Date.now(),
       source,
@@ -112,6 +121,7 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
     setSource("");
     setQuantity("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
   const startEdit = (entry) => {
     setEditingId(entry.id);
@@ -147,6 +157,7 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
           Track <strong>fugitive emissions</strong> — unintentional leaks from equipment, pipelines, valves, and other industrial sources.
         </p>
       </div>
+      {addRowError && <div className="fg-inline-error">⚠️ {addRowError}</div>}
 
       <div className="fg-table-wrap">
         <table className="fg-table">
@@ -171,10 +182,13 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
               editingId === f.id ? (
                 <tr key={f.id}>
                   <td>
-                    <select value={editValues.source} onChange={(ev) => setEditValues({ ...editValues, source: ev.target.value })} className="fg-select">
-                      <option value="">Select Source</option>
-                      {SOURCE_TYPES.map((s) => <option key={s.label} value={s.label}>{s.label}</option>)}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.source}
+                      onChange={(nextValue) => setEditValues({ ...editValues, source: nextValue })}
+                      options={SOURCE_TYPES.map((s) => ({ value: s.label, label: s.label }))}
+                      placeholder="Select Source"
+                      className="fg-select"
+                    />
                   </td>
                   <td>
                     <span className="fg-preview">
@@ -188,9 +202,13 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
                     </div>
                   </td>
                   <td>
-                    <select value={editValues.month} onChange={(ev) => setEditValues({ ...editValues, month: ev.target.value })} className="fg-select">
-                      {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.month}
+                      onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                      options={MONTHS.map((m) => ({ value: m, label: m }))}
+                      placeholder="Month"
+                      className="fg-select"
+                    />
                   </td>
                   <td>
                     <button className="fg-action-btn fg-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
@@ -221,12 +239,13 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
 
             <tr className="fg-add-row">
               <td>
-                <select value={source} onChange={(e) => setSource(e.target.value)} className="fg-select">
-                  <option value="">Select Source</option>
-                  {SOURCE_TYPES.map((s) => (
-                    <option key={s.label} value={s.label}>{s.label}</option>
-                  ))}
-                </select>
+                <ThemedSelect
+                  value={source}
+                  onChange={setSource}
+                  options={SOURCE_TYPES.map((s) => ({ value: s.label, label: s.label }))}
+                  placeholder="Select Source"
+                  className="fg-select"
+                />
               </td>
               <td>
                 <span className="fg-preview">
@@ -248,9 +267,13 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
                 </div>
               </td>
               <td>
-                <select value={month} onChange={(e) => setMonth(e.target.value)} className="fg-select">
-                  {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <ThemedSelect
+                  value={month}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
+                  className="fg-select"
+                />
               </td>
               <td>
                 <button className="fg-add-btn-inline" onClick={handleAddRow}>
@@ -286,9 +309,14 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
         }
         .fg-desc strong { color: #1B4D3E; }
 
-        .fg-table-wrap { border: 1px solid #E5E7EB; border-radius: 10px; overflow: hidden; }
+        .fg-table-wrap {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          overflow-x: auto;
+          overflow-y: hidden;
+        }
 
-        .fg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .fg-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 14px; }
         .fg-table thead tr { background: #F9FAFB; }
         .fg-table th {
           text-align: left; padding: 11px 14px; font-size: 12px;
@@ -367,6 +395,16 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
           font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
         .fg-add-btn-inline:hover { background: #2E7D64; }
+        .fg-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
                 .fg-error { font-size: 13px; color: #DC2626; }
 
         .fg-submit-btn {

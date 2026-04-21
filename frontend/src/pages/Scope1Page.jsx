@@ -14,11 +14,12 @@ import RefrigerantForm from "../components/scope1/RefrigerantForm";
 import FugitiveForm from "../components/scope1/FugitiveForm";
 import Scope1Summary from "../components/scope1/Scope1Summary";
 import Card from "../components/ui/Card";
+import ThemedSelect from "../components/ui/ThemedSelect";
 import { FiTruck, FiBriefcase, FiWind, FiAlertCircle, FiCalendar, FiArrowLeft, FiSave } from "react-icons/fi";
 
 export default function Scope1Page() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const token = useAuthStore((s) => s.token);
   const { company, fetchCompany, loading: companyLoading, isInitialized: companyInitialized } = useCompanyStore();
   const locationKey = useSelectedLocationStore((s) => s.locationKey);
@@ -85,7 +86,7 @@ export default function Scope1Page() {
       setSelectedMonth(resolvedMonth);
       dataLoadedForMonth.current = null;
     }
-  }, [urlMonth, defaultMonth, selectedMonth]);
+  }, [urlMonth, defaultMonth]);
   
   // Load Scope 1 data when month changes
   useEffect(() => {
@@ -126,6 +127,7 @@ export default function Scope1Page() {
           url = appendLocationQuery(url, loc.country, loc.city);
         }
         const response = await fetch(url, {
+          cache: "no-store",
           headers: { Authorization: `Bearer ${token}` },
         });
         
@@ -194,12 +196,21 @@ export default function Scope1Page() {
   
   const handleMonthChange = (newMonth) => {
     if (newMonth === selectedMonth) return;
+    // Clear previous month rows immediately to avoid stale UI.
+    setScope1Vehicles([]);
+    setScope1Stationary([]);
+    setScope1Refrigerants([]);
+    setScope1Fugitive([]);
+    setShowSummary(false);
+    setSubmitSuccess(false);
+    setSubmitError(null);
+    setLoadingData(true);
     setSelectedMonth(newMonth);
     // ✅ Reset loaded flag when month changes
     dataLoadedForMonth.current = null;
-    const url = new URL(window.location);
-    url.searchParams.set('month', newMonth);
-    window.history.replaceState({}, '', url);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("month", newMonth);
+    setSearchParams(nextParams, { replace: true });
   };
   
   const handleNext = () => {
@@ -411,16 +422,24 @@ export default function Scope1Page() {
       
       <Card className="scope1-card">
         <div className="month-selector-section">
-          <div className="month-selector">
-            <FiCalendar className="selector-icon" />
-            <label>Reporting Period:</label>
-            <select value={selectedMonth} onChange={(e) => handleMonthChange(e.target.value)}>
-              {monthOptions.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
+          <div className="selector-row">
+            <div className="month-selector">
+              <FiCalendar className="selector-icon" />
+              <label>Reporting Period:</label>
+              <div className="month-dropdown-wrap">
+                <ThemedSelect
+                  value={selectedMonth}
+                  onChange={handleMonthChange}
+                  options={monthOptions}
+                  placeholder="Reporting Period"
+                  menuDirection="down"
+                />
+              </div>
+            </div>
+            <div className="location-selector-wrap">
+              <FacilityCitySelect company={company} menuDirection="down" />
+            </div>
           </div>
-          <FacilityCitySelect company={company} />
           <div className="month-hint">
             Data will be saved for {new Date(selectedMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}
           </div>
@@ -455,7 +474,7 @@ export default function Scope1Page() {
           )}
         </div>
         
-        <div className="step-content">
+        <div className="step-content" key={selectedMonth}>
           {steps[currentStep].component}
         </div>
         
@@ -475,9 +494,18 @@ export default function Scope1Page() {
         .page-header p { color: #6B7280; margin: 0; }
         .scope1-card { background: white; border-radius: 12px; border: 1px solid #E5E7EB; overflow: hidden; }
         .month-selector-section { padding: 24px 24px 0 24px; border-bottom: 1px solid #F3F4F6; }
-        .month-selector { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .selector-row {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          margin-bottom: 12px;
+        }
+        .month-selector { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
         .month-selector label { font-weight: 500; color: #374151; }
-        .month-selector select { padding: 8px 12px; border: 1px solid #D1D5DB; border-radius: 6px; background: white; font-size: 14px; }
+        .month-dropdown-wrap { width: 260px; max-width: 260px; flex: 0 0 auto; }
+        .location-selector-wrap { flex: 0 0 auto; }
         .month-hint { color: #6B7280; font-size: 14px; margin-bottom: 24px; }
         .step-navigation { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; background: linear-gradient(180deg, #FBFCFD 0%, #F8FAFB 100%); border-bottom: 1px solid #E5E7EB; }
         .nav-btn {

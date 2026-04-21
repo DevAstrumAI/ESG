@@ -3,7 +3,9 @@ import AppRoutes from "./app/routes";
 import { useAuthStore } from "./store/authStore";
 const API = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
-const REFRESH_THRESHOLD_MS = 5 * 60 * 1000;
+// Refresh around the 59-minute mark so 1-hour Firebase tokens stay alive
+// until user-initiated logout.
+const REFRESH_THRESHOLD_MS = 60 * 1000;
 
 function decodeJwtExpMs(token) {
   if (!token) return null;

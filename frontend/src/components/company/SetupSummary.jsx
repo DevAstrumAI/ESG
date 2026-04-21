@@ -31,7 +31,15 @@ import {
   getValidCountryValuesForRegion,
 } from "../../utils/companyLocations";
 
-export default function SetupSummary({ data, updateField, mergeCompanyData, onRegionResetLocations }) {
+export default function SetupSummary({
+  data,
+  updateField,
+  mergeCompanyData,
+  onRegionResetLocations,
+  validationFocus,
+  validationMessage,
+  onClearValidationFeedback,
+}) {
   const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData] = useState({
     name: data.name,
@@ -44,9 +52,9 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
   
   // Facilities editing state
   const [facilitiesEditData, setFacilitiesEditData] = useState({
-    country: data.country || "",
     locations: [...(data.locations || [])]
   });
+  const [selectedCountry, setSelectedCountry] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
   const [cities, setCities] = useState([]);
   const [showRegionChangeConfirm, setShowRegionChangeConfirm] = useState(false);
@@ -82,6 +90,7 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
   };
 
   const handleEdit = (section) => {
+    if (onClearValidationFeedback) onClearValidationFeedback();
     setEditData({
       name: data.name,
       description: data.description,
@@ -93,18 +102,12 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
     
     if (section === 'facilities') {
       const locs = filterLocationsForRegion(data.region, data.locations || []);
-      const validCountries = new Set(getValidCountryValuesForRegion(data.region));
-      const country =
-        data.country && validCountries.has(data.country)
-          ? data.country
-          : locs.length
-            ? locs[0].country
-            : "";
       setFacilitiesEditData({
-        country,
         locations: [...locs],
       });
-      setCities(country ? citiesByCountry[country] || [] : []);
+      setSelectedCountry("");
+      setSelectedCity("");
+      setCities([]);
     }
     
     setEditingSection(section);
@@ -134,7 +137,8 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
       country: nextCountry,
     });
     if (regionChanged) {
-      setFacilitiesEditData({ country: "", locations: [] });
+      setFacilitiesEditData({ locations: [] });
+      setSelectedCountry("");
       setSelectedCity("");
       setCities([]);
       if (onRegionResetLocations) onRegionResetLocations();
@@ -162,26 +166,15 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
       return;
     }
     const validCountries = new Set(getValidCountryValuesForRegion(data.region));
-    if (!facilitiesEditData.country || !validCountries.has(facilitiesEditData.country)) {
-      window.alert("Please select a country that belongs to your region.");
-      return;
-    }
     const cleaned = facilitiesEditData.locations.filter(
       (loc) => loc?.country && validCountries.has(loc.country) && (loc?.city || loc?.name)
     );
     if (cleaned.length === 0) {
-      window.alert("Add at least one city in your region.");
-      return;
-    }
-    const countriesInLocations = new Set(cleaned.map((l) => l.country));
-    if (!countriesInLocations.has(facilitiesEditData.country)) {
-      window.alert(
-        "Added cities must match the selected country, or change the country to match your locations."
-      );
+      window.alert("Add at least one country-city entry in your region.");
       return;
     }
     applyCompanyPatch({
-      country: facilitiesEditData.country,
+      country: cleaned[0].country,
       locations: cleaned,
     });
     setEditingSection(null);
@@ -190,23 +183,21 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
   const handleCancel = () => setEditingSection(null);
 
   const handleCountryChange = (country) => {
-    setFacilitiesEditData((prev) => ({
-      ...prev,
-      country,
-      locations: prev.locations.filter((loc) => loc.country === country),
-    }));
+    setSelectedCountry(country);
     setCities(citiesByCountry[country] || []);
     setSelectedCity("");
   };
 
-  const handleAddCity = () => {
-    if (!selectedCity) return;
-    const cityExists = facilitiesEditData.locations.some(loc => loc.city === selectedCity);
+  const handleAddLocationPair = () => {
+    if (!selectedCountry || !selectedCity) return;
+    const cityExists = facilitiesEditData.locations.some(
+      (loc) => loc.country === selectedCountry && loc.city === selectedCity
+    );
     if (cityExists) return;
     
     const newLocation = {
       id: Date.now(),
-      country: facilitiesEditData.country,
+      country: selectedCountry,
       city: selectedCity,
     };
     
@@ -214,10 +205,12 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
       ...prev,
       locations: [...prev.locations, newLocation]
     }));
+    setSelectedCountry("");
     setSelectedCity("");
+    setCities([]);
   };
 
-  const handleRemoveCity = (id) => {
+  const handleRemoveLocation = (id) => {
     setFacilitiesEditData(prev => ({
       ...prev,
       locations: prev.locations.filter(loc => loc.id !== id)
@@ -490,12 +483,15 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
           )}
         </div>
 
-        {/* Cities Card */}
-        <div className="summary-card facilities-card" key="facilities-card">
+        {/* Locations Card */}
+        <div
+          className={`summary-card facilities-card ${validationFocus === "cities" ? "validation-error" : ""}`}
+          key="facilities-card"
+        >
           <div className="card-header">
             <div className="card-title">
               <BiBuilding className="title-icon" />
-              <h4>Cities ({data.locations?.length || 0})</h4>
+              <h4>Locations ({data.locations?.length || 0})</h4>
             </div>
             {editingSection !== 'facilities' && (
               <button onClick={() => handleEdit('facilities')} className="edit-section-btn">
@@ -506,47 +502,50 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
 
           {editingSection === 'facilities' ? (
             <div className="edit-mode" key="facilities-edit">
-              <div className="field-group">
-                <label className="field-label">Country</label>
-                <ThemedSelect
-                  className="field-select"
-                  value={facilitiesEditData.country}
-                  onChange={(nextCountry) => handleCountryChange(nextCountry)}
-                  disabled={!data.region}
-                  options={countriesByRegion[data.region] || []}
-                  placeholder="Select Country"
-                />
-              </div>
-
-              {facilitiesEditData.country && (
-                <div className="add-city-section">
-                  <div className="field-group">
-                    <label className="field-label">Add City</label>
-                    <div className="city-input-group">
-                      <ThemedSelect
-                        className="field-select"
-                        value={selectedCity}
-                        onChange={(nextCity) => setSelectedCity(nextCity)}
-                        options={cities.map((city) => ({ value: city, label: city }))}
-                        placeholder="Select City"
-                      />
-                      <button onClick={handleAddCity} className="add-city-btn" disabled={!selectedCity}>
-                        <FiPlus /> Add
-                      </button>
-                    </div>
-                  </div>
+              <div className="pair-grid">
+                <div className="field-group">
+                  <label className="field-label">Country</label>
+                  <ThemedSelect
+                    className="field-select"
+                    value={selectedCountry}
+                    onChange={(nextCountry) => handleCountryChange(nextCountry)}
+                    disabled={!data.region}
+                    options={countriesByRegion[data.region] || []}
+                    placeholder="Select Country"
+                  />
                 </div>
-              )}
+                <div className="field-group">
+                  <label className="field-label">City</label>
+                  <ThemedSelect
+                    className="field-select"
+                    value={selectedCity}
+                    onChange={(nextCity) => setSelectedCity(nextCity)}
+                    disabled={!selectedCountry}
+                    options={cities.map((city) => ({ value: city, label: city }))}
+                    placeholder="Select City"
+                  />
+                </div>
+                <div className="field-group add-inline-group">
+                  <label className="field-label"> </label>
+                  <button
+                    onClick={handleAddLocationPair}
+                    className="add-city-btn"
+                    disabled={!selectedCountry || !selectedCity}
+                  >
+                    <FiPlus /> Add more 
+                  </button>
+                </div>
+              </div>
 
               {facilitiesEditData.locations.length > 0 && (
                 <div className="locations-list">
-                  <label className="field-label">Added Locations</label>
+                  <label className="field-label">Added Country-City Pairs</label>
                   {facilitiesEditData.locations.map((loc) => (
                     <div key={loc.id} className="location-item">
                       <FiMapPin className="location-icon" />
                       <span>{getLocationDisplay(loc)}</span>
                       <button
-                        onClick={() => handleRemoveCity(loc.id)}
+                        onClick={() => handleRemoveLocation(loc.id)}
                         className="remove-location-btn"
                         title="Remove"
                       >
@@ -557,21 +556,15 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
                 </div>
               )}
 
-              {facilitiesEditData.locations.length === 0 && facilitiesEditData.country && (
+              {facilitiesEditData.locations.length === 0 && (
                 <div className="empty-locations">
-                  <p>No cities added yet. Select a city above to add.</p>
-                </div>
-              )}
-
-              {!facilitiesEditData.country && (
-                <div className="empty-locations">
-                  <p>Please select a country first.</p>
+                  <p>No entries added yet. Select country and city, then click Add more .</p>
                 </div>
               )}
 
               <div className="edit-actions">
                 <PrimaryButton onClick={handleFacilitiesSave} className="save-btn">
-                  <FiSave /> Save Cities
+                  <FiSave /> Save Entries
                 </PrimaryButton>
                 <SecondaryButton onClick={handleCancel} className="cancel-btn">
                   <FiX /> Cancel
@@ -580,8 +573,13 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
             </div>
           ) : (
             <div className="facilities-list">
+              {validationFocus === "cities" && validationMessage && (
+                <div className="validation-note">
+                  ⚠️ {validationMessage}
+                </div>
+              )}
               {!data.locations || data.locations.length === 0 ? (
-                <p className="empty-facilities">No cities added</p>
+                <p className="empty-facilities">No locations added</p>
               ) : (
                 data.locations.map((loc) => (
                   <div key={loc.id} className="facility-item">
@@ -670,6 +668,11 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
           border-color: #2E7D64;
         }
+        .summary-card.validation-error {
+          border-color: #EF4444;
+          background: #FFF7F7;
+          box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+        }
 
         .facilities-card {
           grid-column: span 2;
@@ -740,14 +743,17 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
           margin-bottom: 2px;
         }
         .field-select { width: 100%; }
-
-        .add-city-section { margin-top: 8px; }
-        .city-input-group {
-          display: flex;
+        .pair-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr auto;
           gap: 12px;
-          align-items: center;
         }
-        .city-input-group .field-select { flex: 1; }
+        .add-inline-group {
+          justify-content: flex-end;
+        }
+        .add-inline-group .field-label {
+          visibility: hidden;
+        }
         .add-city-btn {
           display: flex;
           align-items: center;
@@ -854,6 +860,15 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
         }
 
         .facilities-list { display: flex; flex-direction: column; gap: 12px; }
+        .validation-note {
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 10px 12px;
+          font-size: 13px;
+          font-weight: 500;
+        }
         .facility-item {
           display: flex;
           align-items: center;
@@ -886,7 +901,8 @@ export default function SetupSummary({ data, updateField, mergeCompanyData, onRe
           .row-value { justify-content: flex-start; }
           .card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
           .edit-section-btn { align-self: flex-start; }
-          .city-input-group { flex-direction: column; }
+          .pair-grid { grid-template-columns: 1fr; }
+          .add-inline-group .field-label { display: none; }
           .add-city-btn { width: 100%; justify-content: center; }
         }
       `}</style>

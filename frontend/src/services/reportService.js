@@ -10,7 +10,7 @@ export const reportService = {
    * @param {string|null} month - Optional month for monthly reports (e.g., "2026-03")
    * @param {number|null} baseYear - Optional baseline year (defaults to year - 1)
    */
-  generateAIReport: async (year, month = null, baseYear = null) => {
+  generateAIReport: async (year, month = null, baseYear = null, location = null, periodMeta = null) => {
     const token = useAuthStore.getState().token;
     
     const body = {
@@ -23,6 +23,18 @@ export const reportService = {
     
     if (baseYear) {
       body.base_year = baseYear;  // ← MAKE SURE THIS LINE EXISTS
+    }
+    if (location?.city && location.city !== "all") {
+      body.city = location.city;
+    }
+    if (location?.country && location.country !== "all") {
+      body.country = location.country;
+    }
+    if (periodMeta?.period) {
+      body.period = periodMeta.period;
+    }
+    if (periodMeta?.quarter) {
+      body.quarter = periodMeta.quarter;
     }
     
     console.log("Generating report with body:", body);

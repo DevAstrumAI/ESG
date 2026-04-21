@@ -6,6 +6,7 @@ import { FiTrash2, FiSun, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
 const RENEWABLE_TYPES = [
   { label: "Solar PV / PPA", key: "solar_ppa" },
@@ -107,7 +108,7 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
 
   const saveEdit = async () => {
     if (!editValues.sourceTypeKey || !editValues.consumption || editValues.consumption <= 0) {
-      alert("Please fill all fields");
+      setAddRowError("Please enter valid values before saving.");
       return;
     }
 
@@ -191,6 +192,7 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
   const [sourceTypeKey, setSourceTypeKey] = useState("solar_ppa");
   const [consumption, setConsumption] = useState("");
   const [month, setMonth] = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
 
   useEffect(() => {
     if (reportingMonth) {
@@ -202,7 +204,7 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
 
   const handleAddRow = () => {
     if (!consumption || Number(consumption) <= 0) {
-      alert("Please fill all fields");
+      setAddRowError("Please enter a valid renewable generation value.");
       return;
     }
     
@@ -214,7 +216,7 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
     );
     
     if (isDuplicate) {
-      alert("This entry already exists for this month");
+      setAddRowError("This entry already exists for the selected month.");
       return;
     }
     
@@ -227,6 +229,7 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
     });
     setConsumption("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
 
   return (
@@ -264,15 +267,13 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
                 return (
                   <tr key={r.id} className="rw-editing-row">
                     <td className="rw-source-cell">
-                      <select
+                      <ThemedSelect
                         value={editValues.sourceTypeKey}
-                        onChange={(e) => setEditValues({...editValues, sourceTypeKey: e.target.value})}
+                        onChange={(nextValue) => setEditValues({ ...editValues, sourceTypeKey: nextValue })}
+                        options={RENEWABLE_TYPES.map((t) => ({ value: t.key, label: t.label }))}
+                        placeholder="Renewable Type"
                         className="rw-select"
-                      >
-                        {RENEWABLE_TYPES.map(t => (
-                          <option key={t.key} value={t.key}>{t.label}</option>
-                        ))}
-                      </select>
+                      />
                     </td>
                     <td className="rw-consumption-cell">
                       <div className="rw-qty-input" style={{ width: "120px" }}>
@@ -289,15 +290,13 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
                       </div>
                     </td>
                     <td className="rw-month-cell">
-                      <select
+                      <ThemedSelect
                         value={editValues.month}
-                        onChange={(e) => setEditValues({...editValues, month: e.target.value})}
+                        onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                        options={MONTHS.map((m) => ({ value: m, label: m }))}
+                        placeholder="Month"
                         className="rw-select"
-                      >
-                        {MONTHS.map(m => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                      </select>
+                      />
                     </td>
                     <td className="rw-actions-cell">
                       <button
@@ -353,15 +352,13 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
             {/* Add Row */}
             <tr className="rw-add-row">
               <td>
-                <select
+                <ThemedSelect
                   value={sourceTypeKey}
-                  onChange={(e) => setSourceTypeKey(e.target.value)}
+                  onChange={setSourceTypeKey}
+                  options={RENEWABLE_TYPES.map((t) => ({ value: t.key, label: t.label }))}
+                  placeholder="Renewable Type"
                   className="rw-select"
-                >
-                  {RENEWABLE_TYPES.map((t) => (
-                    <option key={t.key} value={t.key}>{t.label}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <div className="rw-qty-input">
@@ -378,15 +375,13 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
                 </div>
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={month}
-                  onChange={(e) => setMonth(e.target.value)}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
                   className="rw-select"
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <button className="rw-add-btn-inline" onClick={handleAddRow}>
@@ -397,6 +392,7 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
           </tbody>
         </table>
       </div>
+      {addRowError && <div className="rw-inline-error">⚠️ {addRowError}</div>}
 
       <style jsx>{`
         .rw-wrap { width: 100%; }
@@ -563,6 +559,16 @@ export default function RenewableForm({ onSubmitSuccess, reportingMonth }) {
           transition: background 0.15s;
         }
         .rw-add-btn-inline:hover { background: #2E7D64; }
+        .rw-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
 
         @media (max-width: 640px) {
           .rw-table th:nth-child(2),

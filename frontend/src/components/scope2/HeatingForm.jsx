@@ -6,6 +6,7 @@ import { FiTrash2, FiThermometer, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useEmissionStore } from "../../store/emissionStore";
 import { emissionsAPI } from "../../services/api";
+import ThemedSelect from "../ui/ThemedSelect";
 
 // Get default heating type based on company country
 const getDefaultHeatingType = (country) => {
@@ -73,6 +74,7 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
   const [energyType, setEnergyType] = useState(defaultType);
   const [consumption, setConsumption] = useState("");
   const [month, setMonth] = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const updateHeating = useEmissionStore((s) => s.updateScope2Heating);
   const [editingId, setEditingId] = useState(null);
@@ -93,7 +95,8 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
   }, [reportingMonth]);
   const handleAddRow = async () => {
     if (!energyType || !consumption || Number(consumption) <= 0) {
-      alert("Please fill in all fields");
+      if (!energyType) setAddRowError("Please select an energy type.");
+      else setAddRowError("Please enter a valid consumption value.");
       return;
     }
     
@@ -110,6 +113,7 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
     // Reset form
     setConsumption("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
     // Keep the same energy type (don't reset)
   };
 
@@ -204,11 +208,13 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
               editingId === entry.id ? (
                 <tr key={entry.id}>
                   <td>
-                    <select value={editValues.energyType} onChange={(e) => setEditValues({ ...editValues, energyType: e.target.value })} className="ht-select">
-                      {heatingOptions.map((opt) => (
-                        <option key={opt.key} value={opt.key}>{opt.label}</option>
-                      ))}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.energyType}
+                      onChange={(nextValue) => setEditValues({ ...editValues, energyType: nextValue })}
+                      options={heatingOptions.map((opt) => ({ value: opt.key, label: opt.label }))}
+                      placeholder="Heating Type"
+                      className="ht-select"
+                    />
                   </td>
                   <td>
                     <div className="ht-qty-input">
@@ -217,11 +223,13 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
                     </div>
                   </td>
                   <td>
-                    <select value={editValues.month} onChange={(e) => setEditValues({ ...editValues, month: e.target.value })} className="ht-select">
-                      {MONTHS.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.month}
+                      onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                      options={MONTHS.map((m) => ({ value: m, label: m }))}
+                      placeholder="Month"
+                      className="ht-select"
+                    />
                   </td>
                   <td>
                     <button className="ht-action-btn ht-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
@@ -257,17 +265,13 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
             {/* Add Row */}
             <tr className="ht-add-row">
               <td>
-                <select
+                <ThemedSelect
                   value={energyType}
-                  onChange={(e) => setEnergyType(e.target.value)}
+                  onChange={setEnergyType}
+                  options={heatingOptions.map((opt) => ({ value: opt.key, label: opt.label }))}
+                  placeholder="Heating Type"
                   className="ht-select"
-                >
-                  {heatingOptions.map((opt) => (
-                    <option key={opt.key} value={opt.key}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <div className="ht-qty-input">
@@ -283,15 +287,13 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
                 </div>
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={month}
-                  onChange={(e) => setMonth(e.target.value)}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
                   className="ht-select"
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <button className="ht-add-btn-inline" onClick={handleAddRow}>
@@ -302,6 +304,7 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
           </tbody>
         </table>
       </div>
+      {addRowError && <div className="ht-inline-error">⚠️ {addRowError}</div>}
 
       <style jsx>{`
         .ht-wrap { width: 100%; }
@@ -457,6 +460,16 @@ export default function HeatingForm({ entries, onAdd, onDelete, reportingMonth }
           font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
         .ht-add-btn-inline:hover { background: #2E7D64; }
+        .ht-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
         .ht-error { font-size: 13px; color: #DC2626; }
 
         .ht-submit-btn {

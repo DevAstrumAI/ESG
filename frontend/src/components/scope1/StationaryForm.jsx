@@ -6,6 +6,7 @@ import { FiTrash2, FiBriefcase, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
 const EQUIPMENT_TYPES = [
   "Generators", "Stove", "Heater", "Oven", "Boiler",
@@ -96,6 +97,7 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
   const [fuelKey, setFuelKey]     = useState("");
   const [quantity, setQuantity]   = useState("");
   const [month, setMonth]         = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
 
   useEffect(() => {
     if (reportingMonth) {
@@ -106,7 +108,18 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
   const selectedFuel = FUEL_TYPES.find((f) => f.key === fuelKey);
 
   const handleAddRow = () => {
-    if (!equipment || !fuelKey || quantity === "") return;
+    if (!equipment) {
+      setAddRowError("Please select an equipment type.");
+      return;
+    }
+    if (!fuelKey) {
+      setAddRowError("Please select a fuel type.");
+      return;
+    }
+    if (quantity === "" || Number(quantity) <= 0) {
+      setAddRowError("Please enter a valid quantity.");
+      return;
+    }
     addStationary({
       id: Date.now(),
       equipment,
@@ -120,6 +133,7 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
     setFuelKey("");
     setQuantity("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
   const startEdit = (entry) => {
     setEditingId(entry.id);
@@ -157,6 +171,7 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
           Enter fuel consumption for <strong>fixed equipment</strong> across your city operations — generators, boilers, heaters, and other stationary sources.
         </p>
       </div>
+      {addRowError && <div className="sf-inline-error">⚠️ {addRowError}</div>}
 
       <div className="sf-table-wrap">
         <table className="sf-table">
@@ -181,16 +196,22 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
               editingId === e.id ? (
                 <tr key={e.id}>
                   <td>
-                    <select value={editValues.equipment} onChange={(ev) => setEditValues({ ...editValues, equipment: ev.target.value })} className="sf-select">
-                      <option value="">Equipment Type</option>
-                      {EQUIPMENT_TYPES.map((et) => <option key={et} value={et}>{et}</option>)}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.equipment}
+                      onChange={(nextValue) => setEditValues({ ...editValues, equipment: nextValue })}
+                      options={EQUIPMENT_TYPES.map((et) => ({ value: et, label: et }))}
+                      placeholder="Equipment Type"
+                      className="sf-select"
+                    />
                   </td>
                   <td>
-                    <select value={editValues.fuelKey} onChange={(ev) => setEditValues({ ...editValues, fuelKey: ev.target.value })} className="sf-select">
-                      <option value="">Fuel Type</option>
-                      {FUEL_TYPES.map((f) => <option key={f.key + f.label} value={f.key}>{f.label}</option>)}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.fuelKey}
+                      onChange={(nextValue) => setEditValues({ ...editValues, fuelKey: nextValue })}
+                      options={FUEL_TYPES.map((f) => ({ value: f.key, label: f.label }))}
+                      placeholder="Fuel Type"
+                      className="sf-select"
+                    />
                   </td>
                   <td>
                     <div className="sf-qty-input">
@@ -199,9 +220,13 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
                     </div>
                   </td>
                   <td>
-                    <select value={editValues.month} onChange={(ev) => setEditValues({ ...editValues, month: ev.target.value })} className="sf-select">
-                      {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.month}
+                      onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                      options={MONTHS.map((m) => ({ value: m, label: m }))}
+                      placeholder="Month"
+                      className="sf-select"
+                    />
                   </td>
                   <td>
                     <button className="sf-action-btn sf-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
@@ -235,28 +260,22 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
 
             <tr className="sf-add-row">
               <td>
-                <select
+                <ThemedSelect
                   value={equipment}
-                  onChange={(e) => setEquipment(e.target.value)}
+                  onChange={setEquipment}
+                  options={EQUIPMENT_TYPES.map((et) => ({ value: et, label: et }))}
+                  placeholder="Equipment Type"
                   className="sf-select"
-                >
-                  <option value="">Equipment Type</option>
-                  {EQUIPMENT_TYPES.map((et) => (
-                    <option key={et} value={et}>{et}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={fuelKey}
-                  onChange={(e) => setFuelKey(e.target.value)}
+                  onChange={setFuelKey}
+                  options={FUEL_TYPES.map((f) => ({ value: f.key, label: f.label }))}
+                  placeholder="Fuel Type"
                   className="sf-select"
-                >
-                  <option value="">Fuel Type</option>
-                  {FUEL_TYPES.map((f) => (
-                    <option key={f.key + f.label} value={f.key}>{f.label}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <div className="sf-qty-input">
@@ -274,15 +293,13 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
                 </div>
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={month}
-                  onChange={(e) => setMonth(e.target.value)}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
                   className="sf-select"
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <button className="sf-add-btn-inline" onClick={handleAddRow}>
@@ -321,11 +338,13 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
         .sf-table-wrap {
           border: 1px solid #E5E7EB;
           border-radius: 10px;
-          overflow: hidden;
+          overflow-x: auto;
+          overflow-y: hidden;
         }
 
         .sf-table {
           width: 100%;
+          min-width: 820px;
           border-collapse: collapse;
           font-size: 14px;
         }
@@ -453,6 +472,16 @@ export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
           font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
         .sf-add-btn-inline:hover { background: #2E7D64; }
+        .sf-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
 
         .sf-error { font-size: 13px; color: #DC2626; }
 

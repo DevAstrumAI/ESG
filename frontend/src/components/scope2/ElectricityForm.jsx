@@ -6,6 +6,7 @@ import { FiTrash2, FiZap, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
 const CERTIFICATE_TYPES = [
   { label: "Grid Average (Location-based)", key: "grid_average" },
@@ -109,7 +110,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
 
   const saveEdit = async () => {
     if (!editValues.consumption || editValues.consumption <= 0) {
-      alert("Please fill all fields");
+      setAddRowError("Please enter a valid electricity consumption.");
       return;
     }
 
@@ -199,6 +200,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
   const [consumption, setConsumption] = useState("");
   const [certificateKey, setCertificateKey] = useState("grid_average");
   const [month, setMonth] = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
 
   useEffect(() => {
     if (reportingMonth) {
@@ -210,7 +212,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
 
   const handleAddRow = () => {
     if (!consumption || Number(consumption) <= 0) {
-      alert("Please fill all fields");
+      setAddRowError("Please enter a valid electricity consumption.");
       return;
     }
     
@@ -222,7 +224,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
     );
     
     if (isDuplicate) {
-      alert("This entry already exists for this month");
+      setAddRowError("This entry already exists for the selected month.");
       return;
     }
     
@@ -239,6 +241,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
     
     setConsumption("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
 
   return (
@@ -275,15 +278,13 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
                 return (
                   <tr key={e.id} className="el-editing-row">
                     <td className="el-certificate-cell">
-                      <select
+                      <ThemedSelect
                         value={editValues.certificateKey}
-                        onChange={(e) => setEditValues({...editValues, certificateKey: e.target.value})}
+                        onChange={(nextValue) => setEditValues({ ...editValues, certificateKey: nextValue })}
+                        options={CERTIFICATE_TYPES.map((c) => ({ value: c.key, label: c.label }))}
+                        placeholder="Certificate Type"
                         className="el-select"
-                      >
-                        {CERTIFICATE_TYPES.map(c => (
-                          <option key={c.key} value={c.key}>{c.label}</option>
-                        ))}
-                      </select>
+                      />
                     </td>
                     <td className="el-consumption-cell">
                       <div className="el-qty-input" style={{ width: "120px" }}>
@@ -299,15 +300,13 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
                       </div>
                     </td>
                     <td className="el-month-cell">
-                      <select
+                      <ThemedSelect
                         value={editValues.month}
-                        onChange={(e) => setEditValues({...editValues, month: e.target.value})}
+                        onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                        options={MONTHS.map((m) => ({ value: m, label: m }))}
+                        placeholder="Month"
                         className="el-select"
-                      >
-                        {MONTHS.map(m => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                      </select>
+                      />
                     </td>
                     <td className="el-actions-cell">
                       <button
@@ -365,15 +364,13 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
             {/* Add Row */}
             <tr className="el-add-row">
               <td>
-                <select
+                <ThemedSelect
                   value={certificateKey}
-                  onChange={(e) => setCertificateKey(e.target.value)}
+                  onChange={setCertificateKey}
+                  options={CERTIFICATE_TYPES.map((c) => ({ value: c.key, label: c.label }))}
+                  placeholder="Certificate Type"
                   className="el-select"
-                >
-                  {CERTIFICATE_TYPES.map((c) => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <div className="el-qty-input">
@@ -389,15 +386,13 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
                 </div>
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={month}
-                  onChange={(e) => setMonth(e.target.value)}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
                   className="el-select"
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <button className="el-add-btn-inline" onClick={handleAddRow}>
@@ -408,6 +403,7 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
           </tbody>
         </table>
       </div>
+      {addRowError && <div className="el-inline-error">⚠️ {addRowError}</div>}
 
       <style jsx>{`
         .el-wrap { width: 100%; }
@@ -574,6 +570,16 @@ export default function ElectricityForm({ onSubmitSuccess, reportingMonth }) {
           transition: background 0.15s;
         }
         .el-add-btn-inline:hover { background: #2E7D64; }
+        .el-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
 
         @media (max-width: 640px) {
           .el-table th:nth-child(2),

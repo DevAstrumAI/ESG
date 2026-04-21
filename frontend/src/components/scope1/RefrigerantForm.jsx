@@ -6,6 +6,7 @@ import { FiTrash2, FiWind, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
 const REFRIGERANT_TYPES = [
   { label: "R-134a",  key: "r134a",  gwp: 1300 },
@@ -87,6 +88,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const [refrigerantKey, setRefrigerantKey] = useState("");
   const [quantity, setQuantity]             = useState("");
   const [month, setMonth]                   = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
 
   useEffect(() => {
     if (reportingMonth) {
@@ -97,7 +99,14 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const selectedRefrigerant = REFRIGERANT_TYPES.find((r) => r.key === refrigerantKey);
 
   const handleAddRow = () => {
-    if (!refrigerantKey || quantity === "") return;
+    if (!refrigerantKey) {
+      setAddRowError("Please select a refrigerant type.");
+      return;
+    }
+    if (quantity === "" || Number(quantity) <= 0) {
+      setAddRowError("Please enter a valid leakage quantity.");
+      return;
+    }
     addRefrigerant({
       id: Date.now(),
       refrigerantType: selectedRefrigerant.label,
@@ -109,6 +118,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
     setRefrigerantKey("");
     setQuantity("");
     setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
   const startEdit = (entry) => {
     setEditingId(entry.id);
@@ -147,6 +157,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           Enter <strong>refrigerant leakage</strong> from cooling equipment. Each refrigerant has a specific Global Warming Potential (GWP).
         </p>
       </div>
+      {addRowError && <div className="rf-inline-error">⚠️ {addRowError}</div>}
 
       <div className="rf-table-wrap">
         <table className="rf-table">
@@ -172,10 +183,16 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
               editingId === r.id ? (
                 <tr key={r.id}>
                   <td>
-                    <select value={editValues.refrigerantKey} onChange={(ev) => setEditValues({ ...editValues, refrigerantKey: ev.target.value })} className="rf-select">
-                      <option value="">Select Refrigerant</option>
-                      {REFRIGERANT_TYPES.map((item) => <option key={item.key} value={item.key}>{item.label} (GWP: {item.gwp})</option>)}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.refrigerantKey}
+                      onChange={(nextValue) => setEditValues({ ...editValues, refrigerantKey: nextValue })}
+                      options={REFRIGERANT_TYPES.map((item) => ({
+                        value: item.key,
+                        label: `${item.label} (GWP: ${item.gwp})`,
+                      }))}
+                      placeholder="Select Refrigerant"
+                      className="rf-select"
+                    />
                   </td>
                   <td>
                     <div className="rf-qty-input">
@@ -192,9 +209,13 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                     </span>
                   </td>
                   <td>
-                    <select value={editValues.month} onChange={(ev) => setEditValues({ ...editValues, month: ev.target.value })} className="rf-select">
-                      {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                    <ThemedSelect
+                      value={editValues.month}
+                      onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                      options={MONTHS.map((m) => ({ value: m, label: m }))}
+                      placeholder="Month"
+                      className="rf-select"
+                    />
                   </td>
                   <td>
                     <button className="rf-action-btn rf-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
@@ -228,12 +249,16 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
 
             <tr className="rf-add-row">
               <td>
-                <select value={refrigerantKey} onChange={(e) => setRefrigerantKey(e.target.value)} className="rf-select">
-                  <option value="">Select Refrigerant</option>
-                  {REFRIGERANT_TYPES.map((r) => (
-                    <option key={r.key} value={r.key}>{r.label} (GWP: {r.gwp})</option>
-                  ))}
-                </select>
+                <ThemedSelect
+                  value={refrigerantKey}
+                  onChange={setRefrigerantKey}
+                  options={REFRIGERANT_TYPES.map((r) => ({
+                    value: r.key,
+                    label: `${r.label} (GWP: ${r.gwp})`,
+                  }))}
+                  placeholder="Select Refrigerant"
+                  className="rf-select"
+                />
               </td>
               <td>
                 <div className="rf-qty-input">
@@ -262,9 +287,13 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                 </span>
               </td>
               <td>
-                <select value={month} onChange={(e) => setMonth(e.target.value)} className="rf-select">
-                  {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <ThemedSelect
+                  value={month}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
+                  className="rf-select"
+                />
               </td>
               <td>
                 <button className="rf-add-btn-inline" onClick={handleAddRow}>
@@ -300,9 +329,14 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
         }
         .rf-desc strong { color: #1B4D3E; }
 
-        .rf-table-wrap { border: 1px solid #E5E7EB; border-radius: 10px; overflow: hidden; }
+        .rf-table-wrap {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          overflow-x: auto;
+          overflow-y: hidden;
+        }
 
-        .rf-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .rf-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 14px; }
         .rf-table thead tr { background: #F9FAFB; }
         .rf-table th {
           text-align: left; padding: 11px 14px; font-size: 12px;
@@ -383,6 +417,16 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
         .rf-add-btn-inline:hover { background: #2E7D64; }
+        .rf-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
                 .rf-error { font-size: 13px; color: #DC2626; }
 
         .rf-submit-btn {

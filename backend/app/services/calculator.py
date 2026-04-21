@@ -3,7 +3,7 @@ from app.utils.location_resolver import resolve_location
 
 # Fuel types that use distance-based calculation (kg CO₂e/km)
 DISTANCE_BASED_TYPES = {
-    "jet_aircraft_per_km", "cargo_ship_hfo", "marine_hfo", "diesel_train", "diesel_bus"
+    "jet_aircraft_per_km", "cargo_ship_hfo", "marine_hfo", "diesel_train"
 }
 
 # Fuel types that are biogenic
