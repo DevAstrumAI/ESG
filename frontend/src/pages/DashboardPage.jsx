@@ -32,6 +32,7 @@ import { appendLocationQuery } from "../utils/locationQuery";
 import FacilityCitySelect from "../components/location/FacilityCitySelect";
 import Card from "../components/ui/Card";
 import ThemedSelect from "../components/ui/ThemedSelect";
+import WhatIfScenarioBuilder from "../components/dashboard/WhatIfScenarioBuilder";
 import {
   ResponsiveContainer,
   LineChart,
@@ -1147,6 +1148,17 @@ export default function DashboardPage() {
           </div>
         ) : <div className="collapsed-summary">Pathway chart is hidden. Expand to view trajectory and gap shading.</div>}
       </Card>
+
+      <WhatIfScenarioBuilder
+        token={token}
+        year={selectedYear}
+        selectedFacility={selectedFacility}
+        ytdTotalKg={totalKg}
+        monthsSubmitted={monthsSubmitted}
+        annualTargetT={targetT || 0}
+        scope1Results={scope1Results}
+        scope2Results={scope2Results}
+      />
       </>
       )}
 
