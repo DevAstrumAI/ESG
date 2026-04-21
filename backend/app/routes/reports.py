@@ -527,6 +527,25 @@ def build_yoy_section(current_s1: dict, current_s2: dict, prior_s1: dict, prior_
     movement_text = ", ".join([f"{name} {'increased' if d > 0 else 'decreased'} by {abs(d):.2f} tCO2e" for name, d in top_moves]) if top_moves else "No significant movement detected."
     variance_explanation = f"Year-over-year movement is primarily driven by {movement_text}."
 
+    probable_causes = {
+        "Mobile combustion": "Higher transport activity, route length, or fuel mix changes in fleet operations.",
+        "Stationary combustion": "Changes in generator/boiler runtime, fuel switching, or backup power reliance.",
+        "Refrigerants": "Leak events, recharge cycles, or use of higher-GWP refrigerants.",
+        "Fugitive emissions": "Operational leaks, maintenance incidents, or detection/reporting improvements.",
+        "Electricity (location-based)": "Grid electricity consumption changes and demand profile shifts.",
+        "Heating & cooling": "Seasonal HVAC loads or heating/cooling intensity changes.",
+    }
+
+    comparison_rows = [
+        {"metric": "Total Scope 1 + 2 (tCO2e)", "current": round(curr_total / 1000, 4), "prior": round(prev_total / 1000, 4), "delta_pct": pct(curr_total, prev_total)},
+        {"metric": "Scope 1 — Mobile", "current": round(current_s1["mobile"] / 1000, 4), "prior": round(prior_s1["mobile"] / 1000, 4), "delta_pct": pct(current_s1["mobile"], prior_s1["mobile"])},
+        {"metric": "Scope 1 — Stationary", "current": round(current_s1["stationary"] / 1000, 4), "prior": round(prior_s1["stationary"] / 1000, 4), "delta_pct": pct(current_s1["stationary"], prior_s1["stationary"])},
+        {"metric": "Scope 1 — Refrigerants", "current": round(current_s1["refrigerants"] / 1000, 4), "prior": round(prior_s1["refrigerants"] / 1000, 4), "delta_pct": pct(current_s1["refrigerants"], prior_s1["refrigerants"])},
+        {"metric": "Scope 1 — Fugitive", "current": round(current_s1["fugitive"] / 1000, 4), "prior": round(prior_s1["fugitive"] / 1000, 4), "delta_pct": pct(current_s1["fugitive"], prior_s1["fugitive"])},
+        {"metric": "Scope 2 — Location-based", "current": round(current_s2["total_location"] / 1000, 4), "prior": round(prior_s2["total_location"] / 1000, 4), "delta_pct": pct(current_s2["total_location"], prior_s2["total_location"])},
+        {"metric": "Scope 2 — Market-based", "current": round(current_s2["total_market"] / 1000, 4), "prior": round(prior_s2["total_market"] / 1000, 4), "delta_pct": pct(current_s2["total_market"], prior_s2["total_market"])},
+    ]
+
     return {
         "total_scope1_2_t": {
             "current": round(curr_total / 1000, 4),
@@ -542,9 +561,50 @@ def build_yoy_section(current_s1: dict, current_s2: dict, prior_s1: dict, prior_
         "scope2_location_t": {"current": round(current_s2["total_location"] / 1000, 4), "prior": round(prior_s2["total_location"] / 1000, 4), "delta_pct": pct(current_s2["total_location"], prior_s2["total_location"])},
         "scope2_market_t": {"current": round(current_s2["total_market"] / 1000, 4), "prior": round(prior_s2["total_market"] / 1000, 4), "delta_pct": pct(current_s2["total_market"], prior_s2["total_market"])},
         "intensity_tco2e_per_employee": {"current": round(curr_int, 4), "prior": round(prev_int, 4), "delta_pct": pct(curr_int, prev_int)},
+        "comparison_table_rows": comparison_rows,
         "waterfall_chart": waterfall,
+        "largest_movements": [
+            {
+                "category": name,
+                "delta_tco2e": round(delta, 4),
+                "direction": "increase" if delta > 0 else "decrease" if delta < 0 else "flat",
+                "probable_cause": probable_causes.get(name, "Operational activity level and submission patterns."),
+            }
+            for name, delta in top_moves
+        ],
         "ai_variance_explanation": variance_explanation,
     }
+
+
+def build_yoy_variance_explanation_ai(
+    client: openai.OpenAI,
+    *,
+    industry: str,
+    city: str,
+    year: int,
+    table_rows: list[dict],
+    largest_movements: list[dict],
+) -> str:
+    prompt = f"""
+You are an ESG reporting analyst.
+Write one concise paragraph (55-90 words) explaining year-on-year variance using only the provided data.
+Mention the two largest movement categories and likely operational causes in plain business language.
+
+Context:
+- Industry: {industry}
+- City: {city}
+- Reporting year: {year}
+- YoY rows: {json.dumps(table_rows, ensure_ascii=False)}
+- Largest movements: {json.dumps(largest_movements, ensure_ascii=False)}
+
+Return JSON only: {{"variance_explanation":"..."}}
+"""
+    try:
+        data = call_openai(client, prompt)
+        txt = str((data or {}).get("variance_explanation", "")).strip()
+        return txt
+    except Exception:
+        return ""
 
 
 def fetch_historical_totals(
@@ -1265,6 +1325,16 @@ async def generate_report(
         except Exception:
             employees = 1
         yoy_section = build_yoy_section(s1, s2, prior_s1, prior_s2, employees)
+        ai_yoy_text = build_yoy_variance_explanation_ai(
+            client,
+            industry=industry,
+            city=selected_city,
+            year=year,
+            table_rows=yoy_section.get("comparison_table_rows", []),
+            largest_movements=yoy_section.get("largest_movements", []),
+        )
+        if ai_yoy_text:
+            yoy_section["ai_variance_explanation"] = ai_yoy_text
 
         # Section 3.1 cover/metadata
         if period_type == "quarterly" and quarter:

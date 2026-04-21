@@ -221,7 +221,7 @@ export default function ReportsPage() {
             {aiReport.report_standard && (
               <div className="report-standard">
                 <div className="report-section">
-                  <h4>3.1 Report Cover & Metadata</h4>
+                  <h4>1. Report Cover & Metadata</h4>
                   <div className="breakdown-list">
                     <div className="breakdown-item"><span className="breakdown-name">Company</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.company_name || "—"}</span></div>
                     <div className="breakdown-item"><span className="breakdown-name">Report Title</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.report_title || "—"}</span></div>
@@ -234,7 +234,7 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>3.2 Executive Summary</h4>
+                  <h4>2. Executive Summary</h4>
                   <div className="executive-summary-card">
                     <div className="exec-header">
                       <div>
@@ -261,7 +261,7 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>3.3 Scope 1 Emissions Detail</h4>
+                  <h4>3. Scope 1 Emissions Detail</h4>
                   <div className="breakdown-list">
                     <div className="breakdown-item"><span className="breakdown-name">Scope 1 Total</span><span className="breakdown-value">{Number(aiReport.report_standard.section_3_3_scope1_detail?.scope1_total?.kg || 0).toFixed(2)} kg / {Number(aiReport.report_standard.section_3_3_scope1_detail?.scope1_total?.t || 0).toFixed(4)} tCO₂e</span></div>
                     <div className="breakdown-item"><span className="breakdown-name">Mobile Combustion</span><span className="breakdown-value">{Number(aiReport.report_standard.section_3_3_scope1_detail?.mobile_combustion?.total_t || 0).toFixed(4)} tCO₂e</span></div>
@@ -314,7 +314,7 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>3.4 Scope 2 Emissions Detail</h4>
+                  <h4>4. Scope 2 Emissions Detail</h4>
                   <div className="card16-s2-grid">
                     <div className="card16-s2-card">
                       <div className="card16-s2-label">Location-based total</div>
@@ -371,10 +371,28 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>3.5 Year-on-Year Comparison</h4>
-                  <div className="breakdown-list">
-                    <div className="breakdown-item"><span className="breakdown-name">Total Scope 1+2</span><span className="breakdown-value">{Number(aiReport.report_standard.section_3_5_yoy_comparison?.total_scope1_2_t?.current || 0).toFixed(4)} tCO₂e (Prev: {Number(aiReport.report_standard.section_3_5_yoy_comparison?.total_scope1_2_t?.prior || 0).toFixed(4)}, Δ {aiReport.report_standard.section_3_5_yoy_comparison?.total_scope1_2_t?.delta_pct ?? "N/A"}%)</span></div>
-                    <div className="breakdown-item"><span className="breakdown-name">Intensity (tCO₂e/employee)</span><span className="breakdown-value">{Number(aiReport.report_standard.section_3_5_yoy_comparison?.intensity_tco2e_per_employee?.current || 0).toFixed(4)} (Prev: {Number(aiReport.report_standard.section_3_5_yoy_comparison?.intensity_tco2e_per_employee?.prior || 0).toFixed(4)}, Δ {aiReport.report_standard.section_3_5_yoy_comparison?.intensity_tco2e_per_employee?.delta_pct ?? "N/A"}%)</span></div>
+                  <h4>5. Year-on-Year Comparison</h4>
+                  <div className="card16-cert-table-wrap">
+                    <table className="card16-cert-table">
+                      <thead>
+                        <tr>
+                          <th>Metric</th>
+                          <th>Current</th>
+                          <th>Prior</th>
+                          <th>Delta %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(aiReport.report_standard.section_3_5_yoy_comparison?.comparison_table_rows || []).map((row, idx) => (
+                          <tr key={idx}>
+                            <td>{row.metric}</td>
+                            <td>{row.current != null ? Number(row.current).toFixed(4) : "—"}</td>
+                            <td>{row.prior != null ? Number(row.prior).toFixed(4) : "—"}</td>
+                            <td>{row.delta_pct != null ? `${Number(row.delta_pct).toFixed(2)}%` : "N/A"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                   {aiReport.report_standard.section_3_5_yoy_comparison?.waterfall_chart?.length > 0 && (
                     <div className="card16-chart-wrap">
@@ -390,11 +408,29 @@ export default function ReportsPage() {
                       </ResponsiveContainer>
                     </div>
                   )}
+                  {aiReport.report_standard.section_3_5_yoy_comparison?.largest_movements?.length > 0 && (
+                    <div className="card16-biogenic">
+                      <div className="card16-biogenic-header">
+                        <span className="card16-biogenic-tag">Top 2 Movements</span>
+                      </div>
+                      <ul className="card16-biogenic-list">
+                        {aiReport.report_standard.section_3_5_yoy_comparison.largest_movements.map((m, idx) => (
+                          <li key={idx}>
+                            <span>
+                              <strong>{m.category}</strong> ({m.direction}, {Number(m.delta_tco2e || 0).toFixed(4)} tCO₂e)
+                              <br />
+                              <small>{m.probable_cause}</small>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <p className="section-summary">{aiReport.report_standard.section_3_5_yoy_comparison?.ai_variance_explanation || ""}</p>
                 </div>
 
                 <div className="report-section">
-                  <h4>3.7 Category-Level Recommendations</h4>
+                  <h4>6. Category-Level Recommendations</h4>
                   {(aiReport.report_standard.section_3_7_category_recommendations || []).map((rec, idx) => (
                     <div key={idx} className="recommendation-card">
                       <div className="rec-header">
@@ -412,7 +448,7 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>3.10 Report Export Formats</h4>
+                  <h4>7. Report Export Formats</h4>
                   <div className="card16-cert-table-wrap">
                     <table className="card16-cert-table">
                       <thead><tr><th>Format</th><th>Audience</th><th>Content</th></tr></thead>
