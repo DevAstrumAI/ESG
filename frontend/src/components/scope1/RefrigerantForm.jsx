@@ -64,6 +64,12 @@ const titleFromKey = (key) => {
   return t ? t.toUpperCase() : "Refrigerant";
 };
 
+const normalizeRefrigerantKey = (key) =>
+  String(key || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]/g, "");
+
 export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const refrigerants    = useEmissionStore((s) => s.scope1Refrigerants);
   const addRefrigerant  = useEmissionStore((s) => s.addScope1Refrigerant);
@@ -144,11 +150,11 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
 
         Object.entries(group).forEach(([key, raw]) => {
           const v = factorValue(raw);
-          if (v > 0) merged[String(key).toLowerCase()] = v;
+          if (v > 0) merged[normalizeRefrigerantKey(key)] = v;
         });
 
         Object.entries(scope1).forEach(([key, raw]) => {
-          const normalized = String(key).toLowerCase();
+          const normalized = normalizeRefrigerantKey(key);
           if (!isRefrigerantKey(normalized)) return;
           const v = factorValue(raw);
           if (v > 0) merged[normalized] = v;
@@ -211,11 +217,12 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   };
   const saveEdit = () => {
     if (!editValues.refrigerantKey || editValues.quantity === "") return;
-    const selected = refrigerantOptions.find((r) => r.key === editValues.refrigerantKey);
+    const normalizedEditKey = normalizeRefrigerantKey(editValues.refrigerantKey);
+    const selected = refrigerantOptions.find((r) => r.key === normalizedEditKey);
     updateRefrigerant({
       id: editingId,
       refrigerantType: selected?.label || editValues.refrigerantKey,
-      refrigerantKey: editValues.refrigerantKey,
+      refrigerantKey: normalizedEditKey,
       leakageKg: Number(editValues.quantity),
       gwp: selected?.gwp || 0,
       month: editValues.month,
@@ -223,8 +230,8 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
     cancelEdit();
   };
 
-  const co2ePreview = (leakageKg, gwp) =>
-    ((leakageKg * gwp) / 1000).toFixed(3);
+  const co2eTonnes = (leakageKg, gwp) => (Number(leakageKg || 0) * Number(gwp || 0)) / 1000;
+  const co2eKg = (leakageKg, gwp) => co2eTonnes(leakageKg, gwp) * 1000;
 
   return (
     <div className="rf-wrap">
@@ -243,7 +250,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
               <th>Refrigerant Type</th>
               <th>Leakage</th>
               <th>GWP</th>
-              <th>CO₂e (t)</th>
+              <th>CO₂e (kg)</th>
               <th>Month</th>
               <th></th>
               </tr>
@@ -256,7 +263,9 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                 </td>
               </tr>
             )}
-            {refrigerants.map((r) => (
+            {refrigerants.map((r) => {
+              const effectiveGwp = factorMap[normalizeRefrigerantKey(r.refrigerantKey)] || r.gwp || 0;
+              return (
               editingId === r.id ? (
                 <tr key={r.id}>
                   <td>
@@ -277,13 +286,18 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                       <span className="rf-unit-tag">kg</span>
                     </div>
                   </td>
-                  <td><span className="rf-badge">{refrigerantOptions.find((item) => item.key === editValues.refrigerantKey)?.gwp?.toLocaleString() || "—"}</span></td>
+                  <td><span className="rf-badge">{refrigerantOptions.find((item) => item.key === normalizeRefrigerantKey(editValues.refrigerantKey))?.gwp?.toLocaleString() || "—"}</span></td>
                   <td>
                     <span className="rf-co2e">
-                      {refrigerantOptions.find((item) => item.key === editValues.refrigerantKey) && editValues.quantity
-                        ? co2ePreview(Number(editValues.quantity), refrigerantOptions.find((item) => item.key === editValues.refrigerantKey).gwp)
+                      {refrigerantOptions.find((item) => item.key === normalizeRefrigerantKey(editValues.refrigerantKey)) && editValues.quantity
+                        ? co2eKg(Number(editValues.quantity), refrigerantOptions.find((item) => item.key === normalizeRefrigerantKey(editValues.refrigerantKey)).gwp).toLocaleString(undefined, { maximumFractionDigits: 2 })
                         : "—"}
                     </span>
+                    {refrigerantOptions.find((item) => item.key === normalizeRefrigerantKey(editValues.refrigerantKey)) && editValues.quantity && (
+                      <div className="rf-tonnes-note">
+                        ({co2eTonnes(Number(editValues.quantity), refrigerantOptions.find((item) => item.key === normalizeRefrigerantKey(editValues.refrigerantKey)).gwp).toFixed(3)} t)
+                      </div>
+                    )}
                   </td>
                   <td>
                     <ThemedSelect
@@ -307,10 +321,11 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                   <span className="rf-unit"> kg</span>
                 </td>
                 <td>
-                  <span className="rf-badge">{r.gwp?.toLocaleString()}</span>
+                  <span className="rf-badge">{effectiveGwp?.toLocaleString()}</span>
                 </td>
                 <td>
-                  <span className="rf-co2e">{co2ePreview(r.leakageKg, r.gwp)}</span>
+                  <span className="rf-co2e">{co2eKg(r.leakageKg, effectiveGwp).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                  <div className="rf-tonnes-note">({co2eTonnes(r.leakageKg, effectiveGwp).toFixed(3)} t)</div>
                 </td>
                 <td>{r.month || "—"}</td>
                 <td>
@@ -322,13 +337,15 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                   </button>
                 </td>
               </tr>
-            )))}
+              )
+            );
+            })}
 
             <tr className="rf-add-row">
               <td>
                 <ThemedSelect
                   value={refrigerantKey}
-                  onChange={setRefrigerantKey}
+                  onChange={(v) => setRefrigerantKey(normalizeRefrigerantKey(v))}
                   options={refrigerantOptions.map((r) => ({
                     value: r.key,
                     label: `${r.label} (GWP: ${r.gwp})`,
@@ -359,9 +376,12 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
               <td>
                 <span className="rf-preview rf-co2e">
                   {selectedRefrigerant && quantity
-                    ? co2ePreview(Number(quantity), selectedRefrigerant.gwp)
+                    ? co2eKg(Number(quantity), selectedRefrigerant.gwp).toLocaleString(undefined, { maximumFractionDigits: 2 })
                     : "—"}
                 </span>
+                {selectedRefrigerant && quantity && (
+                  <div className="rf-tonnes-note">({co2eTonnes(Number(quantity), selectedRefrigerant.gwp).toFixed(3)} t)</div>
+                )}
               </td>
               <td>
                 <ThemedSelect
@@ -440,6 +460,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
         }
 
         .rf-co2e { font-weight: 500; color: #2E7D64; }
+        .rf-tonnes-note { font-size: 11px; color: #6B7280; margin-top: 2px; }
         .rf-preview { font-size: 13px; color: #6B7280; }
 
         .rf-delete {

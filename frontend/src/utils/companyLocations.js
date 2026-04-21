@@ -22,7 +22,20 @@ export function getValidCountryValuesForRegion(region) {
   return (countriesByRegion[region] || []).map((c) => c.value);
 }
 
+function normalizeCountryValue(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+}
+
 export function filterLocationsForRegion(region, locations = []) {
   const valid = new Set(getValidCountryValuesForRegion(region));
-  return (locations || []).filter((loc) => loc?.country && valid.has(loc.country));
+  return (locations || []).filter((loc) => {
+    const country = normalizeCountryValue(loc?.country);
+    return country && valid.has(country);
+  }).map((loc) => ({
+    ...loc,
+    country: normalizeCountryValue(loc?.country),
+  }));
 }
