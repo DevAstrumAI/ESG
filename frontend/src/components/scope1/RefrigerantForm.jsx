@@ -35,6 +35,35 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
+const REFRIGERANT_LABEL_BY_KEY = REFRIGERANT_TYPES.reduce((acc, item) => {
+  acc[item.key] = item.label;
+  return acc;
+}, {});
+
+const isRefrigerantKey = (key) => {
+  const low = String(key || "").toLowerCase();
+  return /^r\d/.test(low) || low.includes("hfc") || low.includes("hcfc") || low.includes("pfc") || low.includes("sf6");
+};
+
+const toNum = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const factorValue = (raw) => {
+  if (raw && typeof raw === "object") {
+    return toNum(raw.value ?? raw.factor ?? raw.emissionFactor ?? 0);
+  }
+  return toNum(raw);
+};
+
+const titleFromKey = (key) => {
+  const mapped = REFRIGERANT_LABEL_BY_KEY[key];
+  if (mapped) return mapped;
+  const t = String(key || "");
+  return t ? t.toUpperCase() : "Refrigerant";
+};
+
 export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const refrigerants    = useEmissionStore((s) => s.scope1Refrigerants);
   const addRefrigerant  = useEmissionStore((s) => s.addScope1Refrigerant);
@@ -89,6 +118,12 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const [quantity, setQuantity]             = useState("");
   const [month, setMonth]                   = useState(reportingMonth || currentMonth());
   const [addRowError, setAddRowError] = useState("");
+  const [factorMap, setFactorMap] = useState(() =>
+    REFRIGERANT_TYPES.reduce((acc, item) => {
+      acc[item.key] = item.gwp;
+      return acc;
+    }, {})
+  );
 
   useEffect(() => {
     if (reportingMonth) {
@@ -96,7 +131,49 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
     }
   }, [reportingMonth]);
 
-  const selectedRefrigerant = REFRIGERANT_TYPES.find((r) => r.key === refrigerantKey);
+  useEffect(() => {
+    const loadRefrigerantFactors = async () => {
+      if (!token) return;
+      const loc = getSelectedLocation(company);
+      if (!loc?.country || !loc?.city) return;
+      try {
+        const response = await emissionsAPI.getFactors(token, loc.country, loc.city);
+        const scope1 = response?.factors?.scope1 || {};
+        const group = scope1?.refrigerants && typeof scope1.refrigerants === "object" ? scope1.refrigerants : {};
+        const merged = {};
+
+        Object.entries(group).forEach(([key, raw]) => {
+          const v = factorValue(raw);
+          if (v > 0) merged[String(key).toLowerCase()] = v;
+        });
+
+        Object.entries(scope1).forEach(([key, raw]) => {
+          const normalized = String(key).toLowerCase();
+          if (!isRefrigerantKey(normalized)) return;
+          const v = factorValue(raw);
+          if (v > 0) merged[normalized] = v;
+        });
+
+        if (Object.keys(merged).length > 0) {
+          setFactorMap((prev) => ({ ...prev, ...merged }));
+        }
+      } catch (error) {
+        console.warn("Failed to load refrigerant factors, using default GWP values:", error);
+      }
+    };
+    loadRefrigerantFactors();
+  }, [token, company, getSelectedLocation]);
+
+  const refrigerantOptions = Object.entries(factorMap)
+    .map(([key, gwp]) => ({
+      key,
+      label: titleFromKey(key),
+      gwp: toNum(gwp),
+    }))
+    .filter((item) => item.gwp > 0)
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const selectedRefrigerant = refrigerantOptions.find((r) => r.key === refrigerantKey);
 
   const handleAddRow = () => {
     if (!refrigerantKey) {
@@ -134,7 +211,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   };
   const saveEdit = () => {
     if (!editValues.refrigerantKey || editValues.quantity === "") return;
-    const selected = REFRIGERANT_TYPES.find((r) => r.key === editValues.refrigerantKey);
+    const selected = refrigerantOptions.find((r) => r.key === editValues.refrigerantKey);
     updateRefrigerant({
       id: editingId,
       refrigerantType: selected?.label || editValues.refrigerantKey,
@@ -186,7 +263,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                     <ThemedSelect
                       value={editValues.refrigerantKey}
                       onChange={(nextValue) => setEditValues({ ...editValues, refrigerantKey: nextValue })}
-                      options={REFRIGERANT_TYPES.map((item) => ({
+                      options={refrigerantOptions.map((item) => ({
                         value: item.key,
                         label: `${item.label} (GWP: ${item.gwp})`,
                       }))}
@@ -200,11 +277,11 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                       <span className="rf-unit-tag">kg</span>
                     </div>
                   </td>
-                  <td><span className="rf-badge">{REFRIGERANT_TYPES.find((item) => item.key === editValues.refrigerantKey)?.gwp?.toLocaleString() || "—"}</span></td>
+                  <td><span className="rf-badge">{refrigerantOptions.find((item) => item.key === editValues.refrigerantKey)?.gwp?.toLocaleString() || "—"}</span></td>
                   <td>
                     <span className="rf-co2e">
-                      {REFRIGERANT_TYPES.find((item) => item.key === editValues.refrigerantKey) && editValues.quantity
-                        ? co2ePreview(Number(editValues.quantity), REFRIGERANT_TYPES.find((item) => item.key === editValues.refrigerantKey).gwp)
+                      {refrigerantOptions.find((item) => item.key === editValues.refrigerantKey) && editValues.quantity
+                        ? co2ePreview(Number(editValues.quantity), refrigerantOptions.find((item) => item.key === editValues.refrigerantKey).gwp)
                         : "—"}
                     </span>
                   </td>
@@ -252,7 +329,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                 <ThemedSelect
                   value={refrigerantKey}
                   onChange={setRefrigerantKey}
-                  options={REFRIGERANT_TYPES.map((r) => ({
+                  options={refrigerantOptions.map((r) => ({
                     value: r.key,
                     label: `${r.label} (GWP: ${r.gwp})`,
                   }))}
