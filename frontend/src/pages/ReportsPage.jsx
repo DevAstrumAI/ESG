@@ -430,7 +430,59 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>6. Category-Level Recommendations</h4>
+                  <h4>6. Methodology Disclosure</h4>
+                  <div className="breakdown-list">
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">Organisational Boundary</span>
+                      <span className="breakdown-value">{aiReport.report_standard.section_6_methodology_disclosure?.organisational_boundary || "—"}</span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">Reporting Standard</span>
+                      <span className="breakdown-value">{aiReport.report_standard.section_6_methodology_disclosure?.reporting_standard || "—"}</span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">GWP Basis</span>
+                      <span className="breakdown-value">{aiReport.report_standard.section_6_methodology_disclosure?.gwp_basis || "—"}</span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">Scope 2 Method</span>
+                      <span className="breakdown-value">{aiReport.report_standard.section_6_methodology_disclosure?.scope2_method || "—"}</span>
+                    </div>
+                  </div>
+                  <div className="card16-cert-table-wrap" style={{ marginTop: "10px" }}>
+                    <table className="card16-cert-table">
+                      <thead>
+                        <tr>
+                          <th>Region</th>
+                          <th>Scope 1 Source</th>
+                          <th>Scope 2 Source</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(aiReport.report_standard.section_6_methodology_disclosure?.factor_source_table || []).map((row, idx) => (
+                          <tr key={idx}>
+                            <td>{row.region}</td>
+                            <td>{row.scope1_source}</td>
+                            <td>{row.scope2_source}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="card16-biogenic" style={{ marginTop: "12px" }}>
+                    <ul className="card16-biogenic-list">
+                      <li>
+                        <span><strong>Biogenic Exclusion:</strong> {aiReport.report_standard.section_6_methodology_disclosure?.biogenic_exclusion_note || "—"}</span>
+                      </li>
+                      <li>
+                        <span><strong>Scope 3 Exclusion:</strong> {aiReport.report_standard.section_6_methodology_disclosure?.scope3_exclusion_note || "—"}</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="report-section">
+                  <h4>7. Category-Level Recommendations</h4>
                   {(aiReport.report_standard.section_3_7_category_recommendations || []).map((rec, idx) => (
                     <div key={idx} className="recommendation-card">
                       <div className="rec-header">
@@ -448,7 +500,7 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>7. Report Export Formats</h4>
+                  <h4>8. Report Export Formats</h4>
                   <div className="card16-cert-table-wrap">
                     <table className="card16-cert-table">
                       <thead><tr><th>Format</th><th>Audience</th><th>Content</th></tr></thead>

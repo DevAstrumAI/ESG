@@ -607,6 +607,75 @@ Return JSON only: {{"variance_explanation":"..."}}
         return ""
 
 
+def _collect_sources_from_factor_doc(node, acc: list[str]) -> None:
+    if isinstance(node, dict):
+        src = node.get("source")
+        if isinstance(src, str) and src.strip():
+            acc.append(src.strip())
+        for value in node.values():
+            _collect_sources_from_factor_doc(value, acc)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_sources_from_factor_doc(item, acc)
+
+
+def _pick_primary_source(source_list: list[str]) -> str:
+    if not source_list:
+        return "Not specified in factor records"
+    freq: dict[str, int] = {}
+    for s in source_list:
+        freq[s] = freq.get(s, 0) + 1
+    return sorted(freq.items(), key=lambda x: (-x[1], x[0]))[0][0]
+
+
+def _fetch_factor_doc(db, region: str, country: str, city: str, scope: str) -> dict:
+    candidate_paths = [
+        f"emissionFactors/regions/{region}/countries/{country}/cities/city_data/{city}/{scope}/factors",
+        f"emissionFactors/regions/{region}/countries/{country}/cities/city_data/{city}/('{scope}',)/factors",
+    ]
+    for p in candidate_paths:
+        snap = db.document(p).get()
+        if snap.exists:
+            return snap.to_dict() or {}
+    return {}
+
+
+def build_methodology_section(db, countries: list[str]) -> dict:
+    # Country anchors for methodology factor-source table.
+    country_anchor_map = {
+        "uae": {"region_label": "UAE", "region": "middle-east", "country": "uae", "city": "dubai"},
+        "singapore": {"region_label": "Singapore", "region": "southeast-asia", "country": "singapore", "city": "singapore"},
+        "saudi-arabia": {"region_label": "Saudi Arabia", "region": "middle-east", "country": "saudi-arabia", "city": "riyadh"},
+    }
+
+    normalized_countries = sorted({_norm_loc(c) for c in (countries or []) if _norm_loc(c)})
+    anchors = [country_anchor_map[c] for c in normalized_countries if c in country_anchor_map]
+
+    factor_source_rows = []
+    for a in anchors:
+        s1_doc = _fetch_factor_doc(db, a["region"], a["country"], a["city"], "scope1")
+        s2_doc = _fetch_factor_doc(db, a["region"], a["country"], a["city"], "scope2")
+        s1_sources: list[str] = []
+        s2_sources: list[str] = []
+        _collect_sources_from_factor_doc(s1_doc, s1_sources)
+        _collect_sources_from_factor_doc(s2_doc, s2_sources)
+        factor_source_rows.append({
+            "region": a["region_label"],
+            "scope1_source": _pick_primary_source(s1_sources),
+            "scope2_source": _pick_primary_source(s2_sources),
+        })
+
+    return {
+        "organisational_boundary": "Operational control approach — emissions are reported for assets/facilities under operational control.",
+        "reporting_standard": "GHG Protocol Corporate Accounting and Reporting Standard (2015 edition)",
+        "gwp_basis": "IPCC AR5 GWP100 values",
+        "scope2_method": "Location-based and market-based are both calculated and disclosed separately.",
+        "factor_source_table": factor_source_rows,
+        "biogenic_exclusion_note": "Biogenic emissions are reported separately and excluded from Scope 1 totals.",
+        "scope3_exclusion_note": "Scope 3 emissions are excluded from this report at the current stage.",
+    }
+
+
 def fetch_historical_totals(
     company_id: str,
     base_year: int,
@@ -1194,6 +1263,7 @@ async def generate_report(
 
     try:
         company_id, company_data = get_company_id(uid)
+        db = get_db()
         client = get_openai_client()
 
         year      = body.get("year", datetime.utcnow().year)
@@ -1342,7 +1412,7 @@ async def generate_report(
         else:
             report_title = f"GHG Emissions Report — {year}"
         report_period = month if month else f"January {year} – December {year}"
-        prepared_with = "Lumyna ESG Calculator, AstrumAI v1.0"
+        prepared_with = "Lumyina ESG Calculator, AstrumAI v1.0"
 
         # Section 3.7 card-style recommendations (already deterministic-first)
         category_recommendations = [
@@ -1365,6 +1435,17 @@ async def generate_report(
             }
             for r in enriched_recs
         ]
+
+        configured_countries = sorted({
+            _norm_loc(loc.get("country"))
+            for loc in (company_data.get("locations") or [])
+            if _norm_loc(loc.get("country"))
+        })
+        methodology_countries = (
+            [selected_country]
+            if _norm_loc(selected_country)
+            else configured_countries
+        )
 
         def t(kg): return round(kg / 1000, 4)
 
@@ -1550,6 +1631,7 @@ async def generate_report(
                 "section_3_3_scope1_detail": build_scope1_section(scope1_docs, s1["total"]),
                 "section_3_4_scope2_detail": build_scope2_section(s2, scope2_docs, enriched_recs),
                 "section_3_5_yoy_comparison": yoy_section,
+                "section_6_methodology_disclosure": build_methodology_section(db, methodology_countries),
                 "section_3_7_category_recommendations": category_recommendations,
                 "section_3_10_export_formats": [
                     {"format": "PDF (branded)", "audience": "Board, regulators, public disclosure", "content": "Full formatted report with charts, tables, and company branding"},
