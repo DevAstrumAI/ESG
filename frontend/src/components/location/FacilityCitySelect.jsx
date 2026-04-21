@@ -13,7 +13,7 @@ function labelForLocation(loc) {
   return `${loc.city}, ${c}`;
 }
 
-export default function FacilityCitySelect({ company, disabled }) {
+export default function FacilityCitySelect({ company, disabled, menuDirection = "up" }) {
   const locationKeyVal = useSelectedLocationStore((s) => s.locationKey);
   const setLocationKey = useSelectedLocationStore((s) => s.setLocationKey);
   const locs = company?.locations || [];
@@ -75,6 +75,7 @@ export default function FacilityCitySelect({ company, disabled }) {
           placeholder="Select Country"
           disabled={disabled}
           className="location-select"
+          menuDirection={menuDirection}
         />
       </div>
       <div className="selector-block">
@@ -86,6 +87,7 @@ export default function FacilityCitySelect({ company, disabled }) {
           placeholder="Select City"
           disabled={disabled}
           className="location-select"
+          menuDirection={menuDirection}
         />
       </div>
       <div className="selected-text" title={labelForLocation(selectedLocation || locs[0])}>

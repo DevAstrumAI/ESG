@@ -432,11 +432,12 @@ export default function Scope1Page() {
                   onChange={handleMonthChange}
                   options={monthOptions}
                   placeholder="Reporting Period"
+                  menuDirection="down"
                 />
               </div>
             </div>
             <div className="location-selector-wrap">
-              <FacilityCitySelect company={company} />
+              <FacilityCitySelect company={company} menuDirection="down" />
             </div>
           </div>
           <div className="month-hint">

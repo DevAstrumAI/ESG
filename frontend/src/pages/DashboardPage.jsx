@@ -693,10 +693,11 @@ export default function DashboardPage() {
               }))}
               placeholder="Reporting Year"
               className="year-themed-select"
+              menuDirection="down"
             />
           </div>
           {company?.locations?.length > 0 && (
-            <FacilityCitySelect company={company} />
+            <FacilityCitySelect company={company} menuDirection="down" />
           )}
           <button onClick={handleRefresh} className="refresh-btn" disabled={refreshing}>
             <FiRefreshCw className={refreshing ? "spin" : ""} />

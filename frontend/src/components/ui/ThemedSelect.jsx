@@ -9,6 +9,7 @@ export default function ThemedSelect({
   placeholder = "Select an option",
   disabled = false,
   className = "",
+  menuDirection = "up",
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
@@ -38,11 +39,20 @@ export default function ThemedSelect({
       const triggerEl = triggerRef.current;
       if (!triggerEl) return;
       const rect = triggerEl.getBoundingClientRect();
-      setMenuStyle({
-        bottom: window.innerHeight - rect.top + 6,
-        left: rect.left,
-        width: rect.width,
-      });
+      const isDown = menuDirection === "down";
+      setMenuStyle(
+        isDown
+          ? {
+              top: rect.bottom + 6,
+              left: rect.left,
+              width: rect.width,
+            }
+          : {
+              bottom: window.innerHeight - rect.top + 6,
+              left: rect.left,
+              width: rect.width,
+            }
+      );
     };
     updateMenuPosition();
     window.addEventListener("resize", updateMenuPosition);
@@ -51,7 +61,7 @@ export default function ThemedSelect({
       window.removeEventListener("resize", updateMenuPosition);
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [open]);
+  }, [open, menuDirection]);
 
   const handleSelect = (nextValue) => {
     setOpen(false);
