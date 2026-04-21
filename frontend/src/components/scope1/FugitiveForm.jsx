@@ -8,21 +8,9 @@ import { useCompanyStore } from "../../store/companyStore";
 import { useSelectedLocationStore } from "../../store/selectedLocationStore";
 import ThemedSelect from "../ui/ThemedSelect";
 
-const SOURCE_TYPES = [
-  { label: "Pipeline Leaks",          key: "methane" },
-  { label: "Valve Leaks",             key: "methane" },
-  { label: "Flange Leaks",            key: "methane" },
-  { label: "Compressor Seals",        key: "methane" },
-  { label: "Storage Tanks",           key: "methane" },
-  { label: "Pressure Relief Devices", key: "methane" },
-  { label: "Open-ended Lines",        key: "methane" },
-  { label: "Sampling Connections",    key: "methane" },
-  { label: "Wastewater Treatment",    key: "n2o"     },
-  { label: "Cooling Towers",          key: "methane" },
-  { label: "Coal Mining",             key: "methane" },
-  { label: "Oil & Gas Extraction",    key: "methane" },
-  { label: "Landfills",               key: "methane" },
-  { label: "Other",                   key: "methane" },
+const DEFAULT_GAS_TYPES = [
+  { label: "Methane Leak", key: "methane" },
+  { label: "N2O Leak", key: "n2o" },
 ];
 
 const MONTHS = [
@@ -36,6 +24,24 @@ const MONTHS = [
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+};
+
+const toNum = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const isRefrigerantLike = (key) => {
+  const low = String(key || "").toLowerCase();
+  return /^r\d/.test(low) || low.includes("hfc") || low.includes("pfc") || low.includes("sf6");
+};
+
+const titleCaseKey = (key) => {
+  const low = String(key || "").toLowerCase();
+  if (low === "n2o") return "N2O Leak";
+  if (low === "methane") return "Methane Leak";
+  if (low) return `${low.toUpperCase()} Leak`;
+  return "Gas Leak";
 };
 
 export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
@@ -92,6 +98,7 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
   const [quantity, setQuantity]       = useState("");
   const [month, setMonth]             = useState(reportingMonth || currentMonth());
   const [addRowError, setAddRowError] = useState("");
+  const [gasTypes, setGasTypes] = useState(DEFAULT_GAS_TYPES);
 
   useEffect(() => {
     if (reportingMonth) {
@@ -99,7 +106,38 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
     }
   }, [reportingMonth]);
 
-  const selectedSource = SOURCE_TYPES.find((s) => s.label === source);
+  useEffect(() => {
+    const loadGasTypes = async () => {
+      if (!token) return;
+      const loc = getSelectedLocation(company);
+      if (!loc?.country || !loc?.city) return;
+      try {
+        const res = await emissionsAPI.getFactors(token, loc.country, loc.city);
+        const scope1 = res?.factors?.scope1 || {};
+        const fugitive = scope1?.fugitive && typeof scope1.fugitive === "object" ? scope1.fugitive : {};
+        const entries = Object.entries(fugitive)
+          .filter(([key]) => !isRefrigerantLike(key))
+          .map(([key, data]) => ({
+            key: String(key).toLowerCase(),
+            label: data?.name ? String(data.name).replace(/\s*\(.*?\)\s*/g, "").trim() : titleCaseKey(key),
+            value: toNum(data?.value ?? data?.factor ?? data?.emissionFactor ?? data),
+          }))
+          .filter((x) => x.key && x.value > 0);
+
+        if (entries.length > 0) {
+          setGasTypes(entries.map((x) => ({ key: x.key, label: x.label })));
+        } else {
+          setGasTypes(DEFAULT_GAS_TYPES);
+        }
+      } catch (e) {
+        console.warn("Failed to load fugitive gas keys; using defaults", e);
+        setGasTypes(DEFAULT_GAS_TYPES);
+      }
+    };
+    loadGasTypes();
+  }, [token, company, getSelectedLocation]);
+
+  const selectedSource = gasTypes.find((s) => s.label === source);
 
   const handleAddRow = () => {
     if (!source) {
@@ -137,7 +175,7 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
   };
   const saveEdit = () => {
     if (!editValues.source || editValues.quantity === "") return;
-    const selected = SOURCE_TYPES.find((item) => item.label === editValues.source);
+    const selected = gasTypes.find((item) => item.label === editValues.source);
     updateFugitive({
       id: editingId,
       source: editValues.source,
@@ -185,14 +223,14 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
                     <ThemedSelect
                       value={editValues.source}
                       onChange={(nextValue) => setEditValues({ ...editValues, source: nextValue })}
-                      options={SOURCE_TYPES.map((s) => ({ value: s.label, label: s.label }))}
+                      options={gasTypes.map((s) => ({ value: s.label, label: s.label }))}
                       placeholder="Select Source"
                       className="fg-select"
                     />
                   </td>
                   <td>
                     <span className="fg-preview">
-                      {SOURCE_TYPES.find((s) => s.label === editValues.source)?.key || "—"}
+                      {gasTypes.find((s) => s.label === editValues.source)?.key || "—"}
                     </span>
                   </td>
                   <td>
@@ -242,7 +280,7 @@ export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
                 <ThemedSelect
                   value={source}
                   onChange={setSource}
-                  options={SOURCE_TYPES.map((s) => ({ value: s.label, label: s.label }))}
+                  options={gasTypes.map((s) => ({ value: s.label, label: s.label }))}
                   placeholder="Select Source"
                   className="fg-select"
                 />
