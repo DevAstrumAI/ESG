@@ -33,6 +33,7 @@ import FacilityCitySelect from "../components/location/FacilityCitySelect";
 import Card from "../components/ui/Card";
 import ThemedSelect from "../components/ui/ThemedSelect";
 import WhatIfScenarioBuilder from "../components/dashboard/WhatIfScenarioBuilder";
+import SeasonalPatternCard from "../components/dashboard/SeasonalPatternCard";
 import {
   ResponsiveContainer,
   LineChart,
@@ -1158,6 +1159,11 @@ export default function DashboardPage() {
         annualTargetT={targetT || 0}
         scope1Results={scope1Results}
         scope2Results={scope2Results}
+      />
+      <SeasonalPatternCard
+        token={token}
+        year={selectedYear}
+        selectedFacility={selectedFacility}
       />
       </>
       )}
