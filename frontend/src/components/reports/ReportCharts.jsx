@@ -89,7 +89,8 @@ export default function ReportCharts({ charts }) {
         "Refrigerant Leakage": COLORS.refrigerant,
         "Fugitive Emissions": COLORS.fugitive,
         "Electricity": COLORS.electricity,
-        "Heating & Cooling": COLORS.heating
+        "Heating & Cooling": COLORS.heating,
+        "Renewables (reported)": "#10B981",
       };
       return colorMap[category] || "#6B7280";
     };
