@@ -3,6 +3,8 @@ from fastapi.responses import StreamingResponse
 from app.middleware.auth import get_current_user
 from app.utils.firebase import get_db
 from app.services.calculator import BIOGENIC_FUEL_TYPES
+from app.utils.location_resolver import resolve_location
+from app.utils.location_resolver import resolve_location
 from datetime import datetime
 import openai
 import os
@@ -742,6 +744,213 @@ def _pick_primary_source(source_list: list[str]) -> str:
     return sorted(freq.items(), key=lambda x: (-x[1], x[0]))[0][0]
 
 
+def _collect_factor_records_from_doc(node, acc: list[dict]) -> None:
+    if isinstance(node, dict):
+        has_source = isinstance(node.get("source"), str) and node.get("source").strip()
+        has_value = any(k in node for k in ("value", "factor", "emissionFactor"))
+        if has_source and has_value:
+            raw_value = node.get("value", node.get("factor", node.get("emissionFactor")))
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError):
+                value = raw_value
+            acc.append({
+                "name": str(node.get("name") or "Unnamed factor").strip(),
+                "value": value,
+                "unit": str(node.get("unit") or "").strip(),
+                "source": str(node.get("source") or "").strip(),
+            })
+        for value in node.values():
+            _collect_factor_records_from_doc(value, acc)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_factor_records_from_doc(item, acc)
+
+
+def _format_factor_record(rec: dict) -> str:
+    value = rec.get("value")
+    if isinstance(value, (int, float)):
+        value_txt = f"{float(value):.6g}"
+    else:
+        value_txt = str(value or "—")
+    unit_txt = f" {rec.get('unit')}" if rec.get("unit") else ""
+    return f"{rec.get('name')}: {value_txt}{unit_txt} ({rec.get('source')})"
+
+
+def _dedupe_factor_records(records: list[dict]) -> list[dict]:
+    seen = set()
+    out = []
+    for r in records:
+        key = (
+            str(r.get("name") or "").strip().lower(),
+            str(r.get("value")),
+            str(r.get("unit") or "").strip().lower(),
+            str(r.get("source") or "").strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+    return out
+
+
+def _norm_factor_key(value: str) -> str:
+    return str(value or "").strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+
+
+def _lookup_factor_node(scope_doc: dict, key: str, group_candidates: list[str] | None = None) -> dict:
+    if not isinstance(scope_doc, dict):
+        return {}
+    group_candidates = group_candidates or []
+    key_raw = str(key or "").strip()
+    key_norm = _norm_factor_key(key_raw)
+    if not key_raw:
+        return {}
+
+    def _from_container(container: dict) -> dict:
+        if not isinstance(container, dict):
+            return {}
+        if key_raw in container and isinstance(container.get(key_raw), dict):
+            return container.get(key_raw) or {}
+        for k, v in container.items():
+            if _norm_factor_key(k) == key_norm and isinstance(v, dict):
+                return v
+        return {}
+
+    # top-level match
+    node = _from_container(scope_doc)
+    if node:
+        return node
+
+    # grouped match
+    for g in group_candidates:
+        group = scope_doc.get(g)
+        node = _from_container(group if isinstance(group, dict) else {})
+        if node:
+            return node
+
+    # deep one-level fallback
+    for v in scope_doc.values():
+        if isinstance(v, dict):
+            node = _from_container(v)
+            if node:
+                return node
+    return {}
+
+
+def _record_from_factor_node(node: dict) -> dict:
+    raw_value = node.get("value", node.get("factor", node.get("emissionFactor")))
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        value = raw_value
+    return {
+        "name": str(node.get("name") or "Unnamed factor").strip(),
+        "value": value,
+        "unit": str(node.get("unit") or "").strip(),
+        "source": str(node.get("source") or "").strip(),
+    }
+
+
+def _build_used_factor_records(scope1_docs: list[dict], scope2_docs: list[dict], s1_doc: dict, s2_doc: dict) -> tuple[list[dict], list[dict]]:
+    return _build_used_factor_records_for_period(
+        scope1_docs, scope2_docs, s1_doc, s2_doc, allowed_months=None
+    )
+
+
+def _build_used_factor_records_for_period(
+    scope1_docs: list[dict],
+    scope2_docs: list[dict],
+    s1_doc: dict,
+    s2_doc: dict,
+    allowed_months: set[str] | None,
+) -> tuple[list[dict], list[dict]]:
+    s1_used: list[dict] = []
+    s2_used: list[dict] = []
+    month_filter = {str(m) for m in (allowed_months or set())}
+
+    def _entry_in_period(entry: dict, doc_month: str) -> bool:
+        if not month_filter:
+            return True
+        em = str(entry.get("month") or "").strip()
+        if em:
+            return em in month_filter
+        return str(doc_month or "").strip() in month_filter
+
+    for doc in scope1_docs or []:
+        res = doc.get("results") or {}
+        doc_month = str(doc.get("month") or "")
+
+        for e in (res.get("mobile") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s1_doc, e.get("fuelType"), ["mobile"])
+            if node:
+                s1_used.append(_record_from_factor_node(node))
+
+        for e in (res.get("stationary") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s1_doc, e.get("fuelType"), ["stationary"])
+            if node:
+                s1_used.append(_record_from_factor_node(node))
+
+        for e in (res.get("refrigerants") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s1_doc, e.get("refrigerantType"), ["refrigerants", "fugitive"])
+            if node:
+                s1_used.append(_record_from_factor_node(node))
+
+        for e in (res.get("fugitive") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s1_doc, e.get("sourceType"), ["fugitive"])
+            if node:
+                s1_used.append(_record_from_factor_node(node))
+
+    for doc in scope2_docs or []:
+        res = doc.get("results") or {}
+        doc_month = str(doc.get("month") or "")
+
+        for e in (res.get("electricity") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s2_doc, e.get("certificateType"), ["electricity"])
+            if node:
+                s2_used.append(_record_from_factor_node(node))
+
+        for e in (res.get("heating") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s2_doc, e.get("energyType"), ["heating"])
+            if node:
+                s2_used.append(_record_from_factor_node(node))
+
+        for e in (res.get("renewables") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s2_doc, e.get("sourceType"), ["renewables"])
+            if node:
+                s2_used.append(_record_from_factor_node(node))
+
+    return _dedupe_factor_records(s1_used), _dedupe_factor_records(s2_used)
+
+
 def _fetch_factor_doc(db, region: str, country: str, city: str, scope: str) -> dict:
     candidate_paths = [
         f"emissionFactors/regions/{region}/countries/{country}/cities/city_data/{city}/{scope}/factors",
@@ -754,29 +963,75 @@ def _fetch_factor_doc(db, region: str, country: str, city: str, scope: str) -> d
     return {}
 
 
-def build_methodology_section(db, countries: list[str]) -> dict:
+def _fetch_country_scope_doc(db, region: str, country: str, anchor_city: str, scope: str) -> dict:
+    # Try anchor city first.
+    doc = _fetch_factor_doc(db, region, country, anchor_city, scope)
+    if doc:
+        return doc
+
+    # Fallback: iterate all city docs for this country and pick first with valid scope factors.
+    base_path = f"emissionFactors/regions/{region}/countries/{country}/cities/city_data"
+    try:
+        for city_doc in db.collection(base_path).stream():
+            city_key = city_doc.id
+            candidate = _fetch_factor_doc(db, region, country, city_key, scope)
+            if candidate:
+                return candidate
+    except Exception:
+        pass
+    return {}
+
+
+def build_methodology_section(
+    db,
+    countries: list[str],
+    *,
+    scope1_docs: list[dict] | None = None,
+    scope2_docs: list[dict] | None = None,
+    allowed_months: set[str] | None = None,
+) -> dict:
     # Country anchors for methodology factor-source table.
     country_anchor_map = {
-        "uae": {"region_label": "UAE", "region": "middle-east", "country": "uae", "city": "dubai"},
-        "singapore": {"region_label": "Singapore", "region": "southeast-asia", "country": "singapore", "city": "singapore"},
-        "saudi-arabia": {"region_label": "Saudi Arabia", "region": "middle-east", "country": "saudi-arabia", "city": "riyadh"},
+        "uae": {"region_label": "UAE", "anchor_city": "dubai"},
+        "singapore": {"region_label": "Singapore", "anchor_city": "singapore"},
+        "saudi-arabia": {"region_label": "Saudi Arabia", "anchor_city": "riyadh"},
     }
 
     normalized_countries = sorted({_norm_loc(c) for c in (countries or []) if _norm_loc(c)})
-    anchors = [country_anchor_map[c] for c in normalized_countries if c in country_anchor_map]
+    anchors = [
+        {"country_key": c, **country_anchor_map[c]}
+        for c in normalized_countries
+        if c in country_anchor_map
+    ]
 
     factor_source_rows = []
     for a in anchors:
-        s1_doc = _fetch_factor_doc(db, a["region"], a["country"], a["city"], "scope1")
-        s2_doc = _fetch_factor_doc(db, a["region"], a["country"], a["city"], "scope2")
+        resolved_region, resolved_country, resolved_city = resolve_location(
+            a["country_key"], a["anchor_city"]
+        )
+        s1_doc = _fetch_country_scope_doc(db, resolved_region, resolved_country, resolved_city, "scope1")
+        s2_doc = _fetch_country_scope_doc(db, resolved_region, resolved_country, resolved_city, "scope2")
         s1_sources: list[str] = []
         s2_sources: list[str] = []
+        s1_records: list[dict] = []
+        s2_records: list[dict] = []
         _collect_sources_from_factor_doc(s1_doc, s1_sources)
         _collect_sources_from_factor_doc(s2_doc, s2_sources)
+        if scope1_docs is not None and scope2_docs is not None:
+            s1_records, s2_records = _build_used_factor_records_for_period(
+                scope1_docs, scope2_docs, s1_doc, s2_doc, allowed_months=allowed_months
+            )
+        else:
+            _collect_factor_records_from_doc(s1_doc, s1_records)
+            _collect_factor_records_from_doc(s2_doc, s2_records)
+            s1_records = _dedupe_factor_records(s1_records)
+            s2_records = _dedupe_factor_records(s2_records)
         factor_source_rows.append({
             "region": a["region_label"],
-            "scope1_source": _pick_primary_source(s1_sources),
-            "scope2_source": _pick_primary_source(s2_sources),
+            "scope1_source": _pick_primary_source([r.get("source") for r in s1_records if r.get("source")] or s1_sources),
+            "scope2_source": _pick_primary_source([r.get("source") for r in s2_records if r.get("source")] or s2_sources),
+            "scope1_factors_used": [_format_factor_record(r) for r in s1_records[:12]],
+            "scope2_factors_used": [_format_factor_record(r) for r in s2_records[:12]],
         })
 
     return {
@@ -1520,12 +1775,29 @@ async def generate_report(
         if ai_yoy_text:
             yoy_section["ai_variance_explanation"] = ai_yoy_text
 
-        # Section 3.1 cover/metadata
+        # Section 3.1 cover/metadata (fiscal-year aligned period labels)
+        fiscal_months = [
+            f"{year}-06", f"{year}-07", f"{year}-08",
+            f"{year}-09", f"{year}-10", f"{year}-11",
+            f"{year}-12", f"{year + 1}-01", f"{year + 1}-02",
+            f"{year + 1}-03", f"{year + 1}-04", f"{year + 1}-05",
+        ]
+        quarter_ranges = {
+            "Q1": (f"{year}-06", f"{year}-08"),
+            "Q2": (f"{year}-09", f"{year}-11"),
+            "Q3": (f"{year}-12", f"{year + 1}-02"),
+            "Q4": (f"{year + 1}-03", f"{year + 1}-05"),
+        }
         if period_type == "quarterly" and quarter:
             report_title = f"Quarterly ESG Report — {quarter} {year}"
+            q_start, q_end = quarter_ranges.get(quarter, (f"{year}-06", f"{year}-08"))
+            report_period = f"{q_start} – {q_end}"
+        elif period_type == "monthly" and month:
+            report_title = f"GHG Emissions Report — {month}"
+            report_period = month
         else:
             report_title = f"GHG Emissions Report — {year}"
-        report_period = month if month else f"January {year} – December {year}"
+            report_period = f"{fiscal_months[0]} – {fiscal_months[-1]}"
         prepared_with = "Lumyina ESG Calculator, AstrumAI v1.0"
 
         # Section 3.7 card-style recommendations (already deterministic-first)
@@ -1562,6 +1834,11 @@ async def generate_report(
         )
 
         def t(kg): return round(kg / 1000, 4)
+        allowed_months_for_methodology: set[str] | None = None
+        if month:
+            allowed_months_for_methodology = {str(month)}
+        elif period_type == "quarterly" and quarter:
+            allowed_months_for_methodology = set(_quarter_months(year, quarter))
 
         trend_milestone_years = {2025, 2026, 2027, 2028, 2029, 2030, 2035, 2040, 2045, 2050}
 
@@ -1745,14 +2022,14 @@ async def generate_report(
                 "section_3_3_scope1_detail": build_scope1_section(scope1_docs, s1["total"]),
                 "section_3_4_scope2_detail": build_scope2_section(s2, scope2_docs, enriched_recs),
                 "section_3_5_yoy_comparison": yoy_section,
-                "section_6_methodology_disclosure": build_methodology_section(db, methodology_countries),
+                "section_6_methodology_disclosure": build_methodology_section(
+                    db,
+                    methodology_countries,
+                    scope1_docs=scope1_docs,
+                    scope2_docs=scope2_docs,
+                    allowed_months=allowed_months_for_methodology,
+                ),
                 "section_3_7_category_recommendations": category_recommendations,
-                "section_3_10_export_formats": [
-                    {"format": "PDF (branded)", "audience": "Board, regulators, public disclosure", "content": "Full formatted report with charts, tables, and company branding"},
-                    {"format": "Excel / CSV", "audience": "Auditors, finance teams", "content": "Raw monthly data, emission factors used, calculated totals"},
-                    {"format": "GRI-aligned data table", "audience": "Sustainability frameworks, ESG ratings", "content": "Structured table mapping data to GRI 305 disclosures"},
-                    {"format": "JSON / API", "audience": "Third-party ESG platforms", "content": "Machine-readable emissions summary for integrations"},
-                ],
             },
         }
 
