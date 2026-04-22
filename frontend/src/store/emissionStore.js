@@ -63,6 +63,13 @@ function getRegionFromCountry(country) {
   return 'middle-east';
 }
 
+function normalizeLocationValue(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-');
+}
+
 export const useEmissionStore = create((set, get) => ({
   // ─── State ────────────────────────────────────────────────────────────────
   scope1Vehicles:    [],
@@ -622,8 +629,8 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
         companyStore.company?.locations?.find((loc) => loc.isPrimary) ||
         companyStore.company?.locations?.[0];
 
-      const country = selectedLoc?.country || 'uae';
-      const city = (selectedLoc?.city || 'dubai').toLowerCase();
+      const country = normalizeLocationValue(selectedLoc?.country || 'uae');
+      const city = normalizeLocationValue(selectedLoc?.city || 'dubai');
       const region =
         companyStore.company?.basicInfo?.region || getRegionFromCountry(country);
 
@@ -718,8 +725,8 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
         companyStore.company?.locations?.find((loc) => loc.isPrimary) ||
         companyStore.company?.locations?.[0];
 
-      const country = selectedLoc?.country || 'uae';
-      const city = (selectedLoc?.city || 'dubai').toLowerCase();
+      const country = normalizeLocationValue(selectedLoc?.country || 'uae');
+      const city = normalizeLocationValue(selectedLoc?.city || 'dubai');
       const region =
         companyStore.company?.basicInfo?.region || getRegionFromCountry(country);
 
