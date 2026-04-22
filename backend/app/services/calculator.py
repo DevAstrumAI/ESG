@@ -156,12 +156,33 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
     # Firestore emission factor documents are stored in a couple of different shapes.
     # Current observed shape: fuel types (e.g., `diesel_bus`, `cng`, `methane`) exist at the top level
     # rather than nested under `mobile`/`stationary`/`fugitive`. We support both.
+    def _norm_factor_key(value: str) -> str:
+        return str(value or "").strip().lower().replace("-", "").replace(" ", "")
+
     def _get_factor(fuel_key: str, group_keys: list[str]) -> dict:
+        direct_key = str(fuel_key or "")
+        normalized_key = _norm_factor_key(direct_key)
         for group_key in group_keys:
             group = factors.get(group_key)
-            if isinstance(group, dict) and fuel_key in group:
-                return _coerce_factor_data(group.get(fuel_key))
-        return _coerce_factor_data(factors.get(fuel_key))
+            if not isinstance(group, dict):
+                continue
+            if direct_key in group:
+                return _coerce_factor_data(group.get(direct_key))
+            if normalized_key in group:
+                return _coerce_factor_data(group.get(normalized_key))
+            # final fallback: normalize each key once for mixed formats like "R-134a"
+            for k, v in group.items():
+                if _norm_factor_key(k) == normalized_key:
+                    return _coerce_factor_data(v)
+
+        if direct_key in factors:
+            return _coerce_factor_data(factors.get(direct_key))
+        if normalized_key in factors:
+            return _coerce_factor_data(factors.get(normalized_key))
+        for k, v in factors.items():
+            if _norm_factor_key(k) == normalized_key:
+                return _coerce_factor_data(v)
+        return _coerce_factor_data(None)
 
     # --- Mobile ---
     mobile_entries = []

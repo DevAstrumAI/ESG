@@ -124,12 +124,8 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const [quantity, setQuantity]             = useState("");
   const [month, setMonth]                   = useState(reportingMonth || currentMonth());
   const [addRowError, setAddRowError] = useState("");
-  const [factorMap, setFactorMap] = useState(() =>
-    REFRIGERANT_TYPES.reduce((acc, item) => {
-      acc[item.key] = item.gwp;
-      return acc;
-    }, {})
-  );
+  const [factorMap, setFactorMap] = useState({});
+  const [factorsLoaded, setFactorsLoaded] = useState(false);
 
   useEffect(() => {
     if (reportingMonth) {
@@ -142,6 +138,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
       if (!token) return;
       const loc = getSelectedLocation(company);
       if (!loc?.country || !loc?.city) return;
+      setFactorsLoaded(false);
       try {
         const response = await emissionsAPI.getFactors(token, loc.country, loc.city);
         const scope1 = response?.factors?.scope1 || {};
@@ -160,11 +157,13 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           if (v > 0) merged[normalized] = v;
         });
 
-        if (Object.keys(merged).length > 0) {
-          setFactorMap((prev) => ({ ...prev, ...merged }));
-        }
+        if (Object.keys(merged).length > 0) setFactorMap(merged);
+        else setFactorMap({});
       } catch (error) {
-        console.warn("Failed to load refrigerant factors, using default GWP values:", error);
+        console.warn("Failed to load refrigerant factors from DB:", error);
+        setFactorMap({});
+      } finally {
+        setFactorsLoaded(true);
       }
     };
     loadRefrigerantFactors();
@@ -182,6 +181,10 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const selectedRefrigerant = refrigerantOptions.find((r) => r.key === refrigerantKey);
 
   const handleAddRow = () => {
+    if (!factorsLoaded || refrigerantOptions.length === 0) {
+      setAddRowError("Refrigerant factors are not loaded yet. Please wait a moment and try again.");
+      return;
+    }
     if (!refrigerantKey) {
       setAddRowError("Please select a refrigerant type.");
       return;
@@ -241,6 +244,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           Enter <strong>refrigerant leakage</strong> from cooling equipment. Each refrigerant has a specific Global Warming Potential (GWP).
         </p>
       </div>
+      {!factorsLoaded && <div className="rf-info-note">Loading refrigerant factors from location database...</div>}
       {addRowError && <div className="rf-inline-error">⚠️ {addRowError}</div>}
 
       <div className="rf-table-wrap">
@@ -352,6 +356,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                   }))}
                   placeholder="Select Refrigerant"
                   className="rf-select"
+                  disabled={!factorsLoaded || refrigerantOptions.length === 0}
                 />
               </td>
               <td>
@@ -523,6 +528,16 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           border-radius: 8px;
           padding: 9px 11px;
           font-size: 13px;
+          font-weight: 500;
+        }
+        .rf-info-note {
+          margin: 8px 0 10px;
+          border: 1px solid #BFDBFE;
+          background: #EFF6FF;
+          color: #1E40AF;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 12px;
           font-weight: 500;
         }
                 .rf-error { font-size: 13px; color: #DC2626; }
