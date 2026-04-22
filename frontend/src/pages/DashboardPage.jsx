@@ -710,6 +710,36 @@ export default function DashboardPage() {
       .slice(0, 8);
   }, [fiscalMonths, scope1MonthlyBreakdown, scope2MonthlyBreakdown]);
 
+  const missingMonthBanner = useMemo(() => {
+    if (!fiscalMonths?.length) {
+      return { submittedCount: 0, missingLabels: [], show: false };
+    }
+    const rows = fiscalMonths.map((m) => {
+      const s1 = scope1MonthlyBreakdown.find((r) => r?.month === m.monthKey) || {};
+      const s2 = scope2MonthlyBreakdown.find((r) => r?.month === m.monthKey) || {};
+      const s1Total =
+        Number(s1?.totalKg || 0) +
+        Number(s1?.mobileKg || 0) +
+        Number(s1?.stationaryKg || 0) +
+        Number(s1?.refrigerantsKg || 0) +
+        Number(s1?.fugitiveKg || 0);
+      const s2Total =
+        Number(s2?.totalKg || 0) +
+        Number(s2?.electricityLocationKg || 0) +
+        Number(s2?.heatingKg || 0) +
+        Number(s2?.renewablesKg || 0);
+      const hasData = Boolean(s1?.hasData || s2?.hasData || s1Total > 0 || s2Total > 0);
+      return { ...m, hasData };
+    });
+    const submittedCount = rows.filter((r) => r.hasData).length;
+    const missingLabels = rows.filter((r) => !r.hasData).map((r) => `${r.label} ${r.yearNum}`);
+    return {
+      submittedCount,
+      missingLabels,
+      show: missingLabels.length > 0,
+    };
+  }, [fiscalMonths, scope1MonthlyBreakdown, scope2MonthlyBreakdown]);
+
   useEffect(() => {
     const loadAiTopSourceRecommendation = async () => {
       if (!token || !topSource || topSource.value <= 0 || currentMonthTotalKg <= 0) {
@@ -866,6 +896,27 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+      {missingMonthBanner.show && (
+        <div className="missing-month-banner" role="alert">
+          <div className="missing-month-content">
+            <FiAlertCircle className="missing-month-icon" />
+            <div>
+              <strong>
+                Your report covers {missingMonthBanner.submittedCount} of 12 months.
+              </strong>{" "}
+              Missing: {missingMonthBanner.missingLabels.join(", ")}
+            </div>
+          </div>
+          <div className="missing-month-actions">
+            <button type="button" onClick={() => navigate("/scope1")} className="missing-month-link-btn">
+              Go to Scope 1 Data Entry
+            </button>
+            <button type="button" onClick={() => navigate("/scope2")} className="missing-month-link-btn">
+              Go to Scope 2 Data Entry
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="dashboard-tabs">
         <button className={`tab-btn ${activeView === "overview" ? "active" : ""}`} onClick={() => setActiveView("overview")}>
@@ -1637,6 +1688,49 @@ export default function DashboardPage() {
           display: flex;
           gap: 12px;
           align-items: center;
+        }
+        .missing-month-banner {
+          margin: -8px 0 16px;
+          border: 1px solid #FCA5A5;
+          background: #FEF2F2;
+          color: #7F1D1D;
+          border-radius: 10px;
+          padding: 12px 14px;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .missing-month-content {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          font-size: 13px;
+          line-height: 1.5;
+          max-width: 100%;
+        }
+        .missing-month-icon {
+          margin-top: 2px;
+          flex-shrink: 0;
+        }
+        .missing-month-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .missing-month-link-btn {
+          border: 1px solid #B91C1C;
+          color: #B91C1C;
+          background: #fff;
+          border-radius: 8px;
+          padding: 7px 10px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .missing-month-link-btn:hover {
+          background: #FEE2E2;
         }
 
         .year-selector {
@@ -2737,6 +2831,10 @@ export default function DashboardPage() {
           .dashboard-header {
             flex-direction: column;
             align-items: flex-start;
+          }
+          .missing-month-banner {
+            flex-direction: column;
+            align-items: stretch;
           }
 
           .summary-strip {
