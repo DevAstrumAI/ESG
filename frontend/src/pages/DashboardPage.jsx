@@ -405,6 +405,45 @@ export default function DashboardPage() {
   const latestActualYear = Object.keys(annualActualMap).map(Number).filter((y) => Number.isFinite(y)).sort((a, b) => b - a)[0];
   const latestActualValue = Number.isFinite(latestActualYear) ? annualActualMap[latestActualYear] : null;
   const targetYearRequired = Number.isFinite(pathwayMeta.targetYear) ? trajectoryMap[pathwayMeta.targetYear] : null;
+  const baselineActualYear = Object.keys(annualActualMap).map(Number).filter((y) => Number.isFinite(y)).sort((a, b) => a - b)[0];
+  const baselineActualValue = Number.isFinite(baselineActualYear) ? annualActualMap[baselineActualYear] : null;
+  const yearsSpanActual =
+    Number.isFinite(baselineActualYear) && Number.isFinite(latestActualYear)
+      ? Math.max(latestActualYear - baselineActualYear, 1)
+      : 0;
+  const currentReductionRatePct =
+    baselineActualValue > 0 && latestActualValue != null && yearsSpanActual > 0
+      ? (((baselineActualValue - latestActualValue) / baselineActualValue) / yearsSpanActual) * 100
+      : null;
+  const yearsToTarget =
+    Number.isFinite(pathwayMeta.targetYear) && Number.isFinite(latestActualYear)
+      ? Math.max(pathwayMeta.targetYear - latestActualYear, 1)
+      : 0;
+  const requiredReductionRatePct =
+    latestActualValue > 0 && targetYearRequired != null && yearsToTarget > 0
+      ? (((latestActualValue - targetYearRequired) / latestActualValue) / yearsToTarget) * 100
+      : null;
+  const accelerationNeededPct = Math.max((requiredReductionRatePct || 0) - (currentReductionRatePct || 0), 0);
+  const sbtiSectorBenchmarks = {
+    manufacturing: 4.2,
+    logistics: 4.5,
+    energy: 4.2,
+    retail: 3.0,
+    healthcare: 4.0,
+    finance: 2.5,
+    other: 4.2,
+  };
+  const industryKey = String(company?.basicInfo?.industry || company?.industry || "other").toLowerCase();
+  const sbtiBenchmarkPct = sbtiSectorBenchmarks[industryKey] ?? sbtiSectorBenchmarks.other;
+  const sbtiAligned =
+    Boolean(configuredTargets?.sbtiAligned) ||
+    String(configuredTargets?.framework || "").toLowerCase().includes("sbti");
+  const sbtiComparisonLabel =
+    currentReductionRatePct == null
+      ? "Insufficient historical data"
+      : currentReductionRatePct >= sbtiBenchmarkPct
+      ? "At/above SBTi benchmark"
+      : "Below SBTi benchmark";
   const pathwayChartData = pathwayYears.map((year) => {
     const required = trajectoryMap[year] ?? null;
     const actual = annualActualMap[year] ?? null;
@@ -1099,6 +1138,61 @@ export default function DashboardPage() {
             </div>
           </>
         ) : <div className="collapsed-summary">YTD comparison and budget summary are hidden. Expand to view details.</div>}
+      </Card>
+
+      <Card className="trajectory-analysis-card">
+        <div className="collapsible-header">
+          <div>
+            <h3>Carbon Budget Trajectory Analysis</h3>
+            <p>Current annual reduction pace compared with required target pace</p>
+          </div>
+        </div>
+        {!annualBudgetT ? (
+          renderTargetEmptyState(
+            "Set an annual target first",
+            "Rate comparison and acceleration analysis appears after target trajectory is available."
+          )
+        ) : (
+          <>
+            <div className="rate-grid">
+              <div className="rate-item">
+                <span className="rate-label">Current annual reduction rate</span>
+                <span className="rate-value">
+                  {currentReductionRatePct == null ? "—" : `${currentReductionRatePct.toFixed(2)}%/year`}
+                </span>
+              </div>
+              <div className="rate-item">
+                <span className="rate-label">Required reduction rate</span>
+                <span className="rate-value">
+                  {requiredReductionRatePct == null ? "—" : `${requiredReductionRatePct.toFixed(2)}%/year`}
+                </span>
+              </div>
+              <div className="rate-item">
+                <span className="rate-label">Acceleration needed</span>
+                <span className={`rate-value ${accelerationNeededPct > 0 ? "gap-bad" : "gap-good"}`}>
+                  {requiredReductionRatePct == null ? "—" : `${accelerationNeededPct.toFixed(2)} pp/year`}
+                </span>
+              </div>
+            </div>
+
+            <div className="gap-row">
+              <span>Gap analysis:</span>
+              <strong className={accelerationNeededPct > 0 ? "gap-bad" : "gap-good"}>
+                {accelerationNeededPct > 0
+                  ? `Need +${accelerationNeededPct.toFixed(2)} percentage points/year acceleration`
+                  : "Current pace meets required trajectory"}
+              </strong>
+            </div>
+
+            <div className={`sbti-row ${sbtiAligned ? "aligned" : "neutral"}`}>
+              <span>
+                SBTi sector comparison {sbtiAligned ? "(aligned)" : "(not aligned)"}: benchmark{" "}
+                {sbtiBenchmarkPct.toFixed(1)}%/year
+              </span>
+              <strong>{sbtiComparisonLabel}</strong>
+            </div>
+          </>
+        )}
       </Card>
 
       <Card className="pathway-chart-card">
@@ -1905,6 +1999,58 @@ export default function DashboardPage() {
           display: flex;
           align-items: center;
         }
+        .trajectory-analysis-card {
+          background: white;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 24px;
+        }
+        .rate-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          margin-top: 10px;
+          margin-bottom: 10px;
+        }
+        .rate-item {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          background: #F9FAFB;
+          padding: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .rate-label {
+          font-size: 12px;
+          color: #6B7280;
+        }
+        .rate-value {
+          font-size: 20px;
+          font-weight: 700;
+          color: #1B4D3E;
+        }
+        .sbti-row {
+          margin-top: 10px;
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 10px 12px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          font-size: 13px;
+          color: #374151;
+          background: #FFFFFF;
+        }
+        .sbti-row.aligned {
+          background: #ECFDF5;
+          border-color: #A7F3D0;
+        }
+        .sbti-row.neutral {
+          background: #F9FAFB;
+        }
         .gap-row {
           display: flex;
           justify-content: space-between;
@@ -2396,6 +2542,9 @@ export default function DashboardPage() {
           .trajectory-row {
             grid-template-columns: 1fr 1fr;
           }
+          .rate-grid {
+            grid-template-columns: 1fr 1fr;
+          }
         }
 
         @media (max-width: 768px) {
@@ -2421,6 +2570,13 @@ export default function DashboardPage() {
           }
           .trajectory-row {
             grid-template-columns: 1fr;
+          }
+          .rate-grid {
+            grid-template-columns: 1fr;
+          }
+          .sbti-row {
+            flex-direction: column;
+            align-items: flex-start;
           }
 
           .total-value {
