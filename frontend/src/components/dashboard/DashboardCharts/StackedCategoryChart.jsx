@@ -9,7 +9,8 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
-  Cell
+  Cell,
+  LabelList,
 } from "recharts";
 import { useAuthStore } from "../../../store/authStore";
 import { useEmissionStore } from "../../../store/emissionStore";
@@ -196,6 +197,7 @@ const createEmptyChartData = () => {
     return rows.map((row) => ({
       ...row,
       missingPlaceholder: row.hasData ? 0 : placeholder,
+      noDataLabel: row.hasData ? "" : "No data",
     }));
   };
 
@@ -381,7 +383,14 @@ const createEmptyChartData = () => {
             wrapperStyle={{ fontSize: 12, paddingTop: 16 }}
             formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
           />
-          <Bar dataKey="missingPlaceholder" stackId="placeholder" fill="#E5E7EB" legendType="none" />
+          <Bar dataKey="missingPlaceholder" stackId="placeholder" fill="#E5E7EB" legendType="none">
+            <LabelList
+              dataKey="noDataLabel"
+              position="top"
+              fill="#9CA3AF"
+              fontSize={10}
+            />
+          </Bar>
           {getBars()}
         </BarChart>
       </ResponsiveContainer>

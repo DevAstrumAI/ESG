@@ -1,5 +1,5 @@
 // src/pages/ReportsPage.jsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import ReportsOverview from "../components/reports/ReportsOverview";
 import ReportCharts from "../components/reports/ReportCharts";
@@ -20,7 +20,7 @@ import { reportService } from "../services/reportService";
 
 export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("yearly");
-  const [selectedYear, setSelectedYear] = useState("2026");
+  const [selectedYear, setSelectedYear] = useState(String(new Date().getMonth() + 1 >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1));
   const [selectedCity, setSelectedCity] = useState("all");
   const [cities, setCities] = useState(["all"]);
   const [generatingAI, setGeneratingAI] = useState(false);
@@ -36,6 +36,26 @@ export default function ReportsPage() {
 
   const [selectedMonth, setSelectedMonth] = useState("01"); // Default January
   const [selectedQuarter, setSelectedQuarter] = useState("Q1");
+  const fiscalMonthOptions = useMemo(() => ([
+    { value: `${selectedYear}-06`, label: `June ${selectedYear}` },
+    { value: `${selectedYear}-07`, label: `July ${selectedYear}` },
+    { value: `${selectedYear}-08`, label: `August ${selectedYear}` },
+    { value: `${selectedYear}-09`, label: `September ${selectedYear}` },
+    { value: `${selectedYear}-10`, label: `October ${selectedYear}` },
+    { value: `${selectedYear}-11`, label: `November ${selectedYear}` },
+    { value: `${selectedYear}-12`, label: `December ${selectedYear}` },
+    { value: `${Number(selectedYear) + 1}-01`, label: `January ${Number(selectedYear) + 1}` },
+    { value: `${Number(selectedYear) + 1}-02`, label: `February ${Number(selectedYear) + 1}` },
+    { value: `${Number(selectedYear) + 1}-03`, label: `March ${Number(selectedYear) + 1}` },
+    { value: `${Number(selectedYear) + 1}-04`, label: `April ${Number(selectedYear) + 1}` },
+    { value: `${Number(selectedYear) + 1}-05`, label: `May ${Number(selectedYear) + 1}` },
+  ]), [selectedYear]);
+
+  useEffect(() => {
+    if (fiscalMonthOptions.length && !fiscalMonthOptions.some((m) => m.value === selectedMonth)) {
+      setSelectedMonth(fiscalMonthOptions[0].value);
+    }
+  }, [fiscalMonthOptions, selectedMonth]);
 
   useEffect(() => {
     if (token && !company) fetchCompany(token);
@@ -60,12 +80,17 @@ export default function ReportsPage() {
           setGeneratingAI(false);
           return;
         }
-        month = `${selectedYear}-${selectedMonth}`;
+        month = selectedMonth;
       } 
       else if (selectedPeriod === "quarterly") {
-        // Convert quarter to month (send first month of quarter)
-        const quarterMap = { "Q1": "01", "Q2": "04", "Q3": "07", "Q4": "10" };
-        month = `${selectedYear}-${quarterMap[selectedQuarter]}`;
+        // Fiscal quarter first month
+        const quarterFirstMonthMap = {
+          Q1: `${selectedYear}-06`,
+          Q2: `${selectedYear}-09`,
+          Q3: `${selectedYear}-12`,
+          Q4: `${Number(selectedYear) + 1}-03`,
+        };
+        month = quarterFirstMonthMap[selectedQuarter];
       }
 
       const selectedLocation = (() => {
@@ -205,9 +230,7 @@ export default function ReportsPage() {
       })();
 
       const monthForPeriod =
-        selectedPeriod === "monthly"
-          ? `${selectedYear}-${selectedMonth}`
-          : null;
+        selectedPeriod === "monthly" ? selectedMonth : null;
       const { blob, filename } = await reportService.exportCSV({
         year: parseInt(selectedYear, 10),
         period: selectedPeriod,
@@ -1082,18 +1105,9 @@ export default function ReportsPage() {
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="filter-select"
               >
-                <option value="01">January</option>
-                <option value="02">February</option>
-                <option value="03">March</option>
-                <option value="04">April</option>
-                <option value="05">May</option>
-                <option value="06">June</option>
-                <option value="07">July</option>
-                <option value="08">August</option>
-                <option value="09">September</option>
-                <option value="10">October</option>
-                <option value="11">November</option>
-                <option value="12">December</option>
+                {fiscalMonthOptions.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
               </select>
             </div>
           )}
@@ -1107,16 +1121,16 @@ export default function ReportsPage() {
                 onChange={(e) => setSelectedQuarter(e.target.value)}
                 className="filter-select"
               >
-                <option value="Q1">Q1 (Jan-Mar)</option>
-                <option value="Q2">Q2 (Apr-Jun)</option>
-                <option value="Q3">Q3 (Jul-Sep)</option>
-                <option value="Q4">Q4 (Oct-Dec)</option>
+                <option value="Q1">Q1 (Jun-Aug)</option>
+                <option value="Q2">Q2 (Sep-Nov)</option>
+                <option value="Q3">Q3 (Dec-Feb)</option>
+                <option value="Q4">Q4 (Mar-May)</option>
               </select>
             </div>
           )}
 
           <div className="filter-group">
-            <label><FiBarChart2 className="filter-icon" /> Year</label>
+            <label><FiBarChart2 className="filter-icon" /> Fiscal Year</label>
             <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="filter-select">
               <option value="2026">2026</option>
               <option value="2025">2025</option>

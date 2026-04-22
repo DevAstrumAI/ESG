@@ -24,6 +24,8 @@ import ScopeBreakdown from "../components/dashboard/ScopeBreakdown";
 import TotalEmissionsPie from "../components/dashboard/DashboardCharts/TotalEmissionsPie";
 import StackedCategoryChart from "../components/dashboard/DashboardCharts/StackedCategoryChart";
 import DataCompletenessCalendar from "../components/dashboard/DataCompletenessCalendar";
+import TwelveMonthTrendChart from "../components/dashboard/DashboardCharts/TwelveMonthTrendChart";
+import EmissionsTrendLine from "../components/dashboard/DashboardCharts/EmissionsTrendLine";
 import { useAuthStore } from "../store/authStore";
 import { useEmissionStore } from "../store/emissionStore";
 import { useCompanyStore } from "../store/companyStore";
@@ -54,6 +56,7 @@ const getCurrentFiscalStartYear = () => {
 };
 
 export default function DashboardPage() {
+  const DOC_ONLY_DASHBOARD = false;
   const navigate = useNavigate();
   const [selectedYear, setSelectedYear] = useState(getCurrentFiscalStartYear());
   const [activeView, setActiveView] = useState("overview");
@@ -918,7 +921,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="dashboard-tabs">
+      {!DOC_ONLY_DASHBOARD && <div className="dashboard-tabs">
         <button className={`tab-btn ${activeView === "overview" ? "active" : ""}`} onClick={() => setActiveView("overview")}>
           Overview
         </button>
@@ -931,7 +934,7 @@ export default function DashboardPage() {
         <button className={`tab-btn ${activeView === "activity" ? "active" : ""}`} onClick={() => setActiveView("activity")}>
           Recent Activity
         </button>
-      </div>
+      </div>}
 
       {activeView === "overview" && (
       <>
@@ -1058,6 +1061,24 @@ export default function DashboardPage() {
             {(scope1Results?.monthsCount || monthsSubmitted) === 12 ? "Full year complete" : `${12 - ((scope1Results?.monthsCount || monthsSubmitted) || 0)} months remaining`}
           </div>
         </div>
+
+        {/* Card 5: Highest Emission Source */}
+        <div className="kpi-card">
+          <div className="kpi-card-title">
+            <span className="kpi-icon-wrap">
+              <FiBarChart2 className="kpi-icon" />
+            </span>
+            <span>Highest Emission Source</span>
+          </div>
+          <div className="kpi-value kpi-value-source">
+            {topSource && topSource.value > 0 ? topSource.name : "—"}
+          </div>
+          <div className="kpi-sub">
+            {topSource && currentMonthTotalKg > 0
+              ? `${topSourcePct.toFixed(1)}% of ${monthNames[safeCurrentMonthIndex]} total`
+              : "No monthly source data yet"}
+          </div>
+        </div>
       </div>
       <div className="section-title">Performance</div>
       <Card className="top-source-card">
@@ -1099,34 +1120,48 @@ export default function DashboardPage() {
           <div className="collapsed-summary">No monthly category data available yet for this period.</div>
         )}
       </Card>
-      {/* Total Emissions Card */}
-      <Card className="total-emissions-card">
-        <div className="total-header">
-          <div className="total-icon">
-            <BiLeaf />
-          </div>
-          <div>
-            <h3>Total CO₂e Emissions</h3>
-            <p>Combined Scope 1 and Scope 2 emissions for {selectedYear}</p>
+      <Card className="scope2-delta-card">
+        <div className="collapsible-header">
+          <div className="scope2-delta-header">
+            <h3>Scope 2 Delta</h3>
+            <p>Location-based vs market-based emissions and reduction opportunity</p>
           </div>
         </div>
-        <div className="total-value">
-          {hasData ? totalTonnes.toFixed(2) : "—"}
-          <span className="total-unit"> tonnes CO₂e</span>
-        </div>
-        {hasData && (
-          <div className="total-breakdown">
-            <span>Scope 1: {scope1Tonnes.toFixed(2)} tCO₂e</span>
-            <span className="separator">|</span>
-            <span>Scope 2: {scope2Tonnes.toFixed(2)} tCO₂e</span>
-            {heatingKg > 0 && (
-              <>
-                <span className="separator">|</span>
-                <span>Heating: {(heatingKg / 1000).toFixed(2)} tCO₂e</span>
-              </>
-            )}
+        <div className="scope2-delta-values">
+          <div className="scope2-delta-primary">
+            {locationBasedKg > 0 ? (locationBasedKg / 1000).toFixed(2) : "0.00"}
+            <span className="scope2-delta-unit"> tCO₂e</span>
           </div>
-        )}
+          <div className="scope2-delta-primary-label">Location-based total</div>
+          <div className="scope2-delta-secondary">
+            Market-based: <strong>{(marketBasedKg / 1000).toFixed(2)} tCO₂e</strong>
+          </div>
+        </div>
+        <div className={`scope2-gap-callout ${scope2DeltaKg > 0 ? "positive" : "neutral"}`}>
+          {scope2DeltaKg > 0 ? (
+            <>
+              <span>Reduction opportunity:</span>
+              <strong>
+                {(scope2DeltaKg / 1000).toFixed(2)} tCO₂e ({scope2DeltaPct.toFixed(1)}%)
+              </strong>
+            </>
+          ) : (
+            <>
+              <span>Reduction opportunity:</span>
+              <strong>0.00 tCO₂e (0.0%)</strong>
+            </>
+          )}
+        </div>
+        <div className="scope2-delta-actions">
+          <button
+            type="button"
+            className="set-target-btn"
+            onClick={() => navigate("/guide")}
+          >
+            Learn how
+          </button>
+          <span>REC/PPA explanation</span>
+        </div>
       </Card>
       <div className="section-title">Monthly trend</div>
       {/* Data Completeness Calendar */}
@@ -1138,60 +1173,30 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Charts Grid - Updated with Stacked Category Chart */}
-      <div className="charts-grid">
+      <div className={`charts-grid ${DOC_ONLY_DASHBOARD ? "doc-only" : ""}`}>
         <Card className="chart-card large">
           <div className="chart-header">
-            <h3>Monthly Emissions by Category</h3>
+            <h3>12-Month Emissions Trend (Fiscal Year)</h3>
           </div>
           <div className="chart-wrapper">
-            <StackedCategoryChart
-              year={selectedYear}
-              country={selectedFacility?.country}
-              city={selectedFacility?.city}
-            />
+            <TwelveMonthTrendChart year={selectedYear} />
           </div>
-        </Card>
-
-        <Card className="chart-card">
-          <div className="chart-header">
-            <h3>Emissions Distribution</h3>
-          </div>
-          <div className="pie-chart-wrapper">
-            <TotalEmissionsPie data={pieChartData} />
-          </div>
-          {totalKg > 0 && (
-            <div className="chart-insight">
-              <BiTrendingUp />
-              <span>
-                {scope1Kg > scope2Kg
-                  ? `Scope 1 is your largest contributor (${scope1Tonnes.toFixed(1)} tCO₂e)`
-                  : scope2Kg > scope1Kg
-                  ? `Scope 2 is your largest contributor (${scope2Tonnes.toFixed(1)} tCO₂e)`
-                  : "Scope 1 and Scope 2 are equal"}
-              </span>
-            </div>
-          )}
         </Card>
       </div>
-
-      {/* Scope Breakdowns */}
-      <div className="breakdown-grid">
-        <ScopeBreakdown 
-          title="Scope 1 Breakdown" 
-          items={scope1Breakdown} 
-          totalEmissions={scope1Kg / 1000}
-        />
-        <ScopeBreakdown 
-          title="Scope 2 Breakdown" 
-          items={scope2Breakdown} 
-          totalEmissions={scope2Kg / 1000}
-        />
+      <div className={`charts-grid ${DOC_ONLY_DASHBOARD ? "doc-only" : ""}`}>
+        <Card className="chart-card large">
+          <div className="chart-header">
+            <h3>Category Sparklines (Last 6 Months)</h3>
+          </div>
+          <div className="chart-wrapper">
+            <EmissionsTrendLine year={selectedYear} />
+          </div>
+        </Card>
       </div>
       </>
       )}
 
-      {activeView === "targets" && (
+      {!DOC_ONLY_DASHBOARD && activeView === "targets" && (
       <>
       <div className="section-title">Targets</div>
       <Card className="target-breakdown-card">
@@ -1407,6 +1412,15 @@ export default function DashboardPage() {
                 <Line type="monotone" dataKey="projection" name="Projection to Target Year" stroke="#6B7280" strokeWidth={2} strokeDasharray="6 5" dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
+            <div className="pathway-confidence-note">
+              Projection confidence:{" "}
+              <strong>
+                {predictionConfidence.score != null
+                  ? `${predictionConfidence.label} (${predictionConfidence.score}%)`
+                  : "N/A"}
+              </strong>
+              . More submitted historical data improves projection precision.
+            </div>
             <div className="pathway-note">
               <span><span className="swatch red"></span>Actual above required pathway</span>
               <span><span className="swatch green"></span>Actual below required pathway</span>
@@ -1453,7 +1467,7 @@ export default function DashboardPage() {
       </>
       )}
 
-      {activeView === "scope2" && (
+      {!DOC_ONLY_DASHBOARD && activeView === "scope2" && (
       <>
       <div className="section-title">Scope 2</div>
       <Card className="scope2-delta-card">
@@ -1578,7 +1592,7 @@ export default function DashboardPage() {
       </>
       )}
 
-      {activeView === "activity" && (
+      {!DOC_ONLY_DASHBOARD && activeView === "activity" && (
       <>
       <div className="section-title">Recent Activity</div>
       <Card className="activity-card">
@@ -1658,7 +1672,7 @@ export default function DashboardPage() {
       <style jsx>{`
         .dashboard-container {
           padding: 24px;
-          padding-bottom: 86px;
+          padding-bottom: 130px;
           max-width: 1400px;
           margin: 0 auto;
         }
@@ -1775,7 +1789,7 @@ export default function DashboardPage() {
 
         .summary-strip {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 20px;
           margin-bottom: 24px;
         }
@@ -1920,6 +1934,10 @@ export default function DashboardPage() {
           font-weight: 700;
           color: #1B4D3E;
           line-height: 1.2;
+        }
+        .kpi-value-source {
+          font-size: 22px;
+          line-height: 1.3;
         }
 
         .kpi-unit {
@@ -2399,6 +2417,16 @@ export default function DashboardPage() {
         .pathway-chart-wrap {
           width: 100%;
         }
+        .pathway-confidence-note {
+          margin-top: 8px;
+          margin-bottom: 8px;
+          border: 1px solid #E5E7EB;
+          background: #F9FAFB;
+          border-radius: 8px;
+          padding: 8px 10px;
+          font-size: 12px;
+          color: #4B5563;
+        }
         .pathway-note {
           margin-top: 10px;
           display: flex;
@@ -2597,6 +2625,9 @@ export default function DashboardPage() {
           grid-template-columns: 2fr 1fr;
           gap: 24px;
           margin-bottom: 24px;
+        }
+        .charts-grid.doc-only {
+          grid-template-columns: 1fr;
         }
 
         .chart-card {
@@ -2802,6 +2833,9 @@ export default function DashboardPage() {
         }
 
         @media (max-width: 1024px) {
+          .summary-strip {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
           .charts-grid {
             grid-template-columns: 1fr;
           }
@@ -2825,7 +2859,7 @@ export default function DashboardPage() {
         @media (max-width: 768px) {
           .dashboard-container {
             padding: 16px;
-            padding-bottom: 104px;
+            padding-bottom: 140px;
           }
           
           .dashboard-header {

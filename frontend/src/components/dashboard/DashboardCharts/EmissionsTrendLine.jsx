@@ -15,7 +15,7 @@ import { FiTrendingUp, FiTrendingDown } from "react-icons/fi";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
-export default function EmissionsTrendLine() {
+export default function EmissionsTrendLine({ year }) {
   const token = useAuthStore((s) => s.token);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -33,20 +33,18 @@ export default function EmissionsTrendLine() {
     if (token) {
       fetchSparklineData();
     }
-  }, [token]);
+  }, [token, year]);
 
   const getLast6Months = () => {
-    const months = [];
-    const now = new Date();
-    
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      months.push({
-        name: date.toLocaleString('default', { month: 'short' }),
-        fullDate: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      });
-    }
-    return months;
+    const fyMonths = Array.from({ length: 12 }, (_, idx) => {
+      const monthNum = ((5 + idx) % 12) + 1; // Jun..May
+      const yearNum = monthNum >= 6 ? Number(year) : Number(year) + 1;
+      return {
+        name: new Date(yearNum, monthNum - 1, 1).toLocaleString("default", { month: "short" }),
+        fullDate: `${yearNum}-${String(monthNum).padStart(2, "0")}`,
+      };
+    });
+    return fyMonths.slice(6); // latest 6 months in fiscal sequence (Dec..May)
   };
 
   const calculatePercentageChange = (data) => {
@@ -136,55 +134,62 @@ export default function EmissionsTrendLine() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/emissions/sparkline-data`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const [s1Res, s2Res] = await Promise.all([
+        fetch(`${API_URL}/api/emissions/monthly-category-breakdown?year=${year}&scope=scope1`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/api/emissions/monthly-category-breakdown?year=${year}&scope=scope2`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch sparkline data");
+      if (!s1Res.ok || !s2Res.ok) {
+        throw new Error("Failed to fetch fiscal sparkline data");
       }
 
-      const data = await response.json();
+      const scope1Rows = await s1Res.json();
+      const scope2Rows = await s2Res.json();
       const months = getLast6Months();
-      
-      const mobileData = months.map(month => ({
+
+      const byMonthS1 = Object.fromEntries(scope1Rows.map((r) => [r.month, r]));
+      const byMonthS2 = Object.fromEntries(scope2Rows.map((r) => [r.month, r]));
+
+      const mobileData = months.map((month) => ({
         month: month.name,
-        value: (data.mobile?.[month.fullDate] || 0) / 1000,
+        value: Number((byMonthS1[month.fullDate]?.mobileKg || 0) / 1000),
         fullDate: month.fullDate
       }));
       
-      const stationaryData = months.map(month => ({
+      const stationaryData = months.map((month) => ({
         month: month.name,
-        value: (data.stationary?.[month.fullDate] || 0) / 1000,
+        value: Number((byMonthS1[month.fullDate]?.stationaryKg || 0) / 1000),
         fullDate: month.fullDate
       }));
       
-      const refrigerantsData = months.map(month => ({
+      const refrigerantsData = months.map((month) => ({
         month: month.name,
-        value: (data.refrigerants?.[month.fullDate] || 0) / 1000,
+        value: Number((byMonthS1[month.fullDate]?.refrigerantsKg || 0) / 1000),
         fullDate: month.fullDate
       }));
       
-      const fugitiveData = months.map(month => ({
+      const fugitiveData = months.map((month) => ({
         month: month.name,
-        value: (data.fugitive?.[month.fullDate] || 0) / 1000,
+        value: Number((byMonthS1[month.fullDate]?.fugitiveKg || 0) / 1000),
         fullDate: month.fullDate
       }));
       
-      const electricityLocationData = months.map(month => ({
+      const electricityLocationData = months.map((month) => ({
         month: month.name,
-        value: (data.electricityLocation?.[month.fullDate] || 0) / 1000,
+        value: Number((byMonthS2[month.fullDate]?.electricityLocationKg || 0) / 1000),
         fullDate: month.fullDate
       }));
       
-      const electricityMarketData = months.map(month => ({
+      const electricityMarketData = months.map((month) => ({
         month: month.name,
-        value: (data.electricityMarket?.[month.fullDate] || 0) / 1000,
+        value: Number((byMonthS2[month.fullDate]?.electricityMarketKg || 0) / 1000),
         fullDate: month.fullDate
       }));
-      
+
       setSparklineData({
         mobile: mobileData,
         stationary: stationaryData,
@@ -221,7 +226,7 @@ export default function EmissionsTrendLine() {
     
     return (
       <div 
-        className="sparkline-card"
+        className={`sparkline-card ${isElectricity ? "electricity-card" : ""}`}
         onMouseEnter={() => setActiveSparkline(title)}
         onMouseLeave={() => setActiveSparkline(null)}
       >
@@ -375,7 +380,7 @@ export default function EmissionsTrendLine() {
 
       <style jsx>{`
         .sparklines-container {
-          padding: 8px;
+          padding: 8px 8px 24px;
         }
         
         .sparklines-grid {
@@ -391,6 +396,10 @@ export default function EmissionsTrendLine() {
           padding: 16px;
           transition: all 0.2s ease;
           cursor: pointer;
+          min-width: 0;
+        }
+        .sparkline-card.electricity-card {
+          grid-column: 1 / -1;
         }
         
         .sparkline-card:hover {
@@ -509,6 +518,9 @@ export default function EmissionsTrendLine() {
         @media (max-width: 768px) {
           .sparklines-grid {
             grid-template-columns: 1fr;
+          }
+          .sparkline-card.electricity-card {
+            grid-column: auto;
           }
         }
       `}</style>

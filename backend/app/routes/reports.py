@@ -266,11 +266,24 @@ def _rows_from_scope2_doc(doc: dict) -> list[dict]:
 
 def _quarter_months(year: int, quarter: str) -> list[str]:
     q = str(quarter or "").upper()
-    quarter_start_map = {"Q1": 1, "Q2": 4, "Q3": 7, "Q4": 10}
-    start = quarter_start_map.get(q)
-    if not start:
-        return []
-    return [f"{year}-{str(m).zfill(2)}" for m in (start, start + 1, start + 2)]
+    # Fiscal quarters for FY starting in June
+    mapping = {
+        "Q1": [f"{year}-06", f"{year}-07", f"{year}-08"],
+        "Q2": [f"{year}-09", f"{year}-10", f"{year}-11"],
+        "Q3": [f"{year}-12", f"{year + 1}-01", f"{year + 1}-02"],
+        "Q4": [f"{year + 1}-03", f"{year + 1}-04", f"{year + 1}-05"],
+    }
+    return mapping.get(q, [])
+
+
+def _is_month_in_fiscal_year(month_value: str, fiscal_year_start: int) -> bool:
+    try:
+        year_part, month_part = map(int, str(month_value).split("-"))
+    except Exception:
+        return False
+    if month_part >= FISCAL_YEAR_START_MONTH:
+        return year_part == fiscal_year_start
+    return year_part == (fiscal_year_start + 1)
 
 
 def _fetch_scope_docs_all_months(
@@ -1776,9 +1789,8 @@ async def export_report_csv(
         scope1_docs = [d for d in scope1_docs if str(d.get("month") or "") in allowed_months]
         scope2_docs = [d for d in scope2_docs if str(d.get("month") or "") in allowed_months]
     else:
-        year_prefix = f"{year}-"
-        scope1_docs = [d for d in scope1_docs if str(d.get("month") or "").startswith(year_prefix)]
-        scope2_docs = [d for d in scope2_docs if str(d.get("month") or "").startswith(year_prefix)]
+        scope1_docs = [d for d in scope1_docs if _is_month_in_fiscal_year(str(d.get("month") or ""), year)]
+        scope2_docs = [d for d in scope2_docs if _is_month_in_fiscal_year(str(d.get("month") or ""), year)]
 
     rows: list[dict] = []
     for doc in scope1_docs:
