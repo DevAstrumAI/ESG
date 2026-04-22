@@ -9,6 +9,7 @@ class Location(BaseModel):
 class CompanyCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    logo: Optional[str] = None
     industry: str
     employees: Optional[int] = None
     revenue: Optional[float] = None
@@ -19,6 +20,7 @@ class CompanyCreate(BaseModel):
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    logo: Optional[str] = None
     industry: Optional[str] = None
     employees: Optional[int] = None
     revenue: Optional[float] = None

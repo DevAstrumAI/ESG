@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Response
+from fastapi.responses import StreamingResponse
 from app.middleware.auth import get_current_user
 from app.utils.firebase import get_db
 from app.services.calculator import BIOGENIC_FUEL_TYPES
@@ -6,6 +7,8 @@ from datetime import datetime
 import openai
 import os
 import json
+import csv
+import io
 from collections import defaultdict
 
 router = APIRouter(tags=["Reports"])
@@ -189,6 +192,104 @@ def aggregate_scope2(docs: list[dict]) -> dict:
     agg["total_location"] = agg["electricity_location"] + agg["heating"]
     agg["total_market"]   = agg["electricity_market"]   + agg["heating"]
     return agg
+
+
+def _pick_quantity(entry: dict) -> float:
+    for key in ("consumption", "consumptionKWh", "litresConsumed", "distanceKm", "leakageKg", "emissionKg"):
+        try:
+            value = float(entry.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value > 0:
+            return value
+    return 0.0
+
+
+def _rows_from_scope1_doc(doc: dict) -> list[dict]:
+    month = str(doc.get("month") or "")
+    results = doc.get("results") or {}
+    rows: list[dict] = []
+    for category in ("mobile", "stationary", "refrigerants", "fugitive"):
+        entries = (results.get(category) or {}).get("entries") or []
+        for entry in entries:
+            rows.append({
+                "month": month,
+                "scope": "scope1",
+                "category": category,
+                "quantity": round(_pick_quantity(entry), 6),
+                "factor": float(entry.get("factorUsed", 0) or 0),
+                "kgCO2e": float(entry.get("kgCO2e", 0) or 0),
+            })
+    return rows
+
+
+def _rows_from_scope2_doc(doc: dict) -> list[dict]:
+    month = str(doc.get("month") or "")
+    results = doc.get("results") or {}
+    rows: list[dict] = []
+
+    # Electricity has both location- and market-based calculations per entry.
+    for entry in (results.get("electricity") or {}).get("entries") or []:
+        quantity = _pick_quantity(entry)
+        loc = entry.get("locationBased") or {}
+        mkt = entry.get("marketBased") or {}
+        rows.append({
+            "month": month,
+            "scope": "scope2",
+            "category": "electricity_location",
+            "quantity": round(quantity, 6),
+            "factor": float(loc.get("factorUsed", 0) or 0),
+            "kgCO2e": float(loc.get("kgCO2e", 0) or 0),
+        })
+        rows.append({
+            "month": month,
+            "scope": "scope2",
+            "category": "electricity_market",
+            "quantity": round(quantity, 6),
+            "factor": float(mkt.get("factorUsed", 0) or 0),
+            "kgCO2e": float(mkt.get("kgCO2e", 0) or 0),
+        })
+
+    for category in ("heating", "renewables"):
+        entries = (results.get(category) or {}).get("entries") or []
+        for entry in entries:
+            rows.append({
+                "month": month,
+                "scope": "scope2",
+                "category": category,
+                "quantity": round(_pick_quantity(entry), 6),
+                "factor": float(entry.get("factorUsed", 0) or 0),
+                "kgCO2e": float(entry.get("kgCO2e", 0) or 0),
+            })
+    return rows
+
+
+def _quarter_months(year: int, quarter: str) -> list[str]:
+    q = str(quarter or "").upper()
+    quarter_start_map = {"Q1": 1, "Q2": 4, "Q3": 7, "Q4": 10}
+    start = quarter_start_map.get(q)
+    if not start:
+        return []
+    return [f"{year}-{str(m).zfill(2)}" for m in (start, start + 1, start + 2)]
+
+
+def _fetch_scope_docs_all_months(
+    company_id: str,
+    scope: str,
+    *,
+    country: str | None = None,
+    city: str | None = None,
+) -> list[dict]:
+    """Fetch all docs for a scope and apply only location filter."""
+    db = get_db()
+    docs = db.collection("emissionData").document(company_id).collection(scope).stream()
+    rows: list[dict] = []
+    for doc in docs:
+        data = doc.to_dict() or {}
+        if not _doc_matches_location(data, country, city):
+            continue
+        rows.append(data)
+    return rows
 
 
 def _scope1_entry_is_biogenic(entry: dict, category: str) -> bool:
@@ -1648,6 +1749,64 @@ async def generate_report(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+
+@router.get("/export-csv")
+async def export_report_csv(
+    year: int,
+    period: str = "yearly",
+    month: str | None = None,
+    quarter: str | None = None,
+    country: str | None = None,
+    city: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
+    uid = current_user.get("uid")
+    company_id, _company_data = get_company_id(uid)
+
+    normalized_period = str(period or "yearly").strip().lower()
+    scope1_docs = _fetch_scope_docs_all_months(company_id, "scope1", country=country, city=city)
+    scope2_docs = _fetch_scope_docs_all_months(company_id, "scope2", country=country, city=city)
+
+    if normalized_period == "monthly" and month:
+        scope1_docs = [d for d in scope1_docs if str(d.get("month") or "") == str(month)]
+        scope2_docs = [d for d in scope2_docs if str(d.get("month") or "") == str(month)]
+    elif normalized_period == "quarterly" and quarter:
+        allowed_months = set(_quarter_months(year, quarter))
+        scope1_docs = [d for d in scope1_docs if str(d.get("month") or "") in allowed_months]
+        scope2_docs = [d for d in scope2_docs if str(d.get("month") or "") in allowed_months]
+    else:
+        year_prefix = f"{year}-"
+        scope1_docs = [d for d in scope1_docs if str(d.get("month") or "").startswith(year_prefix)]
+        scope2_docs = [d for d in scope2_docs if str(d.get("month") or "").startswith(year_prefix)]
+
+    rows: list[dict] = []
+    for doc in scope1_docs:
+        rows.extend(_rows_from_scope1_doc(doc))
+    for doc in scope2_docs:
+        rows.extend(_rows_from_scope2_doc(doc))
+
+    rows.sort(key=lambda r: (str(r["month"]), str(r["scope"]), str(r["category"])))
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["month", "scope", "category", "quantity", "factor", "kgCO2e"])
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+
+    content = output.getvalue()
+    output.close()
+    filename = f"esg_raw_data_{year}.csv"
+    if normalized_period == "monthly" and month:
+        filename = f"esg_raw_data_{month}.csv"
+    elif normalized_period == "quarterly" and quarter:
+        filename = f"esg_raw_data_{year}_{quarter.upper()}.csv"
+
+    return StreamingResponse(
+        iter([content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/source-recommendation")

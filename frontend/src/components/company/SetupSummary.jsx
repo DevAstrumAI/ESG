@@ -44,6 +44,7 @@ export default function SetupSummary({
   const [editData, setEditData] = useState({
     name: data.name,
     description: data.description,
+    logo: data.logo,
     region: data.region,
     industry: data.industry,
     employees: data.employees,
@@ -105,6 +106,7 @@ export default function SetupSummary({
     setEditData({
       name: data.name,
       description: data.description,
+      logo: data.logo,
       region: data.region,
       industry: data.industry,
       employees: data.employees,
@@ -348,6 +350,12 @@ export default function SetupSummary({
               <div className="summary-row" key="company-desc">
                 <span className="row-label">Description:</span>
                 <span className="row-value">{data.description || "—"}</span>
+              </div>
+              <div className="summary-row" key="company-logo">
+                <span className="row-label">Logo:</span>
+                <span className="row-value">
+                  {data.logo ? <img src={data.logo} alt="Company logo" className="company-logo-preview" /> : "—"}
+                </span>
               </div>
             </div>
           )}
@@ -755,6 +763,15 @@ export default function SetupSummary({
         .summary-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
         .row-label { font-size: 14px; color: #6B7280; font-weight: 500; }
         .row-value { font-size: 14px; font-weight: 600; color: #1B4D3E; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .company-logo-preview {
+          max-width: 130px;
+          max-height: 42px;
+          object-fit: contain;
+          border: 1px solid #E5E7EB;
+          border-radius: 6px;
+          background: #fff;
+          padding: 4px;
+        }
         .size-badge { font-size: 11px; padding: 2px 8px; background: #F8FAF8; color: #2E7D64; border-radius: 30px; font-weight: 500; border: 1px solid #E5E7EB; }
 
         .edit-mode {

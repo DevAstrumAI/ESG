@@ -24,6 +24,7 @@ export default function ReportsPage() {
   const [selectedCity, setSelectedCity] = useState("all");
   const [cities, setCities] = useState(["all"]);
   const [generatingAI, setGeneratingAI] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const [aiReport, setAiReport] = useState(null);
   const [showAiReport, setShowAiReport] = useState(false);
   const [reportError, setReportError] = useState(null);
@@ -103,6 +104,34 @@ export default function ReportsPage() {
     const { jsPDF } = await import("jspdf");
     const element = reportRef.current;
 
+    const waitForImagesToLoad = async (rootEl) => {
+      const images = Array.from(rootEl.querySelectorAll("img"));
+      if (!images.length) return;
+      await Promise.all(
+        images.map(
+          (img) =>
+            new Promise((resolve) => {
+              // decode() improves reliability for html2canvas capture timing.
+              if (img.complete && img.naturalWidth > 0) {
+                if (typeof img.decode === "function") {
+                  img.decode().then(resolve).catch(resolve);
+                } else {
+                  resolve();
+                }
+                return;
+              }
+              const done = () => {
+                img.removeEventListener("load", done);
+                img.removeEventListener("error", done);
+                resolve();
+              };
+              img.addEventListener("load", done, { once: true });
+              img.addEventListener("error", done, { once: true });
+            })
+        )
+      );
+    };
+
     const scrollable = element.querySelector(".ai-report-content");
     const originalMaxHeight = scrollable?.style.maxHeight;
     const originalOverflow = scrollable?.style.overflowY;
@@ -112,9 +141,11 @@ export default function ReportsPage() {
     }
 
     try {
+      await waitForImagesToLoad(element);
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
+        imageTimeout: 15000,
         backgroundColor: "#ffffff",
         logging: false,
         foreignObjectRendering: false,
@@ -156,6 +187,51 @@ export default function ReportsPage() {
     }
   };
 
+  const downloadCSV = async () => {
+    if (!aiReport) return;
+    setExportingCsv(true);
+    setReportError(null);
+    try {
+      const selectedLocation = (() => {
+        if (!company?.locations?.length || selectedCity === "all") return null;
+        const match = company.locations.find(
+          (loc) => String(loc.city || "").toLowerCase() === String(selectedCity || "").toLowerCase()
+        );
+        if (!match) return { city: selectedCity };
+        return {
+          city: String(match.city || "").toLowerCase(),
+          country: String(match.country || "").toLowerCase(),
+        };
+      })();
+
+      const monthForPeriod =
+        selectedPeriod === "monthly"
+          ? `${selectedYear}-${selectedMonth}`
+          : null;
+      const { blob, filename } = await reportService.exportCSV({
+        year: parseInt(selectedYear, 10),
+        period: selectedPeriod,
+        month: monthForPeriod,
+        quarter: selectedPeriod === "quarterly" ? selectedQuarter : null,
+        location: selectedLocation,
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setReportError(error.message || "CSV export failed");
+      setTimeout(() => setReportError(null), 5000);
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
   const getDangerLevelClass = (dangerLevel) => {
     const level = String(dangerLevel || "").toLowerCase();
     if (level === "green") return "green";
@@ -190,7 +266,13 @@ export default function ReportsPage() {
               <FiDownload /> Download PDF
             </button>
           )}
-          <button className="export-all-btn"><FiDownload /> Export All Data</button>
+          <button
+            className="export-all-btn"
+            onClick={downloadCSV}
+            disabled={!showAiReport || !aiReport || exportingCsv}
+          >
+            <FiDownload /> {exportingCsv ? "Exporting CSV..." : "Export CSV"}
+          </button>
         </div>
       </div>
 
@@ -222,6 +304,15 @@ export default function ReportsPage() {
               <div className="report-standard">
                 <div className="report-section">
                   <h4>1. Report Cover & Metadata</h4>
+                  {aiReport.report_standard.section_3_1_cover_metadata?.company_logo ? (
+                    <div className="report-logo-wrap">
+                      <img
+                        src={aiReport.report_standard.section_3_1_cover_metadata.company_logo}
+                        alt="Company logo"
+                        className="report-company-logo"
+                      />
+                    </div>
+                  ) : null}
                   <div className="breakdown-list">
                     <div className="breakdown-item"><span className="breakdown-name">Company</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.company_name || "—"}</span></div>
                     <div className="breakdown-item"><span className="breakdown-name">Report Title</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.report_title || "—"}</span></div>
@@ -1093,6 +1184,7 @@ export default function ReportsPage() {
         .download-pdf-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #2E7D64; color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
         .export-all-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #2E7D64; color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
         .export-all-btn:hover, .download-pdf-btn:hover { background: #1B4D3E; }
+        .export-all-btn:disabled { background: #94A3B8; cursor: not-allowed; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
         .error-message { background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
@@ -1130,6 +1222,19 @@ export default function ReportsPage() {
         .report-section { margin-bottom: 24px; }
         .report-section.highlight { background: #F0FDF4; padding: 16px; border-radius: 12px; border-left: 4px solid #10B981; }
         .report-section h4 { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 12px; }
+        .report-logo-wrap {
+          margin-bottom: 12px;
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 12px;
+          background: #F9FAFB;
+          display: inline-flex;
+        }
+        .report-company-logo {
+          max-width: 180px;
+          max-height: 64px;
+          object-fit: contain;
+        }
         .section-summary, .section-subtitle { color: #4B5563; font-size: 14px; margin-bottom: 12px; }
         .breakdown-list { background: white; border-radius: 8px; border: 1px solid #E5E7EB; overflow: hidden; }
         .breakdown-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #F3F4F6; }
