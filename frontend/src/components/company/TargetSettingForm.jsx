@@ -191,7 +191,7 @@ export default function TargetSettingForm({ onNext, onBack }) {
           Set Your Emission Reduction Target
         </h2>
         <p style={{ fontSize: 14, color: "#718096", margin: 0 }}>
-          Your target drives the predictive analytics dashboard — Lumyna will track
+          Your target drives the predictive analytics dashboard — Lumyina will track
           your progress and forecast whether you are on course to meet it.
         </p>
       </div>

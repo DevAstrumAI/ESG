@@ -32,6 +32,8 @@ import { appendLocationQuery } from "../utils/locationQuery";
 import FacilityCitySelect from "../components/location/FacilityCitySelect";
 import Card from "../components/ui/Card";
 import ThemedSelect from "../components/ui/ThemedSelect";
+import WhatIfScenarioBuilder from "../components/dashboard/WhatIfScenarioBuilder";
+import SeasonalPatternCard from "../components/dashboard/SeasonalPatternCard";
 import {
   ResponsiveContainer,
   LineChart,
@@ -403,6 +405,45 @@ export default function DashboardPage() {
   const latestActualYear = Object.keys(annualActualMap).map(Number).filter((y) => Number.isFinite(y)).sort((a, b) => b - a)[0];
   const latestActualValue = Number.isFinite(latestActualYear) ? annualActualMap[latestActualYear] : null;
   const targetYearRequired = Number.isFinite(pathwayMeta.targetYear) ? trajectoryMap[pathwayMeta.targetYear] : null;
+  const baselineActualYear = Object.keys(annualActualMap).map(Number).filter((y) => Number.isFinite(y)).sort((a, b) => a - b)[0];
+  const baselineActualValue = Number.isFinite(baselineActualYear) ? annualActualMap[baselineActualYear] : null;
+  const yearsSpanActual =
+    Number.isFinite(baselineActualYear) && Number.isFinite(latestActualYear)
+      ? Math.max(latestActualYear - baselineActualYear, 1)
+      : 0;
+  const currentReductionRatePct =
+    baselineActualValue > 0 && latestActualValue != null && yearsSpanActual > 0
+      ? (((baselineActualValue - latestActualValue) / baselineActualValue) / yearsSpanActual) * 100
+      : null;
+  const yearsToTarget =
+    Number.isFinite(pathwayMeta.targetYear) && Number.isFinite(latestActualYear)
+      ? Math.max(pathwayMeta.targetYear - latestActualYear, 1)
+      : 0;
+  const requiredReductionRatePct =
+    latestActualValue > 0 && targetYearRequired != null && yearsToTarget > 0
+      ? (((latestActualValue - targetYearRequired) / latestActualValue) / yearsToTarget) * 100
+      : null;
+  const accelerationNeededPct = Math.max((requiredReductionRatePct || 0) - (currentReductionRatePct || 0), 0);
+  const sbtiSectorBenchmarks = {
+    manufacturing: 4.2,
+    logistics: 4.5,
+    energy: 4.2,
+    retail: 3.0,
+    healthcare: 4.0,
+    finance: 2.5,
+    other: 4.2,
+  };
+  const industryKey = String(company?.basicInfo?.industry || company?.industry || "other").toLowerCase();
+  const sbtiBenchmarkPct = sbtiSectorBenchmarks[industryKey] ?? sbtiSectorBenchmarks.other;
+  const sbtiAligned =
+    Boolean(configuredTargets?.sbtiAligned) ||
+    String(configuredTargets?.framework || "").toLowerCase().includes("sbti");
+  const sbtiComparisonLabel =
+    currentReductionRatePct == null
+      ? "Insufficient historical data"
+      : currentReductionRatePct >= sbtiBenchmarkPct
+      ? "At/above SBTi benchmark"
+      : "Below SBTi benchmark";
   const pathwayChartData = pathwayYears.map((year) => {
     const required = trajectoryMap[year] ?? null;
     const actual = annualActualMap[year] ?? null;
@@ -548,6 +589,126 @@ export default function DashboardPage() {
   const fallbackTopSourceRecommendation = topSource
     ? (fallbackRecommendationBySource[topSource.name] || "Focus near-term reduction actions on this largest source to lower monthly emissions fastest.")
     : "";
+
+  const anomalyAlerts = useMemo(() => {
+    if (!fiscalMonths?.length) return [];
+
+    const monthRowsAll = fiscalMonths.map((m) => {
+      const s1 = scope1MonthlyBreakdown.find((r) => r?.month === m.monthKey) || {};
+      const s2 = scope2MonthlyBreakdown.find((r) => r?.month === m.monthKey) || {};
+      const categories = {
+        mobile: Number(s1.mobileKg || 0),
+        stationary: Number(s1.stationaryKg || 0),
+        refrigerants: Number(s1.refrigerantsKg || 0),
+        fugitive: Number(s1.fugitiveKg || 0),
+        electricity: Number(s2.electricityLocationKg || 0),
+        heating: Number(s2.heatingKg || 0),
+      };
+      const total = Object.values(categories).reduce((sum, v) => sum + Number(v || 0), 0);
+      const hasData = Boolean(s1.hasData || s2.hasData || total > 0);
+      return { ...m, categories, total, hasData };
+    });
+
+    const now = new Date();
+    const nowMonth = now.getMonth() + 1;
+    const nowFiscalStartYear = nowMonth >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+    const currentFiscalMonthKey = `${now.getFullYear()}-${String(nowMonth).padStart(2, "0")}`;
+    const currentFiscalMonthIdx = monthRowsAll.findIndex((r) => r.monthKey === currentFiscalMonthKey);
+
+    // Prevent false alerts on future months (e.g., May while currently in April).
+    const monthRows =
+      selectedYear === nowFiscalStartYear && currentFiscalMonthIdx >= 0
+        ? monthRowsAll.slice(0, currentFiscalMonthIdx + 1)
+        : monthRowsAll;
+
+    const alerts = [];
+
+    // 1) Spike alert: month-on-month change > 40%
+    for (let i = 1; i < monthRows.length; i += 1) {
+      const prev = monthRows[i - 1];
+      const cur = monthRows[i];
+      if (prev.total <= 0 || cur.total <= 0) continue;
+      const pct = ((cur.total - prev.total) / prev.total) * 100;
+      if (pct > 40) {
+        alerts.push({
+          type: "spike",
+          severity: "high",
+          text: `Spike alert: ${cur.label} is +${pct.toFixed(1)}% month-on-month.`,
+        });
+      }
+    }
+
+    // 2) Zero-after-data alert: category had data then becomes zero
+    const categoryLabels = {
+      mobile: "Mobile",
+      stationary: "Stationary",
+      refrigerants: "Refrigerants",
+      fugitive: "Fugitive",
+      electricity: "Electricity",
+      heating: "Heating",
+    };
+    Object.keys(categoryLabels).forEach((key) => {
+      for (let i = 1; i < monthRows.length; i += 1) {
+        const prevRow = monthRows[i - 1];
+        const curRow = monthRows[i];
+        const prevVal = prevRow.categories[key];
+        const curVal = curRow.categories[key];
+        // Require submitted data in both months to avoid treating future blanks as anomalies.
+        if (prevRow.hasData && curRow.hasData && prevVal > 0 && curVal === 0) {
+          alerts.push({
+            type: "zero-after-data",
+            severity: "medium",
+            text: `Zero-after-data alert: ${categoryLabels[key]} had data in ${prevRow.label} and is zero in ${curRow.label}.`,
+          });
+        }
+      }
+    });
+
+    // 3) Outlier alert: single month exceeds 3x historical average
+    monthRows.forEach((row, idx) => {
+      const historical = monthRows
+        .filter((_, j) => j !== idx)
+        .map((r) => r.total)
+        .filter((v) => v > 0);
+      if (!historical.length || row.total <= 0) return;
+      const avg = historical.reduce((s, v) => s + v, 0) / historical.length;
+      if (avg > 0 && row.total > avg * 3) {
+        alerts.push({
+          type: "outlier",
+          severity: "high",
+          text: `Outlier alert: ${row.label} total exceeds 3x historical average (${(row.total / 1000).toFixed(2)} tCO₂e).`,
+        });
+      }
+    });
+
+    // 4) Missing month alert: gap in submission sequence
+    const firstDataIdx = monthRows.findIndex((r) => r.hasData);
+    const lastDataIdx = [...monthRows].reverse().findIndex((r) => r.hasData);
+    const resolvedLastIdx = lastDataIdx >= 0 ? monthRows.length - 1 - lastDataIdx : -1;
+    if (firstDataIdx >= 0 && resolvedLastIdx > firstDataIdx) {
+      for (let i = firstDataIdx + 1; i < resolvedLastIdx; i += 1) {
+        if (!monthRows[i].hasData) {
+          alerts.push({
+            type: "missing-month",
+            severity: "medium",
+            text: `Missing month alert: gap detected at ${monthRows[i].label} between submitted months.`,
+          });
+        }
+      }
+    }
+
+    // Deduplicate and keep highest-priority first
+    const seen = new Set();
+    const priority = { high: 3, medium: 2, low: 1 };
+    return alerts
+      .filter((a) => {
+        if (seen.has(a.text)) return false;
+        seen.add(a.text);
+        return true;
+      })
+      .sort((a, b) => (priority[b.severity] || 0) - (priority[a.severity] || 0))
+      .slice(0, 8);
+  }, [fiscalMonths, scope1MonthlyBreakdown, scope2MonthlyBreakdown]);
 
   useEffect(() => {
     const loadAiTopSourceRecommendation = async () => {
@@ -1099,6 +1260,61 @@ export default function DashboardPage() {
         ) : <div className="collapsed-summary">YTD comparison and budget summary are hidden. Expand to view details.</div>}
       </Card>
 
+      <Card className="trajectory-analysis-card">
+        <div className="collapsible-header">
+          <div>
+            <h3>Carbon Budget Trajectory Analysis</h3>
+            <p>Current annual reduction pace compared with required target pace</p>
+          </div>
+        </div>
+        {!annualBudgetT ? (
+          renderTargetEmptyState(
+            "Set an annual target first",
+            "Rate comparison and acceleration analysis appears after target trajectory is available."
+          )
+        ) : (
+          <>
+            <div className="rate-grid">
+              <div className="rate-item">
+                <span className="rate-label">Current annual reduction rate</span>
+                <span className="rate-value">
+                  {currentReductionRatePct == null ? "—" : `${currentReductionRatePct.toFixed(2)}%/year`}
+                </span>
+              </div>
+              <div className="rate-item">
+                <span className="rate-label">Required reduction rate</span>
+                <span className="rate-value">
+                  {requiredReductionRatePct == null ? "—" : `${requiredReductionRatePct.toFixed(2)}%/year`}
+                </span>
+              </div>
+              <div className="rate-item">
+                <span className="rate-label">Acceleration needed</span>
+                <span className={`rate-value ${accelerationNeededPct > 0 ? "gap-bad" : "gap-good"}`}>
+                  {requiredReductionRatePct == null ? "—" : `${accelerationNeededPct.toFixed(2)} pp/year`}
+                </span>
+              </div>
+            </div>
+
+            <div className="gap-row">
+              <span>Gap analysis:</span>
+              <strong className={accelerationNeededPct > 0 ? "gap-bad" : "gap-good"}>
+                {accelerationNeededPct > 0
+                  ? `Need +${accelerationNeededPct.toFixed(2)} percentage points/year acceleration`
+                  : "Current pace meets required trajectory"}
+              </strong>
+            </div>
+
+            <div className={`sbti-row ${sbtiAligned ? "aligned" : "neutral"}`}>
+              <span>
+                SBTi sector comparison {sbtiAligned ? "(aligned)" : "(not aligned)"}: benchmark{" "}
+                {sbtiBenchmarkPct.toFixed(1)}%/year
+              </span>
+              <strong>{sbtiComparisonLabel}</strong>
+            </div>
+          </>
+        )}
+      </Card>
+
       <Card className="pathway-chart-card">
         <div className="collapsible-header">
           <div className="pathway-header">
@@ -1146,6 +1362,42 @@ export default function DashboardPage() {
             </div>
           </div>
         ) : <div className="collapsed-summary">Pathway chart is hidden. Expand to view trajectory and gap shading.</div>}
+      </Card>
+
+      <WhatIfScenarioBuilder
+        token={token}
+        year={selectedYear}
+        selectedFacility={selectedFacility}
+        ytdTotalKg={totalKg}
+        monthsSubmitted={monthsSubmitted}
+        annualTargetT={targetT || 0}
+        scope1Results={scope1Results}
+        scope2Results={scope2Results}
+      />
+      <SeasonalPatternCard
+        token={token}
+        year={selectedYear}
+        selectedFacility={selectedFacility}
+      />
+      <Card className="anomaly-alert-card">
+        <div className="collapsible-header">
+          <div>
+            <h3>Anomaly Detection Alerts</h3>
+            <p>Automated checks for spikes, outliers, zero-after-data, and missing month gaps</p>
+          </div>
+        </div>
+        {anomalyAlerts.length === 0 ? (
+          <div className="collapsed-summary">No anomalies detected for current monthly data.</div>
+        ) : (
+          <div className="anomaly-list">
+            {anomalyAlerts.map((alert, idx) => (
+              <div key={`${alert.type}-${idx}`} className={`anomaly-item ${alert.severity}`}>
+                <span className="anomaly-chip">{alert.type.replace("-", " ")}</span>
+                <span>{alert.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
       </>
       )}
@@ -1887,6 +2139,99 @@ export default function DashboardPage() {
           display: flex;
           align-items: center;
         }
+        .trajectory-analysis-card {
+          background: white;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 24px;
+        }
+        .rate-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          margin-top: 10px;
+          margin-bottom: 10px;
+        }
+        .rate-item {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          background: #F9FAFB;
+          padding: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .rate-label {
+          font-size: 12px;
+          color: #6B7280;
+        }
+        .rate-value {
+          font-size: 20px;
+          font-weight: 700;
+          color: #1B4D3E;
+        }
+        .sbti-row {
+          margin-top: 10px;
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 10px 12px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          font-size: 13px;
+          color: #374151;
+          background: #FFFFFF;
+        }
+        .sbti-row.aligned {
+          background: #ECFDF5;
+          border-color: #A7F3D0;
+        }
+        .sbti-row.neutral {
+          background: #F9FAFB;
+        }
+        .anomaly-alert-card {
+          background: white;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 24px;
+        }
+        .anomaly-list {
+          display: grid;
+          gap: 10px;
+          margin-top: 10px;
+        }
+        .anomaly-item {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 10px 12px;
+          font-size: 13px;
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          color: #374151;
+          background: #FFFFFF;
+        }
+        .anomaly-item.high {
+          border-color: #FECACA;
+          background: #FEF2F2;
+        }
+        .anomaly-item.medium {
+          border-color: #FDE68A;
+          background: #FFFBEB;
+        }
+        .anomaly-chip {
+          flex-shrink: 0;
+          text-transform: capitalize;
+          font-size: 11px;
+          font-weight: 700;
+          color: #1F2937;
+          background: #E5E7EB;
+          border-radius: 999px;
+          padding: 2px 8px;
+        }
         .gap-row {
           display: flex;
           justify-content: space-between;
@@ -2378,6 +2723,9 @@ export default function DashboardPage() {
           .trajectory-row {
             grid-template-columns: 1fr 1fr;
           }
+          .rate-grid {
+            grid-template-columns: 1fr 1fr;
+          }
         }
 
         @media (max-width: 768px) {
@@ -2403,6 +2751,17 @@ export default function DashboardPage() {
           }
           .trajectory-row {
             grid-template-columns: 1fr;
+          }
+          .rate-grid {
+            grid-template-columns: 1fr;
+          }
+          .sbti-row {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .anomaly-item {
+            flex-direction: column;
+            gap: 6px;
           }
 
           .total-value {

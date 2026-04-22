@@ -24,6 +24,7 @@ export default function ReportsPage() {
   const [selectedCity, setSelectedCity] = useState("all");
   const [cities, setCities] = useState(["all"]);
   const [generatingAI, setGeneratingAI] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const [aiReport, setAiReport] = useState(null);
   const [showAiReport, setShowAiReport] = useState(false);
   const [reportError, setReportError] = useState(null);
@@ -103,6 +104,34 @@ export default function ReportsPage() {
     const { jsPDF } = await import("jspdf");
     const element = reportRef.current;
 
+    const waitForImagesToLoad = async (rootEl) => {
+      const images = Array.from(rootEl.querySelectorAll("img"));
+      if (!images.length) return;
+      await Promise.all(
+        images.map(
+          (img) =>
+            new Promise((resolve) => {
+              // decode() improves reliability for html2canvas capture timing.
+              if (img.complete && img.naturalWidth > 0) {
+                if (typeof img.decode === "function") {
+                  img.decode().then(resolve).catch(resolve);
+                } else {
+                  resolve();
+                }
+                return;
+              }
+              const done = () => {
+                img.removeEventListener("load", done);
+                img.removeEventListener("error", done);
+                resolve();
+              };
+              img.addEventListener("load", done, { once: true });
+              img.addEventListener("error", done, { once: true });
+            })
+        )
+      );
+    };
+
     const scrollable = element.querySelector(".ai-report-content");
     const originalMaxHeight = scrollable?.style.maxHeight;
     const originalOverflow = scrollable?.style.overflowY;
@@ -112,9 +141,11 @@ export default function ReportsPage() {
     }
 
     try {
+      await waitForImagesToLoad(element);
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
+        imageTimeout: 15000,
         backgroundColor: "#ffffff",
         logging: false,
         foreignObjectRendering: false,
@@ -156,6 +187,51 @@ export default function ReportsPage() {
     }
   };
 
+  const downloadCSV = async () => {
+    if (!aiReport) return;
+    setExportingCsv(true);
+    setReportError(null);
+    try {
+      const selectedLocation = (() => {
+        if (!company?.locations?.length || selectedCity === "all") return null;
+        const match = company.locations.find(
+          (loc) => String(loc.city || "").toLowerCase() === String(selectedCity || "").toLowerCase()
+        );
+        if (!match) return { city: selectedCity };
+        return {
+          city: String(match.city || "").toLowerCase(),
+          country: String(match.country || "").toLowerCase(),
+        };
+      })();
+
+      const monthForPeriod =
+        selectedPeriod === "monthly"
+          ? `${selectedYear}-${selectedMonth}`
+          : null;
+      const { blob, filename } = await reportService.exportCSV({
+        year: parseInt(selectedYear, 10),
+        period: selectedPeriod,
+        month: monthForPeriod,
+        quarter: selectedPeriod === "quarterly" ? selectedQuarter : null,
+        location: selectedLocation,
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setReportError(error.message || "CSV export failed");
+      setTimeout(() => setReportError(null), 5000);
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
   const getDangerLevelClass = (dangerLevel) => {
     const level = String(dangerLevel || "").toLowerCase();
     if (level === "green") return "green";
@@ -190,7 +266,13 @@ export default function ReportsPage() {
               <FiDownload /> Download PDF
             </button>
           )}
-          <button className="export-all-btn"><FiDownload /> Export All Data</button>
+          <button
+            className="export-all-btn"
+            onClick={downloadCSV}
+            disabled={!showAiReport || !aiReport || exportingCsv}
+          >
+            <FiDownload /> {exportingCsv ? "Exporting CSV..." : "Export CSV"}
+          </button>
         </div>
       </div>
 
@@ -221,7 +303,16 @@ export default function ReportsPage() {
             {aiReport.report_standard && (
               <div className="report-standard">
                 <div className="report-section">
-                  <h4>3.1 Report Cover & Metadata</h4>
+                  <h4>1. Report Cover & Metadata</h4>
+                  {aiReport.report_standard.section_3_1_cover_metadata?.company_logo ? (
+                    <div className="report-logo-wrap">
+                      <img
+                        src={aiReport.report_standard.section_3_1_cover_metadata.company_logo}
+                        alt="Company logo"
+                        className="report-company-logo"
+                      />
+                    </div>
+                  ) : null}
                   <div className="breakdown-list">
                     <div className="breakdown-item"><span className="breakdown-name">Company</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.company_name || "—"}</span></div>
                     <div className="breakdown-item"><span className="breakdown-name">Report Title</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.report_title || "—"}</span></div>
@@ -234,7 +325,7 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>3.2 Executive Summary</h4>
+                  <h4>2. Executive Summary</h4>
                   <div className="executive-summary-card">
                     <div className="exec-header">
                       <div>
@@ -261,7 +352,7 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>3.3 Scope 1 Emissions Detail</h4>
+                  <h4>3. Scope 1 Emissions Detail</h4>
                   <div className="breakdown-list">
                     <div className="breakdown-item"><span className="breakdown-name">Scope 1 Total</span><span className="breakdown-value">{Number(aiReport.report_standard.section_3_3_scope1_detail?.scope1_total?.kg || 0).toFixed(2)} kg / {Number(aiReport.report_standard.section_3_3_scope1_detail?.scope1_total?.t || 0).toFixed(4)} tCO₂e</span></div>
                     <div className="breakdown-item"><span className="breakdown-name">Mobile Combustion</span><span className="breakdown-value">{Number(aiReport.report_standard.section_3_3_scope1_detail?.mobile_combustion?.total_t || 0).toFixed(4)} tCO₂e</span></div>
@@ -314,7 +405,7 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>3.4 Scope 2 Emissions Detail</h4>
+                  <h4>4. Scope 2 Emissions Detail</h4>
                   <div className="card16-s2-grid">
                     <div className="card16-s2-card">
                       <div className="card16-s2-label">Location-based total</div>
@@ -371,10 +462,28 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>3.5 Year-on-Year Comparison</h4>
-                  <div className="breakdown-list">
-                    <div className="breakdown-item"><span className="breakdown-name">Total Scope 1+2</span><span className="breakdown-value">{Number(aiReport.report_standard.section_3_5_yoy_comparison?.total_scope1_2_t?.current || 0).toFixed(4)} tCO₂e (Prev: {Number(aiReport.report_standard.section_3_5_yoy_comparison?.total_scope1_2_t?.prior || 0).toFixed(4)}, Δ {aiReport.report_standard.section_3_5_yoy_comparison?.total_scope1_2_t?.delta_pct ?? "N/A"}%)</span></div>
-                    <div className="breakdown-item"><span className="breakdown-name">Intensity (tCO₂e/employee)</span><span className="breakdown-value">{Number(aiReport.report_standard.section_3_5_yoy_comparison?.intensity_tco2e_per_employee?.current || 0).toFixed(4)} (Prev: {Number(aiReport.report_standard.section_3_5_yoy_comparison?.intensity_tco2e_per_employee?.prior || 0).toFixed(4)}, Δ {aiReport.report_standard.section_3_5_yoy_comparison?.intensity_tco2e_per_employee?.delta_pct ?? "N/A"}%)</span></div>
+                  <h4>5. Year-on-Year Comparison</h4>
+                  <div className="card16-cert-table-wrap">
+                    <table className="card16-cert-table">
+                      <thead>
+                        <tr>
+                          <th>Metric</th>
+                          <th>Current</th>
+                          <th>Prior</th>
+                          <th>Delta %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(aiReport.report_standard.section_3_5_yoy_comparison?.comparison_table_rows || []).map((row, idx) => (
+                          <tr key={idx}>
+                            <td>{row.metric}</td>
+                            <td>{row.current != null ? Number(row.current).toFixed(4) : "—"}</td>
+                            <td>{row.prior != null ? Number(row.prior).toFixed(4) : "—"}</td>
+                            <td>{row.delta_pct != null ? `${Number(row.delta_pct).toFixed(2)}%` : "N/A"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                   {aiReport.report_standard.section_3_5_yoy_comparison?.waterfall_chart?.length > 0 && (
                     <div className="card16-chart-wrap">
@@ -390,11 +499,81 @@ export default function ReportsPage() {
                       </ResponsiveContainer>
                     </div>
                   )}
+                  {aiReport.report_standard.section_3_5_yoy_comparison?.largest_movements?.length > 0 && (
+                    <div className="card16-biogenic">
+                      <div className="card16-biogenic-header">
+                        <span className="card16-biogenic-tag">Top 2 Movements</span>
+                      </div>
+                      <ul className="card16-biogenic-list">
+                        {aiReport.report_standard.section_3_5_yoy_comparison.largest_movements.map((m, idx) => (
+                          <li key={idx}>
+                            <span>
+                              <strong>{m.category}</strong> ({m.direction}, {Number(m.delta_tco2e || 0).toFixed(4)} tCO₂e)
+                              <br />
+                              <small>{m.probable_cause}</small>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <p className="section-summary">{aiReport.report_standard.section_3_5_yoy_comparison?.ai_variance_explanation || ""}</p>
                 </div>
 
                 <div className="report-section">
-                  <h4>3.7 Category-Level Recommendations</h4>
+                  <h4>6. Methodology Disclosure</h4>
+                  <div className="breakdown-list">
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">Organisational Boundary</span>
+                      <span className="breakdown-value">{aiReport.report_standard.section_6_methodology_disclosure?.organisational_boundary || "—"}</span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">Reporting Standard</span>
+                      <span className="breakdown-value">{aiReport.report_standard.section_6_methodology_disclosure?.reporting_standard || "—"}</span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">GWP Basis</span>
+                      <span className="breakdown-value">{aiReport.report_standard.section_6_methodology_disclosure?.gwp_basis || "—"}</span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">Scope 2 Method</span>
+                      <span className="breakdown-value">{aiReport.report_standard.section_6_methodology_disclosure?.scope2_method || "—"}</span>
+                    </div>
+                  </div>
+                  <div className="card16-cert-table-wrap" style={{ marginTop: "10px" }}>
+                    <table className="card16-cert-table">
+                      <thead>
+                        <tr>
+                          <th>Region</th>
+                          <th>Scope 1 Source</th>
+                          <th>Scope 2 Source</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(aiReport.report_standard.section_6_methodology_disclosure?.factor_source_table || []).map((row, idx) => (
+                          <tr key={idx}>
+                            <td>{row.region}</td>
+                            <td>{row.scope1_source}</td>
+                            <td>{row.scope2_source}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="card16-biogenic" style={{ marginTop: "12px" }}>
+                    <ul className="card16-biogenic-list">
+                      <li>
+                        <span><strong>Biogenic Exclusion:</strong> {aiReport.report_standard.section_6_methodology_disclosure?.biogenic_exclusion_note || "—"}</span>
+                      </li>
+                      <li>
+                        <span><strong>Scope 3 Exclusion:</strong> {aiReport.report_standard.section_6_methodology_disclosure?.scope3_exclusion_note || "—"}</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="report-section">
+                  <h4>7. Category-Level Recommendations</h4>
                   {(aiReport.report_standard.section_3_7_category_recommendations || []).map((rec, idx) => (
                     <div key={idx} className="recommendation-card">
                       <div className="rec-header">
@@ -412,7 +591,7 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="report-section">
-                  <h4>3.10 Report Export Formats</h4>
+                  <h4>8. Report Export Formats</h4>
                   <div className="card16-cert-table-wrap">
                     <table className="card16-cert-table">
                       <thead><tr><th>Format</th><th>Audience</th><th>Content</th></tr></thead>
@@ -1005,6 +1184,7 @@ export default function ReportsPage() {
         .download-pdf-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #2E7D64; color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
         .export-all-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #2E7D64; color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
         .export-all-btn:hover, .download-pdf-btn:hover { background: #1B4D3E; }
+        .export-all-btn:disabled { background: #94A3B8; cursor: not-allowed; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
         .error-message { background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
@@ -1042,6 +1222,19 @@ export default function ReportsPage() {
         .report-section { margin-bottom: 24px; }
         .report-section.highlight { background: #F0FDF4; padding: 16px; border-radius: 12px; border-left: 4px solid #10B981; }
         .report-section h4 { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 12px; }
+        .report-logo-wrap {
+          margin-bottom: 12px;
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 12px;
+          background: #F9FAFB;
+          display: inline-flex;
+        }
+        .report-company-logo {
+          max-width: 180px;
+          max-height: 64px;
+          object-fit: contain;
+        }
         .section-summary, .section-subtitle { color: #4B5563; font-size: 14px; margin-bottom: 12px; }
         .breakdown-list { background: white; border-radius: 8px; border: 1px solid #E5E7EB; overflow: hidden; }
         .breakdown-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #F3F4F6; }

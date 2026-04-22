@@ -44,6 +44,7 @@ export default function SetupSummary({
   const [editData, setEditData] = useState({
     name: data.name,
     description: data.description,
+    logo: data.logo,
     region: data.region,
     industry: data.industry,
     employees: data.employees,
@@ -59,6 +60,8 @@ export default function SetupSummary({
   const [cities, setCities] = useState([]);
   const [showRegionChangeConfirm, setShowRegionChangeConfirm] = useState(false);
   const [pendingRegion, setPendingRegion] = useState("");
+  const [regionInlineError, setRegionInlineError] = useState("");
+  const [locationsInlineError, setLocationsInlineError] = useState("");
 
   const regions = [
     { label: " Middle East", value: "middle-east" },
@@ -89,11 +92,21 @@ export default function SetupSummary({
     }
   };
 
+  const toEditLocation = (loc, index) => ({
+    ...loc,
+    id:
+      loc?.id ??
+      `${String(loc?.country || "").toLowerCase()}::${String(loc?.city || loc?.name || "").toLowerCase()}::${index}`,
+  });
+
   const handleEdit = (section) => {
     if (onClearValidationFeedback) onClearValidationFeedback();
+    setRegionInlineError("");
+    setLocationsInlineError("");
     setEditData({
       name: data.name,
       description: data.description,
+      logo: data.logo,
       region: data.region,
       industry: data.industry,
       employees: data.employees,
@@ -103,7 +116,7 @@ export default function SetupSummary({
     if (section === 'facilities') {
       const locs = filterLocationsForRegion(data.region, data.locations || []);
       setFacilitiesEditData({
-        locations: [...locs],
+        locations: locs.map((loc, index) => toEditLocation(loc, index)),
       });
       setSelectedCountry("");
       setSelectedCity("");
@@ -149,9 +162,10 @@ export default function SetupSummary({
   const handleRegionSave = () => {
     const newRegion = editData.region;
     if (!newRegion) {
-      window.alert("Please select a region.");
+      setRegionInlineError("Please select a region.");
       return;
     }
+    setRegionInlineError("");
     if (newRegion !== data.region) {
       setPendingRegion(newRegion);
       setShowRegionChangeConfirm(true);
@@ -161,18 +175,24 @@ export default function SetupSummary({
   };
 
   const handleFacilitiesSave = () => {
+    setLocationsInlineError("");
     if (!data.region) {
-      window.alert("Please set a region first (Region section).");
+      setLocationsInlineError("Please set a region first in the Region section.");
       return;
     }
     const validCountries = new Set(getValidCountryValuesForRegion(data.region));
-    const cleaned = facilitiesEditData.locations.filter(
-      (loc) => loc?.country && validCountries.has(loc.country) && (loc?.city || loc?.name)
-    );
+    const normalizeCountry = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, "-");
+    const cleaned = facilitiesEditData.locations
+      .map((loc) => ({
+        ...loc,
+        country: normalizeCountry(loc?.country),
+      }))
+      .filter((loc) => loc?.country && validCountries.has(loc.country) && (loc?.city || loc?.name));
     if (cleaned.length === 0) {
-      window.alert("Add at least one country-city entry in your region.");
+      setLocationsInlineError("Add at least one country-city entry in your region.");
       return;
     }
+    setLocationsInlineError("");
     applyCompanyPatch({
       country: cleaned[0].country,
       locations: cleaned,
@@ -183,17 +203,24 @@ export default function SetupSummary({
   const handleCancel = () => setEditingSection(null);
 
   const handleCountryChange = (country) => {
+    setLocationsInlineError("");
     setSelectedCountry(country);
     setCities(citiesByCountry[country] || []);
     setSelectedCity("");
   };
 
   const handleAddLocationPair = () => {
-    if (!selectedCountry || !selectedCity) return;
+    if (!selectedCountry || !selectedCity) {
+      setLocationsInlineError("Please select both country and city before adding.");
+      return;
+    }
     const cityExists = facilitiesEditData.locations.some(
       (loc) => loc.country === selectedCountry && loc.city === selectedCity
     );
-    if (cityExists) return;
+    if (cityExists) {
+      setLocationsInlineError("This country-city pair is already added.");
+      return;
+    }
     
     const newLocation = {
       id: Date.now(),
@@ -205,15 +232,17 @@ export default function SetupSummary({
       ...prev,
       locations: [...prev.locations, newLocation]
     }));
+    setLocationsInlineError("");
     setSelectedCountry("");
     setSelectedCity("");
     setCities([]);
   };
 
   const handleRemoveLocation = (id) => {
+    setLocationsInlineError("");
     setFacilitiesEditData(prev => ({
       ...prev,
-      locations: prev.locations.filter(loc => loc.id !== id)
+      locations: prev.locations.filter((loc) => String(loc.id) !== String(id))
     }));
   };
 
@@ -285,7 +314,7 @@ export default function SetupSummary({
               <h4>Company Information</h4>
             </div>
             {editingSection !== 'company' && (
-              <button onClick={() => handleEdit('company')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('company')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
@@ -322,6 +351,12 @@ export default function SetupSummary({
                 <span className="row-label">Description:</span>
                 <span className="row-value">{data.description || "—"}</span>
               </div>
+              <div className="summary-row" key="company-logo">
+                <span className="row-label">Logo:</span>
+                <span className="row-value">
+                  {data.logo ? <img src={data.logo} alt="Company logo" className="company-logo-preview" /> : "—"}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -334,7 +369,7 @@ export default function SetupSummary({
               <h4>Region</h4>
             </div>
             {editingSection !== 'region' && (
-              <button onClick={() => handleEdit('region')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('region')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
@@ -345,9 +380,13 @@ export default function SetupSummary({
               <SelectDropdown
                 label="Region"
                 value={editData.region}
-                onChange={(e) => setEditData({...editData, region: e.target.value})}
+                onChange={(e) => {
+                  setRegionInlineError("");
+                  setEditData({...editData, region: e.target.value});
+                }}
                 options={regions}
               />
+              {regionInlineError && <div className="inline-error">{regionInlineError}</div>}
               <div className="edit-actions">
                 <PrimaryButton onClick={handleRegionSave} className="save-btn"><FiSave /> Save</PrimaryButton>
                 <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
@@ -371,7 +410,7 @@ export default function SetupSummary({
               <h4>Industry</h4>
             </div>
             {editingSection !== 'industry' && (
-              <button onClick={() => handleEdit('industry')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('industry')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
@@ -408,7 +447,7 @@ export default function SetupSummary({
               <h4>Employees</h4>
             </div>
             {editingSection !== 'employees' && (
-              <button onClick={() => handleEdit('employees')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('employees')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
@@ -453,7 +492,7 @@ export default function SetupSummary({
               <h4>Annual Revenue</h4>
             </div>
             {editingSection !== 'revenue' && (
-              <button onClick={() => handleEdit('revenue')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('revenue')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
@@ -494,7 +533,7 @@ export default function SetupSummary({
               <h4>Locations ({data.locations?.length || 0})</h4>
             </div>
             {editingSection !== 'facilities' && (
-              <button onClick={() => handleEdit('facilities')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('facilities')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
@@ -528,6 +567,7 @@ export default function SetupSummary({
                 <div className="field-group add-inline-group">
                   <label className="field-label"> </label>
                   <button
+                    type="button"
                     onClick={handleAddLocationPair}
                     className="add-city-btn"
                     disabled={!selectedCountry || !selectedCity}
@@ -545,6 +585,7 @@ export default function SetupSummary({
                       <FiMapPin className="location-icon" />
                       <span>{getLocationDisplay(loc)}</span>
                       <button
+                        type="button"
                         onClick={() => handleRemoveLocation(loc.id)}
                         className="remove-location-btn"
                         title="Remove"
@@ -562,6 +603,7 @@ export default function SetupSummary({
                 </div>
               )}
 
+              {locationsInlineError && <div className="inline-error">{locationsInlineError}</div>}
               <div className="edit-actions">
                 <PrimaryButton onClick={handleFacilitiesSave} className="save-btn">
                   <FiSave /> Save Entries
@@ -721,6 +763,15 @@ export default function SetupSummary({
         .summary-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
         .row-label { font-size: 14px; color: #6B7280; font-weight: 500; }
         .row-value { font-size: 14px; font-weight: 600; color: #1B4D3E; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .company-logo-preview {
+          max-width: 130px;
+          max-height: 42px;
+          object-fit: contain;
+          border: 1px solid #E5E7EB;
+          border-radius: 6px;
+          background: #fff;
+          padding: 4px;
+        }
         .size-badge { font-size: 11px; padding: 2px 8px; background: #F8FAF8; color: #2E7D64; border-radius: 30px; font-weight: 500; border: 1px solid #E5E7EB; }
 
         .edit-mode {
@@ -866,6 +917,15 @@ export default function SetupSummary({
           color: #B91C1C;
           border-radius: 8px;
           padding: 10px 12px;
+          font-size: 13px;
+          font-weight: 500;
+        }
+        .inline-error {
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
           font-size: 13px;
           font-weight: 500;
         }

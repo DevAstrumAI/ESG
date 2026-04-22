@@ -35,6 +35,41 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
+const REFRIGERANT_LABEL_BY_KEY = REFRIGERANT_TYPES.reduce((acc, item) => {
+  acc[item.key] = item.label;
+  return acc;
+}, {});
+
+const isRefrigerantKey = (key) => {
+  const low = String(key || "").toLowerCase();
+  return /^r\d/.test(low) || low.includes("hfc") || low.includes("hcfc") || low.includes("pfc") || low.includes("sf6");
+};
+
+const toNum = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const factorValue = (raw) => {
+  if (raw && typeof raw === "object") {
+    return toNum(raw.value ?? raw.factor ?? raw.emissionFactor ?? 0);
+  }
+  return toNum(raw);
+};
+
+const titleFromKey = (key) => {
+  const mapped = REFRIGERANT_LABEL_BY_KEY[key];
+  if (mapped) return mapped;
+  const t = String(key || "");
+  return t ? t.toUpperCase() : "Refrigerant";
+};
+
+const normalizeRefrigerantKey = (key) =>
+  String(key || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]/g, "");
+
 export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const refrigerants    = useEmissionStore((s) => s.scope1Refrigerants);
   const addRefrigerant  = useEmissionStore((s) => s.addScope1Refrigerant);
@@ -89,6 +124,8 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   const [quantity, setQuantity]             = useState("");
   const [month, setMonth]                   = useState(reportingMonth || currentMonth());
   const [addRowError, setAddRowError] = useState("");
+  const [factorMap, setFactorMap] = useState({});
+  const [factorsLoaded, setFactorsLoaded] = useState(false);
 
   useEffect(() => {
     if (reportingMonth) {
@@ -96,9 +133,58 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
     }
   }, [reportingMonth]);
 
-  const selectedRefrigerant = REFRIGERANT_TYPES.find((r) => r.key === refrigerantKey);
+  useEffect(() => {
+    const loadRefrigerantFactors = async () => {
+      if (!token) return;
+      const loc = getSelectedLocation(company);
+      if (!loc?.country || !loc?.city) return;
+      setFactorsLoaded(false);
+      try {
+        const response = await emissionsAPI.getFactors(token, loc.country, loc.city);
+        const scope1 = response?.factors?.scope1 || {};
+        const group = scope1?.refrigerants && typeof scope1.refrigerants === "object" ? scope1.refrigerants : {};
+        const merged = {};
+
+        Object.entries(group).forEach(([key, raw]) => {
+          const v = factorValue(raw);
+          if (v > 0) merged[normalizeRefrigerantKey(key)] = v;
+        });
+
+        Object.entries(scope1).forEach(([key, raw]) => {
+          const normalized = normalizeRefrigerantKey(key);
+          if (!isRefrigerantKey(normalized)) return;
+          const v = factorValue(raw);
+          if (v > 0) merged[normalized] = v;
+        });
+
+        if (Object.keys(merged).length > 0) setFactorMap(merged);
+        else setFactorMap({});
+      } catch (error) {
+        console.warn("Failed to load refrigerant factors from DB:", error);
+        setFactorMap({});
+      } finally {
+        setFactorsLoaded(true);
+      }
+    };
+    loadRefrigerantFactors();
+  }, [token, company, getSelectedLocation]);
+
+  const refrigerantOptions = Object.entries(factorMap)
+    .map(([key, gwp]) => ({
+      key,
+      label: titleFromKey(key),
+      gwp: toNum(gwp),
+    }))
+    .filter((item) => item.gwp > 0)
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const selectedRefrigerant = refrigerantOptions.find((r) => r.key === refrigerantKey);
 
   const handleAddRow = () => {
+    if (!factorsLoaded || refrigerantOptions.length === 0) {
+      setAddRowError("Refrigerant factors are not loaded yet. Please wait a moment and try again.");
+      return;
+    }
     if (!refrigerantKey) {
       setAddRowError("Please select a refrigerant type.");
       return;
@@ -134,11 +220,12 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
   };
   const saveEdit = () => {
     if (!editValues.refrigerantKey || editValues.quantity === "") return;
-    const selected = REFRIGERANT_TYPES.find((r) => r.key === editValues.refrigerantKey);
+    const normalizedEditKey = normalizeRefrigerantKey(editValues.refrigerantKey);
+    const selected = refrigerantOptions.find((r) => r.key === normalizedEditKey);
     updateRefrigerant({
       id: editingId,
       refrigerantType: selected?.label || editValues.refrigerantKey,
-      refrigerantKey: editValues.refrigerantKey,
+      refrigerantKey: normalizedEditKey,
       leakageKg: Number(editValues.quantity),
       gwp: selected?.gwp || 0,
       month: editValues.month,
@@ -146,8 +233,8 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
     cancelEdit();
   };
 
-  const co2ePreview = (leakageKg, gwp) =>
-    ((leakageKg * gwp) / 1000).toFixed(3);
+  const co2eTonnes = (leakageKg, gwp) => (Number(leakageKg || 0) * Number(gwp || 0)) / 1000;
+  const co2eKg = (leakageKg, gwp) => co2eTonnes(leakageKg, gwp) * 1000;
 
   return (
     <div className="rf-wrap">
@@ -157,6 +244,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           Enter <strong>refrigerant leakage</strong> from cooling equipment. Each refrigerant has a specific Global Warming Potential (GWP).
         </p>
       </div>
+      {!factorsLoaded && <div className="rf-info-note">Loading refrigerant factors from location database...</div>}
       {addRowError && <div className="rf-inline-error">⚠️ {addRowError}</div>}
 
       <div className="rf-table-wrap">
@@ -166,7 +254,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
               <th>Refrigerant Type</th>
               <th>Leakage</th>
               <th>GWP</th>
-              <th>CO₂e (t)</th>
+              <th>CO₂e (kg)</th>
               <th>Month</th>
               <th></th>
               </tr>
@@ -179,14 +267,16 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                 </td>
               </tr>
             )}
-            {refrigerants.map((r) => (
+            {refrigerants.map((r) => {
+              const effectiveGwp = factorMap[normalizeRefrigerantKey(r.refrigerantKey)] || r.gwp || 0;
+              return (
               editingId === r.id ? (
                 <tr key={r.id}>
                   <td>
                     <ThemedSelect
                       value={editValues.refrigerantKey}
                       onChange={(nextValue) => setEditValues({ ...editValues, refrigerantKey: nextValue })}
-                      options={REFRIGERANT_TYPES.map((item) => ({
+                      options={refrigerantOptions.map((item) => ({
                         value: item.key,
                         label: `${item.label} (GWP: ${item.gwp})`,
                       }))}
@@ -200,13 +290,18 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                       <span className="rf-unit-tag">kg</span>
                     </div>
                   </td>
-                  <td><span className="rf-badge">{REFRIGERANT_TYPES.find((item) => item.key === editValues.refrigerantKey)?.gwp?.toLocaleString() || "—"}</span></td>
+                  <td><span className="rf-badge">{refrigerantOptions.find((item) => item.key === normalizeRefrigerantKey(editValues.refrigerantKey))?.gwp?.toLocaleString() || "—"}</span></td>
                   <td>
                     <span className="rf-co2e">
-                      {REFRIGERANT_TYPES.find((item) => item.key === editValues.refrigerantKey) && editValues.quantity
-                        ? co2ePreview(Number(editValues.quantity), REFRIGERANT_TYPES.find((item) => item.key === editValues.refrigerantKey).gwp)
+                      {refrigerantOptions.find((item) => item.key === normalizeRefrigerantKey(editValues.refrigerantKey)) && editValues.quantity
+                        ? co2eKg(Number(editValues.quantity), refrigerantOptions.find((item) => item.key === normalizeRefrigerantKey(editValues.refrigerantKey)).gwp).toLocaleString(undefined, { maximumFractionDigits: 2 })
                         : "—"}
                     </span>
+                    {refrigerantOptions.find((item) => item.key === normalizeRefrigerantKey(editValues.refrigerantKey)) && editValues.quantity && (
+                      <div className="rf-tonnes-note">
+                        ({co2eTonnes(Number(editValues.quantity), refrigerantOptions.find((item) => item.key === normalizeRefrigerantKey(editValues.refrigerantKey)).gwp).toFixed(3)} t)
+                      </div>
+                    )}
                   </td>
                   <td>
                     <ThemedSelect
@@ -230,10 +325,11 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                   <span className="rf-unit"> kg</span>
                 </td>
                 <td>
-                  <span className="rf-badge">{r.gwp?.toLocaleString()}</span>
+                  <span className="rf-badge">{effectiveGwp?.toLocaleString()}</span>
                 </td>
                 <td>
-                  <span className="rf-co2e">{co2ePreview(r.leakageKg, r.gwp)}</span>
+                  <span className="rf-co2e">{co2eKg(r.leakageKg, effectiveGwp).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                  <div className="rf-tonnes-note">({co2eTonnes(r.leakageKg, effectiveGwp).toFixed(3)} t)</div>
                 </td>
                 <td>{r.month || "—"}</td>
                 <td>
@@ -245,19 +341,22 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
                   </button>
                 </td>
               </tr>
-            )))}
+              )
+            );
+            })}
 
             <tr className="rf-add-row">
               <td>
                 <ThemedSelect
                   value={refrigerantKey}
-                  onChange={setRefrigerantKey}
-                  options={REFRIGERANT_TYPES.map((r) => ({
+                  onChange={(v) => setRefrigerantKey(normalizeRefrigerantKey(v))}
+                  options={refrigerantOptions.map((r) => ({
                     value: r.key,
                     label: `${r.label} (GWP: ${r.gwp})`,
                   }))}
                   placeholder="Select Refrigerant"
                   className="rf-select"
+                  disabled={!factorsLoaded || refrigerantOptions.length === 0}
                 />
               </td>
               <td>
@@ -282,9 +381,12 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
               <td>
                 <span className="rf-preview rf-co2e">
                   {selectedRefrigerant && quantity
-                    ? co2ePreview(Number(quantity), selectedRefrigerant.gwp)
+                    ? co2eKg(Number(quantity), selectedRefrigerant.gwp).toLocaleString(undefined, { maximumFractionDigits: 2 })
                     : "—"}
                 </span>
+                {selectedRefrigerant && quantity && (
+                  <div className="rf-tonnes-note">({co2eTonnes(Number(quantity), selectedRefrigerant.gwp).toFixed(3)} t)</div>
+                )}
               </td>
               <td>
                 <ThemedSelect
@@ -363,6 +465,7 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
         }
 
         .rf-co2e { font-weight: 500; color: #2E7D64; }
+        .rf-tonnes-note { font-size: 11px; color: #6B7280; margin-top: 2px; }
         .rf-preview { font-size: 13px; color: #6B7280; }
 
         .rf-delete {
@@ -425,6 +528,16 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           border-radius: 8px;
           padding: 9px 11px;
           font-size: 13px;
+          font-weight: 500;
+        }
+        .rf-info-note {
+          margin: 8px 0 10px;
+          border: 1px solid #BFDBFE;
+          background: #EFF6FF;
+          color: #1E40AF;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 12px;
           font-weight: 500;
         }
                 .rf-error { font-size: 13px; color: #DC2626; }

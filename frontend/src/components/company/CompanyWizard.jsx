@@ -51,6 +51,7 @@ export default function CompanyWizard() {
   const [companyData, setCompanyData] = useState({
     name: "",
     description: "",
+    logo: "",
     region: "",
     country: "",
     industry: "",
@@ -87,6 +88,7 @@ export default function CompanyWizard() {
     return {
       name: toCleanString(data?.name),
       description: toCleanString(data?.description),
+      logo: toCleanString(data?.logo),
       region,
       industry: toCleanString(data?.industry),
       employees: toNumberOrNull(data?.employees),
@@ -150,6 +152,7 @@ export default function CompanyWizard() {
             body: JSON.stringify({
               name: data.name,
               description: data.description || "",
+              logo: data.logo || "",
               industry: data.industry || "",
               employees: Number(data.employees) || 0,
               revenue: Number(data.revenue) || 0,
@@ -235,6 +238,7 @@ export default function CompanyWizard() {
         setCompanyData({
           name: latestCompany.basicInfo?.name || "",
           description: latestCompany.basicInfo?.description || "",
+          logo: latestCompany.basicInfo?.logo || latestCompany.basicInfo?.logoUrl || "",
           region,
           country: validFirstCountry,
           industry: latestCompany.basicInfo?.industry || "",
@@ -245,6 +249,7 @@ export default function CompanyWizard() {
         setSavedSnapshot(buildSnapshot({
           name: latestCompany.basicInfo?.name || "",
           description: latestCompany.basicInfo?.description || "",
+          logo: latestCompany.basicInfo?.logo || latestCompany.basicInfo?.logoUrl || "",
           region,
           industry: latestCompany.basicInfo?.industry || "",
           employees: latestCompany.basicInfo?.employees || "",
@@ -331,6 +336,7 @@ export default function CompanyWizard() {
     const payload = {
       name: companyData.name,
       description: companyData.description,
+      logo: companyData.logo,
       industry: companyData.industry,
       employees: Number(companyData.employees),
       revenue: Number(companyData.revenue),
@@ -376,6 +382,7 @@ export default function CompanyWizard() {
     const payload = {
       name: companyData.name,
       description: companyData.description,
+      logo: companyData.logo,
       industry: companyData.industry,
       employees: Number(companyData.employees),
       revenue: Number(companyData.revenue),
@@ -455,6 +462,7 @@ export default function CompanyWizard() {
       setCompanyData({
         name: "",
         description: "",
+        logo: "",
         region: "",
         country: "",
         industry: "",

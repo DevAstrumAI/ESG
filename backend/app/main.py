@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes import auth, companies, emissions, reports, formal_report, settings, predictions, admin
 from app.utils.firebase import initialize_firebase
 
-app = FastAPI(title="Lumyna ESG API", version="1.0.0")
+app = FastAPI(title="Lumyina ESG API", version="1.0.0")
 
 # Initialize Firebase Admin SDK before route handling
 initialize_firebase()
@@ -41,7 +41,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 @app.get("/")
 async def root():
-    return {"message": "Lumyna ESG API is running"}
+    return {"message": "Lumyina ESG API is running"}
 
 @app.get("/health")
 async def health_check():

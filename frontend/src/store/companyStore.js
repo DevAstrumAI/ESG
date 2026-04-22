@@ -102,6 +102,7 @@ export const useCompanyStore = create((set, get) => ({
             basicInfo: {
               name: companyData.name,
               description: companyData.description || "",
+              logo: companyData.logo || "",
               industry: companyData.industry,
               employees: companyData.employees,
               revenue: companyData.revenue,

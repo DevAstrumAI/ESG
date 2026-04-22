@@ -41,6 +41,7 @@ async def create_company(
             "basicInfo": {
                 "name": company_data.name,
                 "description": company_data.description or "",
+                "logo": company_data.logo or "",
                 "industry": company_data.industry,
                 "employees": company_data.employees,
                 "revenue": company_data.revenue,
@@ -150,6 +151,8 @@ async def update_my_company(
             update_data["basicInfo.name"] = company_data.name
         if company_data.description is not None:
             update_data["basicInfo.description"] = company_data.description
+        if company_data.logo is not None:
+            update_data["basicInfo.logo"] = company_data.logo
         if company_data.industry is not None:
             update_data["basicInfo.industry"] = company_data.industry
         if company_data.employees is not None:

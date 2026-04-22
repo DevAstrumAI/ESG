@@ -156,12 +156,33 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
     # Firestore emission factor documents are stored in a couple of different shapes.
     # Current observed shape: fuel types (e.g., `diesel_bus`, `cng`, `methane`) exist at the top level
     # rather than nested under `mobile`/`stationary`/`fugitive`. We support both.
+    def _norm_factor_key(value: str) -> str:
+        return str(value or "").strip().lower().replace("-", "").replace(" ", "")
+
     def _get_factor(fuel_key: str, group_keys: list[str]) -> dict:
+        direct_key = str(fuel_key or "")
+        normalized_key = _norm_factor_key(direct_key)
         for group_key in group_keys:
             group = factors.get(group_key)
-            if isinstance(group, dict) and fuel_key in group:
-                return _coerce_factor_data(group.get(fuel_key))
-        return _coerce_factor_data(factors.get(fuel_key))
+            if not isinstance(group, dict):
+                continue
+            if direct_key in group:
+                return _coerce_factor_data(group.get(direct_key))
+            if normalized_key in group:
+                return _coerce_factor_data(group.get(normalized_key))
+            # final fallback: normalize each key once for mixed formats like "R-134a"
+            for k, v in group.items():
+                if _norm_factor_key(k) == normalized_key:
+                    return _coerce_factor_data(v)
+
+        if direct_key in factors:
+            return _coerce_factor_data(factors.get(direct_key))
+        if normalized_key in factors:
+            return _coerce_factor_data(factors.get(normalized_key))
+        for k, v in factors.items():
+            if _norm_factor_key(k) == normalized_key:
+                return _coerce_factor_data(v)
+        return _coerce_factor_data(None)
 
     # --- Mobile ---
     mobile_entries = []
@@ -256,12 +277,16 @@ def calculate_scope1(data: dict, region: str, country: str, city: str) -> dict:
         leakage_kg = float(entry.get("leakageKg", 0))
         factor_data = _get_factor(refrigerant_type, ["refrigerants"])
         factor_value = _factor_numeric(factor_data)
-        kg_co2e = leakage_kg * factor_value
+        # Core refrigerant formula (tCO2e): leakage_kg * GWP / 1000
+        # Keep internal aggregate in kgCO2e for existing API/UI compatibility.
+        t_co2e = (leakage_kg * factor_value) / 1000.0
+        kg_co2e = t_co2e * 1000.0
         refrigerant_total += kg_co2e
         refrigerant_entries.append({
             **entry,
             "factorUsed": factor_value,
             "unit": factor_data.get("unit", ""),
+            "tCO2e": round(t_co2e, 6),
             "kgCO2e": round(kg_co2e, 4),
         })
 
@@ -334,6 +359,7 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
     # or directly at the top level. We normalise by selecting the group dict when present.
     electricity_factors = factors.get("electricity") if isinstance(factors.get("electricity"), dict) else factors
     heating_factors = factors.get("heating") if isinstance(factors.get("heating"), dict) else factors
+    cooling_factors = factors.get("cooling") if isinstance(factors.get("cooling"), dict) else {}
 
     location_grand_total = 0.0
     market_grand_total = 0.0
@@ -402,15 +428,30 @@ def calculate_scope2(data: dict, region: str, country: str, city: str) -> dict:
     # --- Heating ---
     heating_entries = []
     heating_total = 0.0
+    heating_aliases = {
+        "steam": "steam_hot_water",
+        "steam_hotwater": "steam_hot_water",
+        "district_heating": "steam_hot_water",
+        "uae_avg": "uae_average",
+        "sg_avg": "sg_average",
+    }
     for entry in data.get("heating", []):
-        energy_type = entry.get("energyType", "")
+        energy_type = str(entry.get("energyType", "") or "")
         consumption_kwh = float(entry.get("consumptionKwh", 0))
-        factor_data = _coerce_factor_data(heating_factors.get(energy_type), "kg CO2e/kWh")
+        normalized_energy_type = heating_aliases.get(energy_type, energy_type)
+        # Priority: heating group -> cooling group (for district_cooling) -> top-level
+        raw_heating_factor = (
+            heating_factors.get(normalized_energy_type)
+            or cooling_factors.get(normalized_energy_type)
+            or factors.get(normalized_energy_type)
+        )
+        factor_data = _coerce_factor_data(raw_heating_factor, "kg CO2e/kWh")
         factor_value = _factor_numeric(factor_data)
         kg_co2e = consumption_kwh * factor_value
         heating_total += kg_co2e
         heating_entries.append({
             **entry,
+            "energyType": normalized_energy_type,
             "factorUsed": factor_value,
             "unit": factor_data.get("unit", ""),
             "kgCO2e": round(kg_co2e, 4),
