@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export function locationKey(country, city) {
-  const c = (country || "").trim();
+  const c = (country || "").trim().toLowerCase().replace(/\s+/g, "-");
   const t = (city || "").trim().toLowerCase();
   return `${c}|${t}`;
 }
