@@ -1,26 +1,19 @@
 // src/pages/ReportsPage.jsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import ReportsOverview from "../components/reports/ReportsOverview";
-import ReportCharts from "../components/reports/ReportCharts";
-import TargetTracker from "../components/reports/TargetTracker";
 import { 
   FiFileText, FiDownload, FiCalendar, FiFilter, FiBarChart2, 
-  FiMapPin, FiZap, FiTarget, FiClock, FiAlertCircle, FiLayers
+  FiMapPin, FiZap, FiAlertCircle
 } from "react-icons/fi";
-import { BiLeaf } from "react-icons/bi";
 import Card from "../components/ui/Card";
 import { useCompanyStore } from "../store/companyStore";
 import { useAuthStore } from "../store/authStore";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer } from "recharts";
 import { reportService } from "../services/reportService";
 
 export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("yearly");
-  const [selectedYear, setSelectedYear] = useState("2026");
+  const [selectedYear, setSelectedYear] = useState(String(new Date().getMonth() + 1 >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1));
   const [selectedCity, setSelectedCity] = useState("all");
   const [cities, setCities] = useState(["all"]);
   const [generatingAI, setGeneratingAI] = useState(false);
@@ -36,6 +29,26 @@ export default function ReportsPage() {
 
   const [selectedMonth, setSelectedMonth] = useState("01"); // Default January
   const [selectedQuarter, setSelectedQuarter] = useState("Q1");
+  const fiscalMonthOptions = useMemo(() => ([
+    { value: `${selectedYear}-06`, label: `June ${selectedYear}` },
+    { value: `${selectedYear}-07`, label: `July ${selectedYear}` },
+    { value: `${selectedYear}-08`, label: `August ${selectedYear}` },
+    { value: `${selectedYear}-09`, label: `September ${selectedYear}` },
+    { value: `${selectedYear}-10`, label: `October ${selectedYear}` },
+    { value: `${selectedYear}-11`, label: `November ${selectedYear}` },
+    { value: `${selectedYear}-12`, label: `December ${selectedYear}` },
+    { value: `${Number(selectedYear) + 1}-01`, label: `January ${Number(selectedYear) + 1}` },
+    { value: `${Number(selectedYear) + 1}-02`, label: `February ${Number(selectedYear) + 1}` },
+    { value: `${Number(selectedYear) + 1}-03`, label: `March ${Number(selectedYear) + 1}` },
+    { value: `${Number(selectedYear) + 1}-04`, label: `April ${Number(selectedYear) + 1}` },
+    { value: `${Number(selectedYear) + 1}-05`, label: `May ${Number(selectedYear) + 1}` },
+  ]), [selectedYear]);
+
+  useEffect(() => {
+    if (fiscalMonthOptions.length && !fiscalMonthOptions.some((m) => m.value === selectedMonth)) {
+      setSelectedMonth(fiscalMonthOptions[0].value);
+    }
+  }, [fiscalMonthOptions, selectedMonth]);
 
   useEffect(() => {
     if (token && !company) fetchCompany(token);
@@ -60,12 +73,17 @@ export default function ReportsPage() {
           setGeneratingAI(false);
           return;
         }
-        month = `${selectedYear}-${selectedMonth}`;
+        month = selectedMonth;
       } 
       else if (selectedPeriod === "quarterly") {
-        // Convert quarter to month (send first month of quarter)
-        const quarterMap = { "Q1": "01", "Q2": "04", "Q3": "07", "Q4": "10" };
-        month = `${selectedYear}-${quarterMap[selectedQuarter]}`;
+        // Fiscal quarter first month
+        const quarterFirstMonthMap = {
+          Q1: `${selectedYear}-06`,
+          Q2: `${selectedYear}-09`,
+          Q3: `${selectedYear}-12`,
+          Q4: `${Number(selectedYear) + 1}-03`,
+        };
+        month = quarterFirstMonthMap[selectedQuarter];
       }
 
       const selectedLocation = (() => {
@@ -142,41 +160,54 @@ export default function ReportsPage() {
 
     try {
       await waitForImagesToLoad(element);
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        imageTimeout: 15000,
-        backgroundColor: "#ffffff",
-        logging: false,
-        foreignObjectRendering: false,
-        onclone: (clonedDoc) => {
-          clonedDoc.querySelectorAll("svg").forEach((svg) => {
-            svg.style.overflow = "visible";
-          });
-        },
-      });
+      const sectionNodes = Array.from(element.querySelectorAll(".report-page"));
+      const exportNodes = sectionNodes.length > 0 ? sectionNodes : [element];
 
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const margin = 10;
       const imgWidth = pageWidth - margin * 2;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      let yOffset = 0;
-      let remainingHeight = imgHeight;
-      while (remainingHeight > 0) {
-        const sliceHeight = Math.min(remainingHeight, pageHeight - margin * 2);
-        const srcY = (yOffset / imgHeight) * canvas.height;
-        const srcH = (sliceHeight / imgHeight) * canvas.height;
-        const sliceCanvas = document.createElement("canvas");
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = srcH;
-        sliceCanvas.getContext("2d").drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
-        pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", margin, margin, imgWidth, sliceHeight);
-        remainingHeight -= sliceHeight;
-        yOffset += sliceHeight;
-        if (remainingHeight > 0) pdf.addPage();
+      for (let nodeIndex = 0; nodeIndex < exportNodes.length; nodeIndex += 1) {
+        const node = exportNodes[nodeIndex];
+        const canvas = await html2canvas(node, {
+          scale: 1.5,
+          useCORS: true,
+          imageTimeout: 15000,
+          backgroundColor: "#ffffff",
+          logging: false,
+          foreignObjectRendering: false,
+          onclone: (clonedDoc) => {
+            clonedDoc.querySelectorAll("svg").forEach((svg) => {
+              svg.style.overflow = "visible";
+            });
+          },
+        });
+
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        const printableHeight = pageHeight - margin * 2;
+
+        // If one section overflows, paginate within that section.
+        let yOffset = 0;
+        let remainingHeight = imgHeight;
+        while (remainingHeight > 0) {
+          const sliceHeight = Math.min(remainingHeight, printableHeight);
+          const srcY = (yOffset / imgHeight) * canvas.height;
+          const srcH = (sliceHeight / imgHeight) * canvas.height;
+          const sliceCanvas = document.createElement("canvas");
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = srcH;
+          sliceCanvas.getContext("2d").drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+          pdf.addImage(sliceCanvas.toDataURL("image/jpeg", 0.82), "JPEG", margin, margin, imgWidth, sliceHeight);
+          remainingHeight -= sliceHeight;
+          yOffset += sliceHeight;
+          if (remainingHeight > 0) pdf.addPage();
+        }
+
+        if (nodeIndex < exportNodes.length - 1) {
+          pdf.addPage();
+        }
       }
       pdf.save(`esg_report_${selectedYear}.pdf`);
     } finally {
@@ -205,9 +236,7 @@ export default function ReportsPage() {
       })();
 
       const monthForPeriod =
-        selectedPeriod === "monthly"
-          ? `${selectedYear}-${selectedMonth}`
-          : null;
+        selectedPeriod === "monthly" ? selectedMonth : null;
       const { blob, filename } = await reportService.exportCSV({
         year: parseInt(selectedYear, 10),
         period: selectedPeriod,
@@ -238,6 +267,7 @@ export default function ReportsPage() {
     if (level === "amber") return "amber";
     return "red";
   };
+  const fiscalYearLabel = `${selectedYear}-${Number(selectedYear || 0) + 1}`;
 
   return (
     <div className="reports-page">
@@ -257,7 +287,7 @@ export default function ReportsPage() {
           </button>
           <button
             onClick={() => navigate("/reports/formal")}
-            className="px-4 py-2 bg-gray-800 text-white text-sm rounded hover:bg-gray-900 flex items-center gap-2"
+            className="formal-report-btn"
           >
             <span>📄</span> Formal Report
           </button>
@@ -287,23 +317,27 @@ export default function ReportsPage() {
           <div className="ai-report-header">
             <div className="ai-report-title">
               <FiZap className="ai-icon" />
-              <h3>AI-Powered ESG Report</h3>
+              <h3>GHG Emissions Report</h3>
             </div>
             <button className="close-btn" onClick={() => setShowAiReport(false)}>×</button>
           </div>
 
           <div className="ai-report-content">
             <div className="report-metadata">
-              <span>🏢 {aiReport.meta?.company_name || "Company"}</span>
-              <span>📊 {aiReport.meta?.duration_label || aiReport.meta?.year}</span>
-              <span>🎯 Baseline: {aiReport.targets?.base_year || "N/A"}</span>
-              <span>📅 {aiReport.meta?.generated_at ? new Date(aiReport.meta.generated_at).toLocaleString() : new Date().toLocaleString()}</span>
+              <span>{aiReport.meta?.company_name || "Company"}</span>
+              <span>{aiReport.meta?.duration_label || aiReport.meta?.year}</span>
+              <span>Baseline: {aiReport.targets?.base_year || "N/A"}</span>
+              <span>{aiReport.meta?.generated_at ? new Date(aiReport.meta.generated_at).toLocaleString() : new Date().toLocaleString()}</span>
             </div>
 
             {aiReport.report_standard && (
               <div className="report-standard">
-                <div className="report-section">
-                  <h4>1. Report Cover & Metadata</h4>
+                <div className="report-cover-page report-page">
+                  <div className="report-cover-topline">Lumyina ESG Report</div>
+                  <h2 className="report-cover-title">
+                    {aiReport.report_standard.section_3_1_cover_metadata?.report_title || "GHG Emissions Report"}
+                  </h2>
+                  <div className="report-cover-fy">Fiscal Year {fiscalYearLabel}</div>
                   {aiReport.report_standard.section_3_1_cover_metadata?.company_logo ? (
                     <div className="report-logo-wrap">
                       <img
@@ -313,19 +347,32 @@ export default function ReportsPage() {
                       />
                     </div>
                   ) : null}
-                  <div className="breakdown-list">
-                    <div className="breakdown-item"><span className="breakdown-name">Company</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.company_name || "—"}</span></div>
-                    <div className="breakdown-item"><span className="breakdown-name">Report Title</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.report_title || "—"}</span></div>
-                    <div className="breakdown-item"><span className="breakdown-name">Reporting Period</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.reporting_period || "—"}</span></div>
-                    <div className="breakdown-item"><span className="breakdown-name">Primary Region</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.primary_operating_region || "—"}</span></div>
-                    <div className="breakdown-item"><span className="breakdown-name">Generated On</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.date_of_generation || "—"}</span></div>
-                    <div className="breakdown-item"><span className="breakdown-name">Prepared Using</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.prepared_using || "—"}</span></div>
-                    <div className="breakdown-item"><span className="breakdown-name">Compliance</span><span className="breakdown-value">{aiReport.report_standard.section_3_1_cover_metadata?.ghg_protocol_statement || "—"}</span></div>
+                  <div className="report-cover-meta">
+                    <div><strong>Company:</strong> {aiReport.report_standard.section_3_1_cover_metadata?.company_name || "—"}</div>
+                    <div><strong>Reporting Period:</strong> {aiReport.report_standard.section_3_1_cover_metadata?.reporting_period || "—"}</div>
+                    <div><strong>Primary Region:</strong> {aiReport.report_standard.section_3_1_cover_metadata?.primary_operating_region || "—"}</div>
+                    <div><strong>Generated On:</strong> {aiReport.report_standard.section_3_1_cover_metadata?.date_of_generation || "—"}</div>
                   </div>
                 </div>
 
-                <div className="report-section">
-                  <h4>2. Executive Summary</h4>
+                <div className="report-outline-page report-page">
+                  <h4>Outline</h4>
+                  <div className="breakdown-list">
+                    <div className="breakdown-item"><span className="breakdown-name">Section 1</span><span className="breakdown-value">Executive Summary</span></div>
+                    <div className="breakdown-item"><span className="breakdown-name">Section 2</span><span className="breakdown-value">Scope 1 Emissions Detail</span></div>
+                    <div className="breakdown-item"><span className="breakdown-name">Section 3</span><span className="breakdown-value">Scope 2 Emissions Detail</span></div>
+                    <div className="breakdown-item"><span className="breakdown-name">Section 4</span><span className="breakdown-value">Year-on-Year Comparison</span></div>
+                    <div className="breakdown-item"><span className="breakdown-name">Section 6</span><span className="breakdown-value">Methodology & Emission Factor Disclosure</span></div>
+                    <div className="breakdown-item"><span className="breakdown-name">Section 7</span><span className="breakdown-value">Category-Level Recommendations</span></div>
+                  </div>
+                  <div className="outline-meta">
+                    <div><strong>Prepared Using:</strong> {aiReport.report_standard.section_3_1_cover_metadata?.prepared_using || "—"}</div>
+                    <div><strong>Compliance:</strong> {aiReport.report_standard.section_3_1_cover_metadata?.ghg_protocol_statement || "—"}</div>
+                  </div>
+                </div>
+
+                <div className="report-section report-page">
+                  <h4>Section 1 — Executive Summary</h4>
                   <div className="executive-summary-card">
                     <div className="exec-header">
                       <div>
@@ -351,8 +398,8 @@ export default function ReportsPage() {
                   </div>
                 </div>
 
-                <div className="report-section">
-                  <h4>3. Scope 1 Emissions Detail</h4>
+                <div className="report-section report-page">
+                  <h4>Section 2 — Scope 1 Emissions Detail</h4>
                   <div className="breakdown-list">
                     <div className="breakdown-item"><span className="breakdown-name">Scope 1 Total</span><span className="breakdown-value">{Number(aiReport.report_standard.section_3_3_scope1_detail?.scope1_total?.kg || 0).toFixed(2)} kg / {Number(aiReport.report_standard.section_3_3_scope1_detail?.scope1_total?.t || 0).toFixed(4)} tCO₂e</span></div>
                     <div className="breakdown-item"><span className="breakdown-name">Mobile Combustion</span><span className="breakdown-value">{Number(aiReport.report_standard.section_3_3_scope1_detail?.mobile_combustion?.total_t || 0).toFixed(4)} tCO₂e</span></div>
@@ -382,10 +429,6 @@ export default function ReportsPage() {
                           {Number(aiReport.report_standard.section_3_3_scope1_detail?.stationary_combustion?.biogenic_total_t || 0).toFixed(4)} tCO₂e
                         </span>
                       </div>
-                      <p className="card16-biogenic-note">
-                        {aiReport.report_standard.section_3_3_scope1_detail?.stationary_combustion?.biogenic_note ||
-                          "Biogenic fuels are reported separately and excluded from Scope 1 totals."}
-                      </p>
                     </div>
                   )}
                   {aiReport.report_standard.section_3_3_scope1_detail?.monthly_breakdown_bar?.length > 0 && (
@@ -404,8 +447,8 @@ export default function ReportsPage() {
                   )}
                 </div>
 
-                <div className="report-section">
-                  <h4>4. Scope 2 Emissions Detail</h4>
+                <div className="report-section report-page">
+                  <h4>Section 3 — Scope 2 Emissions Detail</h4>
                   <div className="card16-s2-grid">
                     <div className="card16-s2-card">
                       <div className="card16-s2-label">Location-based total</div>
@@ -461,16 +504,16 @@ export default function ReportsPage() {
                   )}
                 </div>
 
-                <div className="report-section">
-                  <h4>5. Year-on-Year Comparison</h4>
+                <div className="report-section report-page">
+                  <h4>Section 4 — Year-on-Year Comparison</h4>
                   <div className="card16-cert-table-wrap">
                     <table className="card16-cert-table">
                       <thead>
                         <tr>
                           <th>Metric</th>
-                          <th>Current</th>
-                          <th>Prior</th>
-                          <th>Delta %</th>
+                          <th>Current Year</th>
+                          <th>Previous Year</th>
+                          <th>Delta (Difference)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -520,8 +563,8 @@ export default function ReportsPage() {
                   <p className="section-summary">{aiReport.report_standard.section_3_5_yoy_comparison?.ai_variance_explanation || ""}</p>
                 </div>
 
-                <div className="report-section">
-                  <h4>6. Methodology Disclosure</h4>
+                <div className="report-section report-page">
+                  <h4>Section 6 — Methodology & Emission Factor Disclosure</h4>
                   <div className="breakdown-list">
                     <div className="breakdown-item">
                       <span className="breakdown-name">Organisational Boundary</span>
@@ -547,6 +590,8 @@ export default function ReportsPage() {
                           <th>Region</th>
                           <th>Scope 1 Source</th>
                           <th>Scope 2 Source</th>
+                          <th>Scope 1 Factors (name, value, source)</th>
+                          <th>Scope 2 Factors (name, value, source)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -555,6 +600,20 @@ export default function ReportsPage() {
                             <td>{row.region}</td>
                             <td>{row.scope1_source}</td>
                             <td>{row.scope2_source}</td>
+                            <td>
+                              {(row.scope1_factors_used || []).length > 0 ? (
+                                <ul className="factor-list-cell">
+                                  {row.scope1_factors_used.map((f, i) => <li key={`s1-${idx}-${i}`}>{f}</li>)}
+                                </ul>
+                              ) : "No Scope 1 entries submitted for selected period."}
+                            </td>
+                            <td>
+                              {(row.scope2_factors_used || []).length > 0 ? (
+                                <ul className="factor-list-cell">
+                                  {row.scope2_factors_used.map((f, i) => <li key={`s2-${idx}-${i}`}>{f}</li>)}
+                                </ul>
+                              ) : "No Scope 2 entries submitted for selected period."}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -562,9 +621,7 @@ export default function ReportsPage() {
                   </div>
                   <div className="card16-biogenic" style={{ marginTop: "12px" }}>
                     <ul className="card16-biogenic-list">
-                      <li>
-                        <span><strong>Biogenic Exclusion:</strong> {aiReport.report_standard.section_6_methodology_disclosure?.biogenic_exclusion_note || "—"}</span>
-                      </li>
+
                       <li>
                         <span><strong>Scope 3 Exclusion:</strong> {aiReport.report_standard.section_6_methodology_disclosure?.scope3_exclusion_note || "—"}</span>
                       </li>
@@ -572,8 +629,8 @@ export default function ReportsPage() {
                   </div>
                 </div>
 
-                <div className="report-section">
-                  <h4>7. Category-Level Recommendations</h4>
+                <div className="report-section report-page">
+                  <h4>Section 7 — Category-Level Recommendations</h4>
                   {(aiReport.report_standard.section_3_7_category_recommendations || []).map((rec, idx) => (
                     <div key={idx} className="recommendation-card">
                       <div className="rec-header">
@@ -590,23 +647,6 @@ export default function ReportsPage() {
                   ))}
                 </div>
 
-                <div className="report-section">
-                  <h4>8. Report Export Formats</h4>
-                  <div className="card16-cert-table-wrap">
-                    <table className="card16-cert-table">
-                      <thead><tr><th>Format</th><th>Audience</th><th>Content</th></tr></thead>
-                      <tbody>
-                        {(aiReport.report_standard.section_3_10_export_formats || []).map((row, idx) => (
-                          <tr key={idx}>
-                            <td>{row.format}</td>
-                            <td>{row.audience}</td>
-                            <td>{row.content}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -780,10 +820,7 @@ export default function ReportsPage() {
 
             {/* Card 16: Scope 1 & 2 detail — contributors, biogenic, location/market/renewables, certificates */}
             <div className="report-section card16-scope-detail">
-              <h4>
-                <FiLayers className="card16-section-icon" aria-hidden />
-                Scope 1 &amp; 2 — Detail
-              </h4>
+              <h4>Scope 1 &amp; 2 — Detail</h4>
               <p className="section-subtitle">
                 Top emission sources, biogenic fuels, location- vs market-based Scope 2, renewables reported separately, and certificate-backed consumption where applicable.
               </p>
@@ -983,7 +1020,6 @@ export default function ReportsPage() {
               </div>
             </div>
 
-            {aiReport.charts && <ReportCharts charts={aiReport.charts} />}
 
             {aiReport.recommendations?.length > 0 && (
               <div className="report-section">
@@ -1018,13 +1054,6 @@ export default function ReportsPage() {
               </div>
             )}
 
-            {aiReport.targets && aiReport.milestones && (
-              <TargetTracker
-                targets={aiReport.targets}
-                milestones={aiReport.milestones}
-                currentTotalT={aiReport.breakdown?.combined_total_t}
-              />
-            )}
 
             {aiReport.quarterly_steps?.length > 0 && (
               <div className="report-section">
@@ -1047,9 +1076,9 @@ export default function ReportsPage() {
 
           <div className="ai-report-footer">
             <div className="report-meta">
-              <span>✅ Based on actual emissions data</span>
-              <span>🤖 AI-generated insights</span>
-              <span>📊 GHG Protocol compliant</span>
+              <span>Based on submitted emissions data</span>
+              <span>Prepared in line with GHG Protocol disclosure structure</span>
+              <span>Generated by Lumyina ESG Calculator, AstrumAI v1.0</span>
             </div>
           </div>
         </Card>
@@ -1082,18 +1111,9 @@ export default function ReportsPage() {
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="filter-select"
               >
-                <option value="01">January</option>
-                <option value="02">February</option>
-                <option value="03">March</option>
-                <option value="04">April</option>
-                <option value="05">May</option>
-                <option value="06">June</option>
-                <option value="07">July</option>
-                <option value="08">August</option>
-                <option value="09">September</option>
-                <option value="10">October</option>
-                <option value="11">November</option>
-                <option value="12">December</option>
+                {fiscalMonthOptions.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
               </select>
             </div>
           )}
@@ -1107,16 +1127,16 @@ export default function ReportsPage() {
                 onChange={(e) => setSelectedQuarter(e.target.value)}
                 className="filter-select"
               >
-                <option value="Q1">Q1 (Jan-Mar)</option>
-                <option value="Q2">Q2 (Apr-Jun)</option>
-                <option value="Q3">Q3 (Jul-Sep)</option>
-                <option value="Q4">Q4 (Oct-Dec)</option>
+                <option value="Q1">Q1 (Jun-Aug)</option>
+                <option value="Q2">Q2 (Sep-Nov)</option>
+                <option value="Q3">Q3 (Dec-Feb)</option>
+                <option value="Q4">Q4 (Mar-May)</option>
               </select>
             </div>
           )}
 
           <div className="filter-group">
-            <label><FiBarChart2 className="filter-icon" /> Year</label>
+            <label><FiBarChart2 className="filter-icon" /> Fiscal Year</label>
             <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="filter-select">
               <option value="2026">2026</option>
               <option value="2025">2025</option>
@@ -1127,48 +1147,6 @@ export default function ReportsPage() {
           <button className="filter-btn" onClick={() => setShowAiReport(false)}>
             <FiFilter /> Apply Filters
           </button>
-        </div>
-        <div className="quick-stats">
-          <div className="quick-stat">
-            <BiLeaf className="stat-icon" />
-            <div><span className="stat-label">Reports Available</span><span className="stat-value">12</span></div>
-          </div>
-          <div className="stat-divider"></div>
-          <div className="quick-stat">
-            <FiTarget className="stat-icon" />
-            <div><span className="stat-label">SBTi Target</span><span className="stat-value">42% by 2030</span></div>
-          </div>
-          <div className="stat-divider"></div>
-          <div className="quick-stat">
-            <FiClock className="stat-icon" />
-            <div><span className="stat-label">AI Reports</span><span className="stat-value">AI-Powered</span></div>
-          </div>
-        </div>
-      </Card>
-
-      {/* ── Reports Overview ── */}
-      <ReportsOverview selectedCity={selectedCity} company={company} />
-
-      {/* ── Report Templates ── */}
-      <Card className="templates-card">
-        <h3>Report Templates</h3>
-        <p className="templates-subtitle">Quickly generate standardized reports</p>
-        <div className="templates-grid">
-          <div className="template-item">
-            <div className="template-icon">📊</div>
-            <div className="template-content"><h4>ESG Summary Report</h4><p>High-level overview for stakeholders</p></div>
-            <button className="generate-btn" onClick={handleGenerateAIReport}>Generate</button>
-          </div>
-          <div className="template-item">
-            <div className="template-icon">📈</div>
-            <div className="template-content"><h4>Detailed Emissions Report</h4><p>Scope-by-scope breakdown with trends</p></div>
-            <button className="generate-btn" onClick={handleGenerateAIReport}>Generate</button>
-          </div>
-          <div className="template-item">
-            <div className="template-icon">🌍</div>
-            <div className="template-content"><h4>Regulatory Compliance Report</h4><p>Ready for submission to authorities</p></div>
-            <button className="generate-btn" onClick={handleGenerateAIReport}>Generate</button>
-          </div>
         </div>
       </Card>
 
@@ -1181,6 +1159,8 @@ export default function ReportsPage() {
         .header-left p { color: #4A5568; margin: 0; }
         .header-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
         .ai-report-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: linear-gradient(135deg, #8B5CF6, #6D28D9); color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
+        .formal-report-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #F8FAF8; color: #1B4D3E; border: 1px solid #2E7D64; border-radius: 30px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
+        .formal-report-btn:hover { background: #2E7D64; color: #ffffff; border-color: #1B4D3E; }
         .download-pdf-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #2E7D64; color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
         .export-all-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #2E7D64; color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
         .export-all-btn:hover, .download-pdf-btn:hover { background: #1B4D3E; }
@@ -1189,10 +1169,10 @@ export default function ReportsPage() {
         .spin { animation: spin 1s linear infinite; }
         .error-message { background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
         .ai-report-card { margin-bottom: 24px; padding: 24px; border: 1px solid #E5E7EB; border-radius: 12px; background: white; }
-        .ai-report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #8B5CF6; }
+        .ai-report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #E5E7EB; }
         .ai-report-title { display: flex; align-items: center; gap: 8px; }
-        .ai-icon { font-size: 20px; color: #8B5CF6; }
-        .ai-report-title h3 { margin: 0; font-size: 18px; font-weight: 600; color: #6D28D9; }
+        .ai-icon { font-size: 20px; color: #2E7D64; }
+        .ai-report-title h3 { margin: 0; font-size: 18px; font-weight: 600; color: #1F2937; }
         .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #9CA3AF; padding: 0 8px; }
         .ai-report-content { max-height: 600px; overflow-y: auto; margin-bottom: 20px; }
         .report-metadata { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px; background: #F8FAF8; border-radius: 8px; margin-bottom: 20px; font-size: 12px; color: #6B7280; }
@@ -1220,6 +1200,61 @@ export default function ReportsPage() {
         .exec-summary-heading { margin: 4px 0 8px; font-size: 12px; font-weight: 700; color: #1B4D3E; text-transform: uppercase; letter-spacing: 0.04em; }
         .exec-summary-text { margin: 0; color: #4B5563; font-size: 14px; line-height: 1.6; }
         .report-section { margin-bottom: 24px; }
+        .report-page {
+          background: #FFFFFF;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 18px;
+          break-after: page;
+          page-break-after: always;
+          min-height: 640px;
+        }
+        .report-page:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
+        .report-cover-page {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: flex-start;
+          background: linear-gradient(180deg, #F8FAF8 0%, #FFFFFF 100%);
+        }
+        .report-cover-topline {
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #2E7D64;
+          margin-bottom: 12px;
+          font-weight: 700;
+        }
+        .report-cover-title {
+          margin: 0 0 8px;
+          color: #1B4D3E;
+          font-size: 34px;
+          line-height: 1.15;
+        }
+        .report-cover-fy {
+          font-size: 16px;
+          color: #374151;
+          margin-bottom: 20px;
+          font-weight: 600;
+        }
+        .report-cover-meta {
+          display: grid;
+          gap: 8px;
+          font-size: 14px;
+          color: #4B5563;
+        }
+        .report-outline-page h4 { margin: 0 0 12px; }
+        .outline-meta {
+          margin-top: 12px;
+          display: grid;
+          gap: 8px;
+          font-size: 13px;
+          color: #4B5563;
+        }
         .report-section.highlight { background: #F0FDF4; padding: 16px; border-radius: 12px; border-left: 4px solid #10B981; }
         .report-section h4 { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 12px; }
         .report-logo-wrap {
@@ -1350,8 +1385,10 @@ export default function ReportsPage() {
         .card16-certificates-title { font-size: 13px; font-weight: 600; color: #374151; margin: 0 0 10px; }
         .card16-cert-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #E5E7EB; }
         .card16-cert-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        .card16-cert-table th, .card16-cert-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #F3F4F6; }
+        .card16-cert-table th, .card16-cert-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #F3F4F6; vertical-align: top; }
         .card16-cert-table th { background: #F9FAFB; font-weight: 600; color: #374151; }
+        .factor-list-cell { margin: 0; padding-left: 16px; }
+        .factor-list-cell li { margin: 0 0 4px; line-height: 1.35; }
         .card16-certificates-empty { font-size: 13px; color: #6B7280; margin: 8px 0 0; }
       `}</style>
     </div>

@@ -331,6 +331,13 @@ export default function WhatIfScenarioBuilder({
     annualTargetT,
   ]);
 
+  const scenarioConfidence = useMemo(() => {
+    const observedMonths = Math.max(toNum(monthsSubmitted), 1);
+    const score = Math.min(95, Math.max(10, Math.round((observedMonths / 12) * 100)));
+    const label = score < 40 ? "Low" : score < 75 ? "Medium" : "High";
+    return { observedMonths, score, label };
+  }, [monthsSubmitted]);
+
   return (
     <Card className="scenario-card" style={{ overflow: "visible", position: "relative", zIndex: 1 }}>
       <div className="scenario-inner">
@@ -426,13 +433,17 @@ export default function WhatIfScenarioBuilder({
             <div className="box">
               <div className="label">Current trajectory</div>
               <div className="val">{calculations.baseProjectedT.toFixed(2)} tCO₂e</div>
-              <small>Projected by December</small>
+              <small>Projected by May</small>
             </div>
             <div className="box accent">
               <div className="label">With selected actions</div>
               <div className="val">{calculations.revisedProjectedT.toFixed(2)} tCO₂e</div>
-              <small>Projected by December</small>
+              <small>Projected by May</small>
             </div>
+          </div>
+          <div className="prediction-confidence-note">
+            Prediction confidence: <strong>{scenarioConfidence.label} ({scenarioConfidence.score}%)</strong> based on{" "}
+            {scenarioConfidence.observedMonths} month(s) of submitted data. More submitted months improve precision.
           </div>
 
           <div className="savings">
@@ -482,6 +493,7 @@ export default function WhatIfScenarioBuilder({
         .val { font-size: 24px; font-weight: 700; color: #1B4D3E; }
         small { color: #6B7280; }
         .savings { margin-top: 12px; border: 1px solid #E5E7EB; border-radius: 10px; padding: 10px; background: #fff; font-size: 13px; color: #374151; display: grid; gap: 6px; }
+        .prediction-confidence-note { margin-top: 10px; font-size: 12px; color: #4B5563; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 8px 10px; }
         .stacked { margin-top: 10px; font-size: 12px; color: #4B5563; }
         .stacked ul { margin: 6px 0 0; padding-left: 16px; }
         @media (max-width: 1100px) { .lever-grid { grid-template-columns: 1fr; } }

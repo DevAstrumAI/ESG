@@ -23,7 +23,14 @@ export default function TwelveMonthTrendChart({ year, onDataLoad }) {
   const [error, setError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
 
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const months = Array.from({ length: 12 }, (_, idx) => {
+    const monthNum = ((5 + idx) % 12) + 1; // Jun..May
+    const yearNum = monthNum >= 6 ? year : year + 1;
+    return {
+      name: new Date(yearNum, monthNum - 1, 1).toLocaleString("en-US", { month: "short" }),
+      full: `${yearNum}-${String(monthNum).padStart(2, "0")}`,
+    };
+  });
 
   const fetchMonthlyData = useCallback(async () => {
     if (!token) {
@@ -55,13 +62,12 @@ export default function TwelveMonthTrendChart({ year, onDataLoad }) {
       const data = await response.json();
       
       // Transform data into chart format
-      const transformedData = months.map((month, index) => {
-        const monthNum = index + 1;
-        const monthStr = `${year}-${String(monthNum).padStart(2, '0')}`;
+      const transformedData = months.map((m) => {
+        const monthStr = m.full;
         const existingData = data.find(d => d.month === monthStr);
         
         return {
-          name: month,
+          name: m.name,
           month: monthStr,
           scope1: existingData?.scope1Kg || 0,
           scope2: existingData?.scope2Kg || 0,
@@ -109,9 +115,8 @@ export default function TwelveMonthTrendChart({ year, onDataLoad }) {
           // Ignore prediction errors
         }
         
-        const transformedData = months.map((month, index) => {
-          const monthNum = index + 1;
-          const monthStr = `${year}-${String(monthNum).padStart(2, '0')}`;
+        const transformedData = months.map((m, index) => {
+          const monthStr = m.full;
           const hasMonthData = monthsWithData.includes(monthStr);
           
           // Distribute totals to months that have data
@@ -129,7 +134,7 @@ export default function TwelveMonthTrendChart({ year, onDataLoad }) {
           }
           
           return {
-            name: month,
+            name: m.name,
             month: monthStr,
             scope1: scope1Value,
             scope2: scope2Value,
@@ -142,9 +147,9 @@ export default function TwelveMonthTrendChart({ year, onDataLoad }) {
         if (onDataLoad) onDataLoad(transformedData);
       } else {
         // No data at all - show empty chart
-        const emptyData = months.map((month, index) => ({
-          name: month,
-          month: `${year}-${String(index + 1).padStart(2, '0')}`,
+        const emptyData = months.map((m) => ({
+          name: m.name,
+          month: m.full,
           scope1: 0,
           scope2: 0,
           total: 0,
@@ -155,9 +160,9 @@ export default function TwelveMonthTrendChart({ year, onDataLoad }) {
       }
     } catch (err) {
       console.error("Fallback also failed:", err);
-      const emptyData = months.map((month, index) => ({
-        name: month,
-        month: `${year}-${String(index + 1).padStart(2, '0')}`,
+      const emptyData = months.map((m) => ({
+        name: m.name,
+        month: m.full,
         scope1: 0,
         scope2: 0,
         total: 0,
