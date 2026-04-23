@@ -246,9 +246,9 @@ export default function EmissionsTrendLine({ year }) {
           </div>
         </div>
         
-        <div className="sparkline-chart">
-          <ResponsiveContainer width="100%" height={60}>
-            <LineChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+        <div className={`sparkline-chart ${isElectricity ? "electricity-chart" : ""}`}>
+          <ResponsiveContainer width="100%" height={isElectricity ? 78 : 60}>
+            <LineChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: isElectricity ? 12 : 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
               <XAxis 
                 dataKey="month" 
@@ -385,7 +385,7 @@ export default function EmissionsTrendLine({ year }) {
         
         .sparklines-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 20px;
         }
         
@@ -399,7 +399,7 @@ export default function EmissionsTrendLine({ year }) {
           min-width: 0;
         }
         .sparkline-card.electricity-card {
-          grid-column: 1 / -1;
+          padding-bottom: 14px;
         }
         
         .sparkline-card:hover {
@@ -460,6 +460,9 @@ export default function EmissionsTrendLine({ year }) {
           height: 60px;
           width: 100%;
         }
+        .sparkline-chart.electricity-chart {
+          height: 82px;
+        }
         
         .sparkline-insight {
           margin-top: 12px;
@@ -515,12 +518,15 @@ export default function EmissionsTrendLine({ year }) {
           color: #6B7280;
         }
         
+        @media (max-width: 1100px) {
+          .sparklines-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+        
         @media (max-width: 768px) {
           .sparklines-grid {
             grid-template-columns: 1fr;
-          }
-          .sparkline-card.electricity-card {
-            grid-column: auto;
           }
         }
       `}</style>

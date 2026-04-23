@@ -69,6 +69,7 @@ export default function DashboardPage() {
     sourceInsight: false,
   });
   const [availableYears, setAvailableYears] = useState([]);
+  const [scopeDetailMonthKey, setScopeDetailMonthKey] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   
@@ -345,6 +346,21 @@ export default function DashboardPage() {
     };
   });
   const monthNames = fiscalMonths.map((m) => m.label);
+  useEffect(() => {
+    if (!fiscalMonths.length) return;
+    const hasSelected = fiscalMonths.some((m) => m.monthKey === scopeDetailMonthKey);
+    if (!hasSelected) {
+      const now = new Date();
+      const nowMonth = now.getMonth() + 1;
+      const nowFiscalStartYear = nowMonth >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+      const defaultKey =
+        selectedYear === nowFiscalStartYear
+          ? `${now.getFullYear()}-${String(nowMonth).padStart(2, "0")}`
+          : fiscalMonths[fiscalMonths.length - 1]?.monthKey;
+      const fallback = fiscalMonths.find((m) => m.monthKey === defaultKey)?.monthKey || fiscalMonths[0].monthKey;
+      setScopeDetailMonthKey(fallback);
+    }
+  }, [fiscalMonths, scopeDetailMonthKey, selectedYear]);
   const monthlyActualT = fiscalMonths.map((m) => {
     const monthKey = m.monthKey;
     const point = monthlySeries.find((m) => String(m.month).slice(0, 7) === monthKey);
@@ -558,6 +574,32 @@ export default function DashboardPage() {
   const currentMonthKey = fiscalMonths[safeCurrentMonthIndex]?.monthKey;
   const scope1CurrentMonth = scope1MonthlyBreakdown.find((row) => row?.month === currentMonthKey) || {};
   const scope2CurrentMonth = scope2MonthlyBreakdown.find((row) => row?.month === currentMonthKey) || {};
+  const selectedScope1Month = scope1MonthlyBreakdown.find((row) => row?.month === scopeDetailMonthKey) || {};
+  const selectedScope2Month = scope2MonthlyBreakdown.find((row) => row?.month === scopeDetailMonthKey) || {};
+  const scope1SelectedMonthKg =
+    Number(selectedScope1Month?.mobileKg || 0) +
+    Number(selectedScope1Month?.stationaryKg || 0) +
+    Number(selectedScope1Month?.refrigerantsKg || 0) +
+    Number(selectedScope1Month?.fugitiveKg || 0);
+  const scope2SelectedMonthKg =
+    Number(selectedScope2Month?.electricityLocationKg || 0) +
+    Number(selectedScope2Month?.heatingKg || 0);
+  const scope12SelectedMonthKg = scope1SelectedMonthKg + scope2SelectedMonthKg;
+  const selectedMonthLabel =
+    fiscalMonths.find((m) => m.monthKey === scopeDetailMonthKey)?.label || "Selected month";
+
+  const scope1CategoryCards = [
+    { label: "Mobile Combustion", kg: Number(selectedScope1Month?.mobileKg || 0), icon: <FiTruck /> },
+    { label: "Stationary Combustion", kg: Number(selectedScope1Month?.stationaryKg || 0), icon: <FiBriefcase /> },
+    { label: "Refrigerants", kg: Number(selectedScope1Month?.refrigerantsKg || 0), icon: <FiWind /> },
+    { label: "Fugitive Emissions", kg: Number(selectedScope1Month?.fugitiveKg || 0), icon: <FiAlertCircle /> },
+  ];
+  const scope2CategoryCards = [
+    { label: "Electricity (Location)", kg: Number(selectedScope2Month?.electricityLocationKg || 0), icon: <FiZap /> },
+    { label: "Electricity (Market)", kg: Number(selectedScope2Month?.electricityMarketKg || 0), icon: <FiTrendingUp /> },
+    { label: "Heating & Cooling", kg: Number(selectedScope2Month?.heatingKg || 0), icon: <FiThermometer /> },
+    { label: "Renewables (reported)", kg: Number(selectedScope2Month?.renewablesKg || 0), icon: <FiSun /> },
+  ];
   const monthlySources = [
     { key: "mobileKg", name: "Mobile Combustion", value: Number(scope1CurrentMonth?.mobileKg || 0), recommendation: "Optimize fleet routes and transition high-use vehicles to lower-carbon fuel options." },
     { key: "stationaryKg", name: "Stationary Combustion", value: Number(scope1CurrentMonth?.stationaryKg || 0), recommendation: "Tune boiler efficiency and schedule preventive maintenance to reduce fuel burn." },
@@ -928,6 +970,9 @@ export default function DashboardPage() {
         <button className={`tab-btn ${activeView === "targets" ? "active" : ""}`} onClick={() => setActiveView("targets")}>
           Targets
         </button>
+        <button className={`tab-btn ${activeView === "scope1" ? "active" : ""}`} onClick={() => setActiveView("scope1")}>
+          Scope 1
+        </button>
         <button className={`tab-btn ${activeView === "scope2" ? "active" : ""}`} onClick={() => setActiveView("scope2")}>
           Scope 2
         </button>
@@ -1120,49 +1165,6 @@ export default function DashboardPage() {
           <div className="collapsed-summary">No monthly category data available yet for this period.</div>
         )}
       </Card>
-      <Card className="scope2-delta-card">
-        <div className="collapsible-header">
-          <div className="scope2-delta-header">
-            <h3>Scope 2 Delta</h3>
-            <p>Location-based vs market-based emissions and reduction opportunity</p>
-          </div>
-        </div>
-        <div className="scope2-delta-values">
-          <div className="scope2-delta-primary">
-            {locationBasedKg > 0 ? (locationBasedKg / 1000).toFixed(2) : "0.00"}
-            <span className="scope2-delta-unit"> tCO₂e</span>
-          </div>
-          <div className="scope2-delta-primary-label">Location-based total</div>
-          <div className="scope2-delta-secondary">
-            Market-based: <strong>{(marketBasedKg / 1000).toFixed(2)} tCO₂e</strong>
-          </div>
-        </div>
-        <div className={`scope2-gap-callout ${scope2DeltaKg > 0 ? "positive" : "neutral"}`}>
-          {scope2DeltaKg > 0 ? (
-            <>
-              <span>Reduction opportunity:</span>
-              <strong>
-                {(scope2DeltaKg / 1000).toFixed(2)} tCO₂e ({scope2DeltaPct.toFixed(1)}%)
-              </strong>
-            </>
-          ) : (
-            <>
-              <span>Reduction opportunity:</span>
-              <strong>0.00 tCO₂e (0.0%)</strong>
-            </>
-          )}
-        </div>
-        <div className="scope2-delta-actions">
-          <button
-            type="button"
-            className="set-target-btn"
-            onClick={() => navigate("/guide")}
-          >
-            Learn how
-          </button>
-          <span>REC/PPA explanation</span>
-        </div>
-      </Card>
       <div className="section-title">Monthly trend</div>
       {/* Data Completeness Calendar */}
       <div className="calendar-section">
@@ -1188,7 +1190,7 @@ export default function DashboardPage() {
           <div className="chart-header">
             <h3>Category Sparklines (Last 6 Months)</h3>
           </div>
-          <div className="chart-wrapper">
+          <div className="chart-wrapper sparkline-wrapper">
             <EmissionsTrendLine year={selectedYear} />
           </div>
         </Card>
@@ -1470,6 +1472,45 @@ export default function DashboardPage() {
       {!DOC_ONLY_DASHBOARD && activeView === "scope2" && (
       <>
       <div className="section-title">Scope 2</div>
+      <Card className="scope-detail-card">
+        <div className="scope-detail-header">
+          <div>
+            <h3>Monthly Scope 2 Breakdown</h3>
+            <p>View month-wise category emissions for the selected fiscal year.</p>
+          </div>
+          <div className="scope-month-picker">
+            <label>Month</label>
+            <ThemedSelect
+              value={scopeDetailMonthKey}
+              onChange={setScopeDetailMonthKey}
+              options={fiscalMonths.map((m) => ({ value: m.monthKey, label: `${m.label} ${m.yearNum}` }))}
+              menuDirection="down"
+            />
+          </div>
+        </div>
+        <div className="scope-summary-grid">
+          <div className="scope-summary-item combined">
+            <div className="scope-summary-label">Scope 1 + Scope 2 Total ({selectedMonthLabel})</div>
+            <div className="scope-summary-value">{(scope12SelectedMonthKg / 1000).toFixed(2)} tCO₂e</div>
+          </div>
+          <div className="scope-summary-item">
+            <div className="scope-summary-label">Scope 2 Total (Location-based)</div>
+            <div className="scope-summary-value">{(scope2SelectedMonthKg / 1000).toFixed(2)} tCO₂e</div>
+          </div>
+        </div>
+        <div className="scope-category-grid">
+          {scope2CategoryCards.map((card) => (
+            <div key={card.label} className="scope-category-card">
+              <div className="scope-category-title">
+                <span className="scope-category-icon">{card.icon}</span>
+                <span>{card.label}</span>
+              </div>
+              <div className="scope-category-value">{(card.kg / 1000).toFixed(2)} tCO₂e</div>
+              <div className="scope-category-sub">{card.kg.toFixed(2)} kg CO₂e</div>
+            </div>
+          ))}
+        </div>
+      </Card>
       <Card className="scope2-delta-card">
         <div className="collapsible-header">
           <div className="scope2-delta-header">
@@ -1487,14 +1528,19 @@ export default function DashboardPage() {
         </div>
 
         <div className="scope2-delta-values">
-          <div className="scope2-delta-primary">
-            {locationBasedKg > 0 ? (locationBasedKg / 1000).toFixed(2) : "0.00"}
-            <span className="scope2-delta-unit"> tCO₂e</span>
+          <div className="scope2-delta-col">
+            <div className="scope2-delta-primary">
+              {locationBasedKg > 0 ? (locationBasedKg / 1000).toFixed(2) : "0.00"}
+              <span className="scope2-delta-unit"> tCO₂e</span>
+            </div>
+            <div className="scope2-delta-primary-label">Location-based total</div>
           </div>
-          <div className="scope2-delta-primary-label">Location-based total</div>
-
-          <div className="scope2-delta-secondary">
-            Market-based: <strong>{(marketBasedKg / 1000).toFixed(2)} tCO₂e</strong>
+          <div className="scope2-delta-col">
+            <div className="scope2-delta-primary">
+              {(marketBasedKg / 1000).toFixed(2)}
+              <span className="scope2-delta-unit"> tCO₂e</span>
+            </div>
+            <div className="scope2-delta-primary-label">Market-based total</div>
           </div>
         </div>
 
@@ -1591,6 +1637,50 @@ export default function DashboardPage() {
       </Card>
       </>
       )}
+
+      {!DOC_ONLY_DASHBOARD && activeView === "scope1" && (
+      <>
+      <div className="section-title">Scope 1</div>
+      <Card className="scope-detail-card">
+        <div className="scope-detail-header">
+          <div>
+            <h3>Monthly Scope 1 Breakdown</h3>
+            <p>View month-wise category emissions for the selected fiscal year.</p>
+          </div>
+          <div className="scope-month-picker">
+            <label>Month</label>
+            <ThemedSelect
+              value={scopeDetailMonthKey}
+              onChange={setScopeDetailMonthKey}
+              options={fiscalMonths.map((m) => ({ value: m.monthKey, label: `${m.label} ${m.yearNum}` }))}
+              menuDirection="down"
+            />
+          </div>
+        </div>
+        <div className="scope-summary-grid">
+          <div className="scope-summary-item combined">
+            <div className="scope-summary-label">Scope 1 + Scope 2 Total ({selectedMonthLabel})</div>
+            <div className="scope-summary-value">{(scope12SelectedMonthKg / 1000).toFixed(2)} tCO₂e</div>
+          </div>
+          <div className="scope-summary-item">
+            <div className="scope-summary-label">Scope 1 Total</div>
+            <div className="scope-summary-value">{(scope1SelectedMonthKg / 1000).toFixed(2)} tCO₂e</div>
+          </div>
+        </div>
+        <div className="scope-category-grid">
+          {scope1CategoryCards.map((card) => (
+            <div key={card.label} className="scope-category-card">
+              <div className="scope-category-title">
+                <span className="scope-category-icon">{card.icon}</span>
+                <span>{card.label}</span>
+              </div>
+              <div className="scope-category-value">{(card.kg / 1000).toFixed(2)} tCO₂e</div>
+              <div className="scope-category-sub">{card.kg.toFixed(2)} kg CO₂e</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+      </>)}
 
       {!DOC_ONLY_DASHBOARD && activeView === "activity" && (
       <>
@@ -1824,6 +1914,111 @@ export default function DashboardPage() {
           font-size: 14px;
           font-weight: 700;
           color: #1B4D3E;
+        }
+        .scope-detail-card {
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          background: #fff;
+          margin-bottom: 14px;
+          padding: 14px;
+        }
+        .scope-detail-header {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 14px;
+          margin-bottom: 12px;
+        }
+        .scope-detail-header h3 {
+          margin: 0 0 4px;
+          color: #1B4D3E;
+          font-size: 18px;
+        }
+        .scope-detail-header p {
+          margin: 0;
+          font-size: 12px;
+          color: #6B7280;
+        }
+        .scope-month-picker {
+          min-width: 220px;
+        }
+        .scope-month-picker label {
+          display: block;
+          font-size: 11px;
+          font-weight: 700;
+          color: #6B7280;
+          margin-bottom: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .scope-summary-grid {
+          display: grid;
+          grid-template-columns: 2fr 1fr;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+        .scope-summary-item {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          background: #F9FAFB;
+          padding: 12px;
+        }
+        .scope-summary-item.combined {
+          background: #F0FDF4;
+          border-color: #BBF7D0;
+        }
+        .scope-summary-label {
+          font-size: 12px;
+          color: #6B7280;
+          margin-bottom: 6px;
+          font-weight: 600;
+        }
+        .scope-summary-value {
+          color: #1B4D3E;
+          font-size: 24px;
+          font-weight: 700;
+        }
+        .scope-category-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .scope-category-card {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 12px;
+          background: #fff;
+        }
+        .scope-category-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #374151;
+          font-size: 12px;
+          font-weight: 600;
+          margin-bottom: 8px;
+        }
+        .scope-category-icon {
+          width: 24px;
+          height: 24px;
+          border-radius: 7px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #1B4D3E;
+          background: #F8FAF8;
+          border: 1px solid #E5E7EB;
+        }
+        .scope-category-value {
+          font-size: 20px;
+          color: #1B4D3E;
+          font-weight: 700;
+          line-height: 1.2;
+        }
+        .scope-category-sub {
+          font-size: 11px;
+          color: #6B7280;
+          margin-top: 3px;
         }
         .collapsible-header {
           display: flex;
@@ -2466,6 +2661,15 @@ export default function DashboardPage() {
           border-radius: 10px;
           padding: 14px;
           background: #FBFCFD;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        .scope2-delta-col {
+          background: #fff;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          padding: 12px;
         }
         .scope2-delta-primary {
           font-size: 36px;
@@ -2483,11 +2687,6 @@ export default function DashboardPage() {
           margin-top: 6px;
           font-size: 12px;
           color: #6B7280;
-        }
-        .scope2-delta-secondary {
-          margin-top: 10px;
-          font-size: 14px;
-          color: #374151;
         }
         .scope2-gap-callout {
           margin-top: 12px;
@@ -2622,7 +2821,7 @@ export default function DashboardPage() {
 
         .charts-grid {
           display: grid;
-          grid-template-columns: 2fr 1fr;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 24px;
           margin-bottom: 24px;
         }
@@ -2640,6 +2839,7 @@ export default function DashboardPage() {
 
         .chart-card.large { 
           min-height: 450px; 
+          grid-column: 1 / -1;
         }
 
         .chart-header {
@@ -2659,6 +2859,10 @@ export default function DashboardPage() {
         .chart-wrapper { 
           height: 350px; 
           width: 100%; 
+        }
+        .sparkline-wrapper {
+          height: 380px;
+          padding-bottom: 18px;
         }
 
         .pie-chart-wrapper {
@@ -2878,6 +3082,19 @@ export default function DashboardPage() {
           .breakdown-grid {
             grid-template-columns: 1fr;
           }
+          .scope-detail-header {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .scope-month-picker {
+            min-width: 0;
+          }
+          .scope-summary-grid {
+            grid-template-columns: 1fr;
+          }
+          .scope-category-grid {
+            grid-template-columns: 1fr 1fr;
+          }
           .month-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr));
           }
@@ -2894,6 +3111,9 @@ export default function DashboardPage() {
           .anomaly-item {
             flex-direction: column;
             gap: 6px;
+          }
+          .scope2-delta-values {
+            grid-template-columns: 1fr;
           }
 
           .total-value {

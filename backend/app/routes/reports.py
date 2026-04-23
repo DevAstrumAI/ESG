@@ -483,21 +483,23 @@ def build_scope1_section(scope1_docs: list[dict], scope1_total_kg: float) -> dic
     for doc in scope1_docs:
         month = str(doc.get("month") or "")
         res = doc.get("results") or {}
-        monthly_totals[month] += float((res.get("totalKgCO2e") or 0))
 
         for e in (res.get("mobile") or {}).get("entries", []):
             kg = float(e.get("kgCO2e", 0))
             fuel = str(e.get("fuelType") or "unknown")
             mobile_breakdown[fuel] += kg
             mobile_total += kg
+            monthly_totals[month] += kg
 
         for e in (res.get("stationary") or {}).get("entries", []):
             kg = float(e.get("kgCO2e", 0))
             fuel = str(e.get("fuelType") or "unknown")
-            stationary_breakdown[fuel] += kg
-            stationary_total += kg
             if _scope1_entry_is_biogenic(e, "stationary"):
                 biogenic_total += kg
+                continue
+            stationary_breakdown[fuel] += kg
+            stationary_total += kg
+            monthly_totals[month] += kg
 
         for e in (res.get("refrigerants") or {}).get("entries", []):
             kg = float(e.get("kgCO2e", 0))
@@ -505,6 +507,7 @@ def build_scope1_section(scope1_docs: list[dict], scope1_total_kg: float) -> dic
             gwp = float(e.get("factorUsed", 0) or 0)
             refrigerant_breakdown[gas] += kg
             refrigerants_total += kg
+            monthly_totals[month] += kg
             # store max gwp seen for this gas
             key = f"{gas}::__gwp"
             refrigerant_breakdown[key] = max(float(refrigerant_breakdown.get(key, 0)), gwp)
@@ -514,6 +517,7 @@ def build_scope1_section(scope1_docs: list[dict], scope1_total_kg: float) -> dic
             src = str(e.get("sourceType") or "unknown")
             fugitive_breakdown[src] += kg
             fugitive_total += kg
+            monthly_totals[month] += kg
 
     def _as_rows(d: dict, *, add_gwp: bool = False) -> list[dict]:
         rows = []
@@ -541,6 +545,8 @@ def build_scope1_section(scope1_docs: list[dict], scope1_total_kg: float) -> dic
             continue
         monthly_chart.append({"month": month, "label": _month_label(month), "kg": round(kg, 4), "t": round(kg / 1000, 4)})
 
+    scope1_total_excluding_biogenic_kg = max(float(scope1_total_kg or 0) - biogenic_total, 0.0)
+
     return {
         "mobile_combustion": {
             "total_kg": round(mobile_total, 4),
@@ -567,8 +573,8 @@ def build_scope1_section(scope1_docs: list[dict], scope1_total_kg: float) -> dic
             "source_breakdown": _as_rows(fugitive_breakdown),
         },
         "scope1_total": {
-            "kg": round(scope1_total_kg, 4),
-            "t": round(scope1_total_kg / 1000, 4),
+            "kg": round(scope1_total_excluding_biogenic_kg, 4),
+            "t": round(scope1_total_excluding_biogenic_kg / 1000, 4),
         },
         "monthly_breakdown_bar": monthly_chart,
     }
@@ -695,6 +701,7 @@ def build_yoy_section(current_s1: dict, current_s2: dict, prior_s1: dict, prior_
 def build_yoy_variance_explanation_ai(
     client: openai.OpenAI,
     *,
+    company_name: str,
     industry: str,
     city: str,
     year: int,
@@ -704,6 +711,8 @@ def build_yoy_variance_explanation_ai(
     prompt = f"""
 You are an ESG reporting analyst.
 Write one concise paragraph (55-90 words) explaining year-on-year variance using only the provided data.
+The first sentence MUST explicitly connect company and industry as:
+"In {year}, {company_name} impacted the {industry} industry ..."
 Mention the two largest movement categories and likely operational causes in plain business language.
 
 Context:
@@ -718,6 +727,12 @@ Return JSON only: {{"variance_explanation":"..."}}
     try:
         data = call_openai(client, prompt)
         txt = str((data or {}).get("variance_explanation", "")).strip()
+        if txt:
+            lc = txt.lower()
+            company_l = str(company_name or "").strip().lower()
+            industry_l = str(industry or "").strip().lower()
+            if (company_l and company_l not in lc) or (industry_l and industry_l not in lc):
+                txt = f"In {year}, {company_name} impacted the {industry} industry through its reported operational emissions. {txt}"
         return txt
     except Exception:
         return ""
@@ -1744,13 +1759,33 @@ async def generate_report(
 
         # Card 16 — Scope 1 & 2 detail (contributors, biogenic, scope2 split, certificates)
         scope1_detail = build_scope1_detail_for_report(scope1_docs, s1["total"])
+        scope1_section = build_scope1_section(scope1_docs, s1["total"])
+        scope1_report_kg = float((scope1_section.get("scope1_total") or {}).get("kg") or 0)
+        s1_report = {
+            "mobile": float((scope1_section.get("mobile_combustion") or {}).get("total_kg") or 0),
+            "stationary": float((scope1_section.get("stationary_combustion") or {}).get("total_kg") or 0),
+            "refrigerants": float((scope1_section.get("refrigerants") or {}).get("total_kg") or 0),
+            "fugitive": float((scope1_section.get("fugitive_emissions") or {}).get("total_kg") or 0),
+            "total": scope1_report_kg,
+        }
+        report_total_kg = scope1_report_kg + float(s2["total_location"] or 0)
         scope2_detail_block = build_scope2_detail_for_report(s2)
         certificate_holdings = collect_certificate_holdings(scope2_docs)
 
         # Current-vs-prior and intensity (Section 3.5)
-        prior_s1 = aggregate_scope1(
-            fetch_scope_docs(company_id, "scope1", year - 1, None, country=selected_country or None, city=selected_city or None)
+        prior_scope1_docs = fetch_scope_docs(
+            company_id, "scope1", year - 1, None, country=selected_country or None, city=selected_city or None
         )
+        prior_s1 = aggregate_scope1(prior_scope1_docs)
+        prior_scope1_section = build_scope1_section(prior_scope1_docs, prior_s1["total"])
+        prior_scope1_report_kg = float((prior_scope1_section.get("scope1_total") or {}).get("kg") or 0)
+        prior_s1_report = {
+            "mobile": float((prior_scope1_section.get("mobile_combustion") or {}).get("total_kg") or 0),
+            "stationary": float((prior_scope1_section.get("stationary_combustion") or {}).get("total_kg") or 0),
+            "refrigerants": float((prior_scope1_section.get("refrigerants") or {}).get("total_kg") or 0),
+            "fugitive": float((prior_scope1_section.get("fugitive_emissions") or {}).get("total_kg") or 0),
+            "total": prior_scope1_report_kg,
+        }
         prior_s2 = aggregate_scope2(
             fetch_scope_docs(company_id, "scope2", year - 1, None, country=selected_country or None, city=selected_city or None)
         )
@@ -1763,17 +1798,23 @@ async def generate_report(
             employees = max(int(employees), 1)
         except Exception:
             employees = 1
-        yoy_section = build_yoy_section(s1, s2, prior_s1, prior_s2, employees)
+        yoy_section = build_yoy_section(s1_report, s2, prior_s1_report, prior_s2, employees)
         ai_yoy_text = build_yoy_variance_explanation_ai(
             client,
+            company_name=company_name,
             industry=industry,
             city=selected_city,
             year=year,
             table_rows=yoy_section.get("comparison_table_rows", []),
             largest_movements=yoy_section.get("largest_movements", []),
         )
+        enforced_prefix = f"In {year}, {company_name} impacted the {industry} industry through its reported operational emissions."
         if ai_yoy_text:
-            yoy_section["ai_variance_explanation"] = ai_yoy_text
+            yoy_section["ai_variance_explanation"] = f"{enforced_prefix} {ai_yoy_text}".strip()
+        else:
+            yoy_section["ai_variance_explanation"] = (
+                f"{enforced_prefix} {yoy_section.get('ai_variance_explanation') or ''}"
+            ).strip()
 
         # Section 3.1 cover/metadata (fiscal-year aligned period labels)
         fiscal_months = [
@@ -1879,13 +1920,13 @@ async def generate_report(
             # Emission breakdown
             "breakdown": {
                 "scope1": {
-                    "total_kg": round(s1["total"], 2),
-                    "total_t":  t(s1["total"]),
+                    "total_kg": round(scope1_report_kg, 2),
+                    "total_t":  t(scope1_report_kg),
                     "categories": {
-                        "Mobile Combustion":     {"kg": round(s1["mobile"], 2),       "t": t(s1["mobile"])},
-                        "Stationary Combustion": {"kg": round(s1["stationary"], 2),   "t": t(s1["stationary"])},
-                        "Refrigerant Leakage":   {"kg": round(s1["refrigerants"], 2), "t": t(s1["refrigerants"])},
-                        "Fugitive Emissions":    {"kg": round(s1["fugitive"], 2),     "t": t(s1["fugitive"])},
+                        "Mobile Combustion":     {"kg": round(s1_report["mobile"], 2),       "t": t(s1_report["mobile"])},
+                        "Stationary Combustion": {"kg": round(s1_report["stationary"], 2),   "t": t(s1_report["stationary"])},
+                        "Refrigerant Leakage":   {"kg": round(s1_report["refrigerants"], 2), "t": t(s1_report["refrigerants"])},
+                        "Fugitive Emissions":    {"kg": round(s1_report["fugitive"], 2),     "t": t(s1_report["fugitive"])},
                     },
                 },
                 "scope2": {
@@ -1900,17 +1941,17 @@ async def generate_report(
                         "Renewables (reported separately)": {"kg": round(s2["renewables"], 2),       "t": t(s2["renewables"])},
                     },
                 },
-                "combined_total_kg": round(total_kg, 2),
-                "combined_total_t":  t(total_kg),
+                "combined_total_kg": round(report_total_kg, 2),
+                "combined_total_t":  t(report_total_kg),
             },
 
             # Card 15 - Executive Summary structured metrics
             "executive_metrics": {
-                "total_tco2e": round(total_kg / 1000, 4),
+                "total_tco2e": round(report_total_kg / 1000, 4),
                 "yoy_change_pct": yoy_change_pct,
                 "yoy_direction": yoy_direction,
                 "danger_level": danger_level,
-                "scope1_tco2e": round(s1["total"] / 1000, 4),
+                "scope1_tco2e": round(scope1_report_kg / 1000, 4),
                 "scope2_tco2e": round(s2["total_location"] / 1000, 4),
                 "data_coverage_months": data_coverage_months,
                 "data_coverage_statement": f"{data_coverage_months} of 12 months",
@@ -1925,7 +1966,7 @@ async def generate_report(
             # Chart datasets
             "charts": {
                 "scope_share_pie": [
-                    {"name": "Scope 1 — Direct",   "value": t(s1["total"]),          "unit": "tCO2e"},
+                    {"name": "Scope 1 — Direct",   "value": round(scope1_report_kg / 1000, 4),          "unit": "tCO2e"},
                     {"name": "Scope 2 — Indirect", "value": t(s2["total_location"]), "unit": "tCO2e"},
                 ],
                 "category_bar": [
@@ -2011,15 +2052,15 @@ async def generate_report(
                     "ghg_protocol_statement": "Prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard",
                 },
                 "section_3_2_executive_summary": {
-                    "total_emissions_tco2e": round(total_kg / 1000, 4),
+                    "total_emissions_tco2e": round(report_total_kg / 1000, 4),
                     "year_on_year_change_pct": yoy_change_pct,
                     "danger_level": danger_level,
-                    "scope1_tco2e": round(s1["total"] / 1000, 4),
+                    "scope1_tco2e": round(scope1_report_kg / 1000, 4),
                     "scope2_tco2e": round(s2["total_location"] / 1000, 4),
                     "top_1_recommended_action": (enriched_recs[0].get("description") if enriched_recs else None),
                     "data_coverage_statement": f"This report covers {data_coverage_months} of 12 months. {missing_months} months of data were not submitted.",
                 },
-                "section_3_3_scope1_detail": build_scope1_section(scope1_docs, s1["total"]),
+                "section_3_3_scope1_detail": scope1_section,
                 "section_3_4_scope2_detail": build_scope2_section(s2, scope2_docs, enriched_recs),
                 "section_3_5_yoy_comparison": yoy_section,
                 "section_6_methodology_disclosure": build_methodology_section(

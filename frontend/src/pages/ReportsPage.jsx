@@ -160,41 +160,54 @@ export default function ReportsPage() {
 
     try {
       await waitForImagesToLoad(element);
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        imageTimeout: 15000,
-        backgroundColor: "#ffffff",
-        logging: false,
-        foreignObjectRendering: false,
-        onclone: (clonedDoc) => {
-          clonedDoc.querySelectorAll("svg").forEach((svg) => {
-            svg.style.overflow = "visible";
-          });
-        },
-      });
+      const sectionNodes = Array.from(element.querySelectorAll(".report-page"));
+      const exportNodes = sectionNodes.length > 0 ? sectionNodes : [element];
 
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const margin = 10;
       const imgWidth = pageWidth - margin * 2;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      let yOffset = 0;
-      let remainingHeight = imgHeight;
-      while (remainingHeight > 0) {
-        const sliceHeight = Math.min(remainingHeight, pageHeight - margin * 2);
-        const srcY = (yOffset / imgHeight) * canvas.height;
-        const srcH = (sliceHeight / imgHeight) * canvas.height;
-        const sliceCanvas = document.createElement("canvas");
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = srcH;
-        sliceCanvas.getContext("2d").drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
-        pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", margin, margin, imgWidth, sliceHeight);
-        remainingHeight -= sliceHeight;
-        yOffset += sliceHeight;
-        if (remainingHeight > 0) pdf.addPage();
+      for (let nodeIndex = 0; nodeIndex < exportNodes.length; nodeIndex += 1) {
+        const node = exportNodes[nodeIndex];
+        const canvas = await html2canvas(node, {
+          scale: 1.5,
+          useCORS: true,
+          imageTimeout: 15000,
+          backgroundColor: "#ffffff",
+          logging: false,
+          foreignObjectRendering: false,
+          onclone: (clonedDoc) => {
+            clonedDoc.querySelectorAll("svg").forEach((svg) => {
+              svg.style.overflow = "visible";
+            });
+          },
+        });
+
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        const printableHeight = pageHeight - margin * 2;
+
+        // If one section overflows, paginate within that section.
+        let yOffset = 0;
+        let remainingHeight = imgHeight;
+        while (remainingHeight > 0) {
+          const sliceHeight = Math.min(remainingHeight, printableHeight);
+          const srcY = (yOffset / imgHeight) * canvas.height;
+          const srcH = (sliceHeight / imgHeight) * canvas.height;
+          const sliceCanvas = document.createElement("canvas");
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = srcH;
+          sliceCanvas.getContext("2d").drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+          pdf.addImage(sliceCanvas.toDataURL("image/jpeg", 0.82), "JPEG", margin, margin, imgWidth, sliceHeight);
+          remainingHeight -= sliceHeight;
+          yOffset += sliceHeight;
+          if (remainingHeight > 0) pdf.addPage();
+        }
+
+        if (nodeIndex < exportNodes.length - 1) {
+          pdf.addPage();
+        }
       }
       pdf.save(`esg_report_${selectedYear}.pdf`);
     } finally {
@@ -274,7 +287,7 @@ export default function ReportsPage() {
           </button>
           <button
             onClick={() => navigate("/reports/formal")}
-            className="px-4 py-2 bg-gray-800 text-white text-sm rounded hover:bg-gray-900 flex items-center gap-2"
+            className="formal-report-btn"
           >
             <span>📄</span> Formal Report
           </button>
@@ -416,10 +429,6 @@ export default function ReportsPage() {
                           {Number(aiReport.report_standard.section_3_3_scope1_detail?.stationary_combustion?.biogenic_total_t || 0).toFixed(4)} tCO₂e
                         </span>
                       </div>
-                      <p className="card16-biogenic-note">
-                        {aiReport.report_standard.section_3_3_scope1_detail?.stationary_combustion?.biogenic_note ||
-                          "Biogenic fuels are reported separately and excluded from Scope 1 totals."}
-                      </p>
                     </div>
                   )}
                   {aiReport.report_standard.section_3_3_scope1_detail?.monthly_breakdown_bar?.length > 0 && (
@@ -502,9 +511,9 @@ export default function ReportsPage() {
                       <thead>
                         <tr>
                           <th>Metric</th>
-                          <th>Current</th>
-                          <th>Prior</th>
-                          <th>Delta %</th>
+                          <th>Current Year</th>
+                          <th>Previous Year</th>
+                          <th>Delta (Difference)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -596,14 +605,14 @@ export default function ReportsPage() {
                                 <ul className="factor-list-cell">
                                   {row.scope1_factors_used.map((f, i) => <li key={`s1-${idx}-${i}`}>{f}</li>)}
                                 </ul>
-                              ) : "Not specified in factor records"}
+                              ) : "No Scope 1 entries submitted for selected period."}
                             </td>
                             <td>
                               {(row.scope2_factors_used || []).length > 0 ? (
                                 <ul className="factor-list-cell">
                                   {row.scope2_factors_used.map((f, i) => <li key={`s2-${idx}-${i}`}>{f}</li>)}
                                 </ul>
-                              ) : "Not specified in factor records"}
+                              ) : "No Scope 2 entries submitted for selected period."}
                             </td>
                           </tr>
                         ))}
@@ -612,9 +621,7 @@ export default function ReportsPage() {
                   </div>
                   <div className="card16-biogenic" style={{ marginTop: "12px" }}>
                     <ul className="card16-biogenic-list">
-                      <li>
-                        <span><strong>Biogenic Exclusion:</strong> {aiReport.report_standard.section_6_methodology_disclosure?.biogenic_exclusion_note || "—"}</span>
-                      </li>
+
                       <li>
                         <span><strong>Scope 3 Exclusion:</strong> {aiReport.report_standard.section_6_methodology_disclosure?.scope3_exclusion_note || "—"}</span>
                       </li>
@@ -1152,6 +1159,8 @@ export default function ReportsPage() {
         .header-left p { color: #4A5568; margin: 0; }
         .header-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
         .ai-report-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: linear-gradient(135deg, #8B5CF6, #6D28D9); color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
+        .formal-report-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #F8FAF8; color: #1B4D3E; border: 1px solid #2E7D64; border-radius: 30px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
+        .formal-report-btn:hover { background: #2E7D64; color: #ffffff; border-color: #1B4D3E; }
         .download-pdf-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #2E7D64; color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
         .export-all-btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #2E7D64; color: white; border: none; border-radius: 30px; font-weight: 500; cursor: pointer; }
         .export-all-btn:hover, .download-pdf-btn:hover { background: #1B4D3E; }
