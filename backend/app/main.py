@@ -21,8 +21,9 @@ app.add_middleware(
         "https://esg-frontend-dev-onrender.com", # Legacy dev link
         "https://esg-frontend-testing.onrender.com", # Testing frontend
         "https://esg-frontend-dev.onrender.com", # Dev frontend
+        "https://esg-frontend-x7hy.onrender.com", # Current Render frontend
     ],
-    allow_origin_regex=r"http://localhost(:[0-9]+)?",
+    allow_origin_regex=r"^https://esg-frontend-[a-z0-9-]+\.onrender\.com$|^http://localhost(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
