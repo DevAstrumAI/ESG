@@ -38,6 +38,7 @@ export default function AppLayout({ children, pageTitle }) {
       right: 0,
       bottom: 0,
       overflow: "hidden",
+      "--app-sidebar-width": `${sidebarWidth}px`,
     }}>
       {/* Sidebar */}
       <div style={{
@@ -72,7 +73,7 @@ export default function AppLayout({ children, pageTitle }) {
         <main style={{
           flex: 1,
           overflowY: "auto",
-          overflowX: "hidden",
+          overflowX: "auto",
           backgroundColor: "#f9fafb",
           padding: windowWidth < 768 ? "16px" : "24px",
         }}>

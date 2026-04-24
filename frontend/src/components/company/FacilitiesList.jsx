@@ -18,25 +18,25 @@ export default function FacilitiesList({ locations }) {
   return (
     <div className="facilities-step">
       <div className="step-header">
-        <span className="step-icon">🏛️</span>
-        <h3>Facilities & Locations</h3>
+        <span className="step-icon">🏙️</span>
+        <h3>Cities & Locations</h3>
       </div>
 
       <p className="step-description">
-        Review the facilities and locations you've added for your company.
+        Review the cities and locations you've added for your company.
       </p>
 
       <Card className="facilities-list-card">
         <div className="list-header">
           <div>
-            <h4>Your Facilities</h4>
+            <h4>Your Cities</h4>
             <p className="list-subtitle">Summary of all registered locations</p>
           </div>
-          <span className="facility-count">{locations.length} {locations.length === 1 ? 'facility' : 'facilities'}</span>
+          <span className="facility-count">{locations.length} {locations.length === 1 ? 'city' : 'cities'}</span>
         </div>
 
         {locations.length === 0 ? (
-          <EmptyState message="No facilities added yet" />
+          <EmptyState message="No cities added yet" />
         ) : (
           <div className="table-wrapper">
             <table className="facilities-table">
@@ -44,7 +44,6 @@ export default function FacilitiesList({ locations }) {
                 <tr>
                   <th>City</th>
                   <th>Country</th>
-                  <th>Status</th>
                   </tr>
                 </thead>
               <tbody>
@@ -58,9 +57,6 @@ export default function FacilitiesList({ locations }) {
                     </td>
                     <td data-label="Country">
                       <span className="country-badge">{getCountryLabel(loc.country)}</span>
-                    </td>
-                    <td data-label="Status">
-                      <span className="status-badge active">Active</span>
                     </td>
                   </tr>
                 ))}
@@ -151,7 +147,12 @@ export default function FacilitiesList({ locations }) {
           width: 100%;
           border-collapse: collapse;
           font-size: 14px;
+          table-layout: fixed;
         }
+        .facilities-table th:first-child,
+        .facilities-table td:first-child { width: 55%; }
+        .facilities-table th:last-child,
+        .facilities-table td:last-child { width: 45%; }
 
         .facilities-table th {
           text-align: left;
@@ -209,11 +210,7 @@ export default function FacilitiesList({ locations }) {
           font-weight: 500;
         }
 
-        .status-badge.active {
-          background: #E8F0EA;
-          color: #2E7D64;
-          border: 1px solid #C6E0C8;
-        }
+        
 
         @media (max-width: 768px) {
           .facilities-table thead {

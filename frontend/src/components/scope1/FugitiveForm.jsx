@@ -1,25 +1,16 @@
 // src/components/scope1/FugitiveForm.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiAlertCircle, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiAlertCircle, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
+import { useCompanyStore } from "../../store/companyStore";
+import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
-const SOURCE_TYPES = [
-  { label: "Pipeline Leaks",          key: "methane" },
-  { label: "Valve Leaks",             key: "methane" },
-  { label: "Flange Leaks",            key: "methane" },
-  { label: "Compressor Seals",        key: "methane" },
-  { label: "Storage Tanks",           key: "methane" },
-  { label: "Pressure Relief Devices", key: "methane" },
-  { label: "Open-ended Lines",        key: "methane" },
-  { label: "Sampling Connections",    key: "methane" },
-  { label: "Wastewater Treatment",    key: "n2o"     },
-  { label: "Cooling Towers",          key: "methane" },
-  { label: "Coal Mining",             key: "methane" },
-  { label: "Oil & Gas Extraction",    key: "methane" },
-  { label: "Landfills",               key: "methane" },
-  { label: "Other",                   key: "methane" },
+const DEFAULT_GAS_TYPES = [
+  { label: "Methane Leak", key: "methane" },
+  { label: "N2O Leak", key: "n2o" },
 ];
 
 const MONTHS = [
@@ -29,25 +20,58 @@ const MONTHS = [
   "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
 ];
 
+
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function FugitiveForm({ onSubmitSuccess }) {
+const toNum = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const isRefrigerantLike = (key) => {
+  const low = String(key || "").toLowerCase();
+  return /^r\d/.test(low) || low.includes("hfc") || low.includes("pfc") || low.includes("sf6");
+};
+
+const titleCaseKey = (key) => {
+  const low = String(key || "").toLowerCase();
+  if (low === "n2o") return "N2O Leak";
+  if (low === "methane") return "Methane Leak";
+  if (low) return `${low.toUpperCase()} Leak`;
+  return "Gas Leak";
+};
+
+export default function FugitiveForm({ onSubmitSuccess, reportingMonth }) {
   const fugitives    = useEmissionStore((s) => s.scope1Fugitive);
   const addFugitive  = useEmissionStore((s) => s.addScope1Fugitive);
+  const updateFugitive = useEmissionStore((s) => s.updateScope1Fugitive);
   const deleteFugitive = useEmissionStore((s) => s.deleteScope1Fugitive);
   const selectedYear = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
-
+  const company = useCompanyStore((s) => s.company);
+  const getSelectedLocation = useSelectedLocationStore((s) => s.getSelectedLocation);
+  const [deletingIds, setDeletingIds] = useState(new Set());
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    source: "",
+    quantity: "",
+    month: "",
+  });
   const handleDeleteFugitive = async (id, month) => {
+    if (deletingIds.has(id)) return;
     const deleted = fugitives.find((f) => f.id === id);
     if (!deleted) return;
 
+    setDeletingIds((prev) => new Set(prev).add(id));
     const [year] = month ? month.split("-").map(Number) : [selectedYear];
+    const loc = getSelectedLocation(company);
 
     try {
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      deleteFugitive(id);
       await emissionsAPI.deleteScope1Entry(token, {
         year,
         month,
@@ -56,21 +80,74 @@ export default function FugitiveForm({ onSubmitSuccess }) {
           sourceType: deleted.sourceType || "methane",
           emissionKg: Number(deleted.emissionKg || deleted.amount || 0),
         },
+        country: loc?.country,
+        city: loc?.city,
       });
-      deleteFugitive(id);
     } catch (error) {
-      console.error("Failed to delete fugitive entry:", error);
+      console.warn("Fugitive deletion sync failed, local row removed:", error);
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
   const [source, setSource]           = useState("");
   const [quantity, setQuantity]       = useState("");
-  const [month, setMonth]             = useState(currentMonth());
+  const [month, setMonth]             = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
+  const [gasTypes, setGasTypes] = useState(DEFAULT_GAS_TYPES);
 
-  const selectedSource = SOURCE_TYPES.find((s) => s.label === source);
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
+
+  useEffect(() => {
+    const loadGasTypes = async () => {
+      if (!token) return;
+      const loc = getSelectedLocation(company);
+      if (!loc?.country || !loc?.city) return;
+      try {
+        const res = await emissionsAPI.getFactors(token, loc.country, loc.city);
+        const scope1 = res?.factors?.scope1 || {};
+        const fugitive = scope1?.fugitive && typeof scope1.fugitive === "object" ? scope1.fugitive : {};
+        const entries = Object.entries(fugitive)
+          .filter(([key]) => !isRefrigerantLike(key))
+          .map(([key, data]) => ({
+            key: String(key).toLowerCase(),
+            label: data?.name ? String(data.name).replace(/\s*\(.*?\)\s*/g, "").trim() : titleCaseKey(key),
+            value: toNum(data?.value ?? data?.factor ?? data?.emissionFactor ?? data),
+          }))
+          .filter((x) => x.key && x.value > 0);
+
+        if (entries.length > 0) {
+          setGasTypes(entries.map((x) => ({ key: x.key, label: x.label })));
+        } else {
+          setGasTypes(DEFAULT_GAS_TYPES);
+        }
+      } catch (e) {
+        console.warn("Failed to load fugitive gas keys; using defaults", e);
+        setGasTypes(DEFAULT_GAS_TYPES);
+      }
+    };
+    loadGasTypes();
+  }, [token, company, getSelectedLocation]);
+
+  const selectedSource = gasTypes.find((s) => s.label === source);
 
   const handleAddRow = () => {
-    if (!source || quantity === "") return;
+    if (!source) {
+      setAddRowError("Please select an emission source.");
+      return;
+    }
+    if (quantity === "" || Number(quantity) <= 0) {
+      setAddRowError("Please enter a valid quantity.");
+      return;
+    }
     addFugitive({
       id: Date.now(),
       source,
@@ -81,7 +158,33 @@ export default function FugitiveForm({ onSubmitSuccess }) {
     });
     setSource("");
     setQuantity("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
+  };
+  const startEdit = (entry) => {
+    setEditingId(entry.id);
+    setEditValues({
+      source: entry.source,
+      quantity: entry.emissionKg,
+      month: entry.month || currentMonth(),
+    });
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({ source: "", quantity: "", month: "" });
+  };
+  const saveEdit = () => {
+    if (!editValues.source || editValues.quantity === "") return;
+    const selected = gasTypes.find((item) => item.label === editValues.source);
+    updateFugitive({
+      id: editingId,
+      source: editValues.source,
+      sourceType: selected?.key || "methane",
+      emissionKg: Number(editValues.quantity),
+      amount: Number(editValues.quantity),
+      month: editValues.month,
+    });
+    cancelEdit();
   };
 
   return (
@@ -92,6 +195,7 @@ export default function FugitiveForm({ onSubmitSuccess }) {
           Track <strong>fugitive emissions</strong> — unintentional leaks from equipment, pipelines, valves, and other industrial sources.
         </p>
       </div>
+      {addRowError && <div className="fg-inline-error">⚠️ {addRowError}</div>}
 
       <div className="fg-table-wrap">
         <table className="fg-table">
@@ -113,7 +217,44 @@ export default function FugitiveForm({ onSubmitSuccess }) {
               </tr>
             )}
             {fugitives.map((f) => (
-              <tr key={f.id}>
+              editingId === f.id ? (
+                <tr key={f.id}>
+                  <td>
+                    <ThemedSelect
+                      value={editValues.source}
+                      onChange={(nextValue) => setEditValues({ ...editValues, source: nextValue })}
+                      options={gasTypes.map((s) => ({ value: s.label, label: s.label }))}
+                      placeholder="Select Source"
+                      className="fg-select"
+                    />
+                  </td>
+                  <td>
+                    <span className="fg-preview">
+                      {gasTypes.find((s) => s.label === editValues.source)?.key || "—"}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="fg-qty-input">
+                      <input type="number" value={editValues.quantity} onChange={(ev) => setEditValues({ ...editValues, quantity: ev.target.value })} className="fg-input" min="0" step="0.01" />
+                      <span className="fg-unit-tag">kg</span>
+                    </div>
+                  </td>
+                  <td>
+                    <ThemedSelect
+                      value={editValues.month}
+                      onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                      options={MONTHS.map((m) => ({ value: m, label: m }))}
+                      placeholder="Month"
+                      className="fg-select"
+                    />
+                  </td>
+                  <td>
+                    <button className="fg-action-btn fg-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
+                    <button className="fg-action-btn fg-cancel-btn" onClick={cancelEdit}><FiX size={13} /></button>
+                  </td>
+                </tr>
+              ) : (
+              <tr key={f.id} className={deletingIds.has(f.id) ? "row-deleting" : ""}>
                 <td>{f.source}</td>
                 <td>
                   <span className="fg-badge">{f.sourceType || "methane"}</span>
@@ -124,21 +265,25 @@ export default function FugitiveForm({ onSubmitSuccess }) {
                 </td>
                 <td>{f.month || "—"}</td>
                 <td>
-                  <button className="fg-delete" onClick={() => handleDeleteFugitive(f.id, f.month)} title="Remove">
+                  <button className="fg-edit" onClick={() => startEdit(f)} title="Edit">
+                    <FiEdit2 size={14} />
+                  </button>
+                  <button className="fg-delete" onClick={() => handleDeleteFugitive(f.id, f.month)} disabled={deletingIds.has(f.id)} title="Remove">
                     <FiTrash2 size={14} />
                   </button>
                 </td>
               </tr>
-            ))}
+            )))}
 
             <tr className="fg-add-row">
               <td>
-                <select value={source} onChange={(e) => setSource(e.target.value)} className="fg-select">
-                  <option value="">Select Source</option>
-                  {SOURCE_TYPES.map((s) => (
-                    <option key={s.label} value={s.label}>{s.label}</option>
-                  ))}
-                </select>
+                <ThemedSelect
+                  value={source}
+                  onChange={setSource}
+                  options={gasTypes.map((s) => ({ value: s.label, label: s.label }))}
+                  placeholder="Select Source"
+                  className="fg-select"
+                />
               </td>
               <td>
                 <span className="fg-preview">
@@ -160,9 +305,13 @@ export default function FugitiveForm({ onSubmitSuccess }) {
                 </div>
               </td>
               <td>
-                <select value={month} onChange={(e) => setMonth(e.target.value)} className="fg-select">
-                  {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <ThemedSelect
+                  value={month}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
+                  className="fg-select"
+                />
               </td>
               <td>
                 <button className="fg-add-btn-inline" onClick={handleAddRow}>
@@ -198,9 +347,14 @@ export default function FugitiveForm({ onSubmitSuccess }) {
         }
         .fg-desc strong { color: #1B4D3E; }
 
-        .fg-table-wrap { border: 1px solid #E5E7EB; border-radius: 10px; overflow: hidden; }
+        .fg-table-wrap {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          overflow-x: auto;
+          overflow-y: hidden;
+        }
 
-        .fg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .fg-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 14px; }
         .fg-table thead tr { background: #F9FAFB; }
         .fg-table th {
           text-align: left; padding: 11px 14px; font-size: 12px;
@@ -211,6 +365,9 @@ export default function FugitiveForm({ onSubmitSuccess }) {
           border-bottom: 1px solid #F3F4F6; vertical-align: middle;
         }
         .fg-table tbody tr:last-child td { border-bottom: none; }
+        .fg-table tbody tr.row-deleting {
+          animation: fgFadeOut 220ms ease forwards;
+        }
 
         .fg-empty { text-align: center; color: #9CA3AF; font-size: 13px; padding: 28px 0 !important; }
 
@@ -227,9 +384,20 @@ export default function FugitiveForm({ onSubmitSuccess }) {
         .fg-delete {
           background: none; border: none; color: #9CA3AF;
           cursor: pointer; padding: 4px; border-radius: 4px;
-          display: flex; align-items: center;
+          display: inline-flex; align-items: center;
         }
         .fg-delete:hover { color: #DC2626; background: #FEF2F2; }
+        .fg-delete:disabled { opacity: 0.45; cursor: wait; }
+        .fg-edit {
+          background: none; border: none; color: #2E7D64; cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          padding: 4px; border-radius: 4px; margin-right: 6px;
+        }
+        .fg-edit:hover { background: #E8F5F0; }
+        .fg-action-btn { border: none; cursor: pointer; padding: 5px 7px; border-radius: 4px; margin-right: 4px; }
+        .fg-save-btn { background: #2E7D64; color: white; }
+        .fg-cancel-btn { background: #F3F4F6; color: #6B7280; }
 
         .fg-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
 
@@ -265,6 +433,16 @@ export default function FugitiveForm({ onSubmitSuccess }) {
           font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
         .fg-add-btn-inline:hover { background: #2E7D64; }
+        .fg-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
                 .fg-error { font-size: 13px; color: #DC2626; }
 
         .fg-submit-btn {
@@ -280,6 +458,10 @@ export default function FugitiveForm({ onSubmitSuccess }) {
         @media (max-width: 640px) {
           .fg-table th:nth-child(2), .fg-table td:nth-child(2),
           .fg-table th:nth-child(4), .fg-table td:nth-child(4) { display: none; }
+        }
+        @keyframes fgFadeOut {
+          0% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-4px); }
         }
       `}</style>
     </div>

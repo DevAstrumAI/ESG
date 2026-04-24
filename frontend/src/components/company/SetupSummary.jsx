@@ -1,17 +1,50 @@
 // src/components/company/SetupSummary.jsx
-import { useState, useEffect } from "react";
-import { FiCheckCircle, FiMapPin, FiUsers, FiDollarSign, FiGlobe, FiBriefcase, FiEdit2, FiSave, FiX, FiPlus, FiTrash2 } from "react-icons/fi";
+import { useState } from "react";
+import { FiCheckCircle, FiMapPin, FiUsers, FiGlobe, FiBriefcase, FiEdit2, FiSave, FiX, FiPlus, FiTrash2 } from "react-icons/fi";
 import { BiBuilding } from "react-icons/bi";
 import InputField from "../ui/InputField";
 import SelectDropdown from "../ui/SelectDropdown";
+import ThemedSelect from "../ui/ThemedSelect";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
+import ConfirmationDialog from "../ui/ConfirmationDialog";
+import { 
+  FiPackage, 
+  FiMonitor, 
+  FiHeart, 
+  FiBookOpen, 
+  FiShoppingBag, 
+  FiTruck, 
+  FiHome, 
+  FiSun, 
+  FiZap, 
+  FiTool, 
+  FiSmartphone, 
+  FiPenTool, 
+  FiDollarSign, 
+  FiMoreHorizontal 
+} from "react-icons/fi";
+import {
+  countriesByRegion,
+  citiesByCountry,
+  filterLocationsForRegion,
+  getValidCountryValuesForRegion,
+} from "../../utils/companyLocations";
 
-export default function SetupSummary({ data, updateField }) {
+export default function SetupSummary({
+  data,
+  updateField,
+  mergeCompanyData,
+  onRegionResetLocations,
+  validationFocus,
+  validationMessage,
+  onClearValidationFeedback,
+}) {
   const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData] = useState({
     name: data.name,
     description: data.description,
+    logo: data.logo,
     region: data.region,
     industry: data.industry,
     employees: data.employees,
@@ -20,67 +53,74 @@ export default function SetupSummary({ data, updateField }) {
   
   // Facilities editing state
   const [facilitiesEditData, setFacilitiesEditData] = useState({
-    country: data.country || "",
     locations: [...(data.locations || [])]
   });
+  const [selectedCountry, setSelectedCountry] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
   const [cities, setCities] = useState([]);
+  const [showRegionChangeConfirm, setShowRegionChangeConfirm] = useState(false);
+  const [pendingRegion, setPendingRegion] = useState("");
+  const [regionInlineError, setRegionInlineError] = useState("");
+  const [locationsInlineError, setLocationsInlineError] = useState("");
 
   const regions = [
-    { label: "🌍 Middle East", value: "middle-east" },
-    { label: "🌏 Asia Pacific", value: "asia-pacific" },
-    { label: "🇪🇺 Europe (EU)", value: "eu" },
-    { label: "🇬🇧 United Kingdom", value: "uk" },
-    { label: "🇺🇸 United States", value: "us" },
-    { label: "🇮🇳 India", value: "in" },
-    { label: "🇨🇳 China", value: "cn" },
-    { label: "🌍 Other", value: "other" },
+    { label: " Middle East", value: "middle-east" },
+    { label: " Asia Pacific", value: "asia-pacific" },
   ];
 
   const industries = [
-    { label: "🏭 Manufacturing", value: "manufacturing" },
-    { label: "💻 IT / Software", value: "it" },
-    { label: "🏥 Healthcare", value: "healthcare" },
-    { label: "📚 Education", value: "education" },
-    { label: "🛍️ Retail", value: "retail" },
-    { label: "🚚 Logistics", value: "logistics" },
-    { label: "🏨 Hospitality", value: "hospitality" },
-    { label: "🌾 Agriculture", value: "agriculture" },
-    { label: "⚡ Energy", value: "energy" },
-    { label: "🏗️ Construction", value: "construction" },
-    { label: "📞 Telecommunications", value: "telecom" },
-    { label: "🎨 Creative / Design", value: "creative" },
-    { label: "📊 Financial Services", value: "finance" },
-    { label: "⚙️ Other", value: "other" },
+    { label: "Manufacturing", value: "manufacturing", icon: <FiPackage size={16} /> },
+    { label: "IT / Software", value: "it", icon: <FiMonitor size={16} /> },
+    { label: "Healthcare", value: "healthcare", icon: <FiHeart size={16} /> },
+    { label: "Education", value: "education", icon: <FiBookOpen size={16} /> },
+    { label: "Retail", value: "retail", icon: <FiShoppingBag size={16} /> },
+    { label: "Logistics", value: "logistics", icon: <FiTruck size={16} /> },
+    { label: "Hospitality", value: "hospitality", icon: <FiHome size={16} /> },
+    { label: "Agriculture", value: "agriculture", icon: <FiSun size={16} /> },
+    { label: "Energy", value: "energy", icon: <FiZap size={16} /> },
+    { label: "Construction", value: "construction", icon: <FiTool size={16} /> },
+    { label: "Telecommunications", value: "telecom", icon: <FiSmartphone size={16} /> },
+    { label: "Creative / Design", value: "creative", icon: <FiPenTool size={16} /> },
+    { label: "Financial Services", value: "finance", icon: <FiDollarSign size={16} /> },
+    { label: "Other", value: "other", icon: <FiMoreHorizontal size={16} /> },
   ];
 
-  // Cities by country
-  const citiesByCountry = {
-    uae: ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"],
-    "saudi-arabia": ["Riyadh", "Jeddah", "Dammam", "Khobar", "Medina", "Mecca"],
-    singapore: ["Singapore"],
+  const applyCompanyPatch = (patch) => {
+    if (mergeCompanyData) mergeCompanyData(patch);
+    else {
+      Object.entries(patch).forEach(([key, value]) => updateField(key, value));
+    }
   };
 
+  const toEditLocation = (loc, index) => ({
+    ...loc,
+    id:
+      loc?.id ??
+      `${String(loc?.country || "").toLowerCase()}::${String(loc?.city || loc?.name || "").toLowerCase()}::${index}`,
+  });
+
   const handleEdit = (section) => {
+    if (onClearValidationFeedback) onClearValidationFeedback();
+    setRegionInlineError("");
+    setLocationsInlineError("");
     setEditData({
       name: data.name,
       description: data.description,
+      logo: data.logo,
       region: data.region,
       industry: data.industry,
       employees: data.employees,
       revenue: data.revenue,
     });
     
-    // Initialize facilities edit data
     if (section === 'facilities') {
+      const locs = filterLocationsForRegion(data.region, data.locations || []);
       setFacilitiesEditData({
-        country: data.country || "",
-        locations: [...(data.locations || [])]
+        locations: locs.map((loc, index) => toEditLocation(loc, index)),
       });
-      // Load cities for the current country
-      if (data.country) {
-        setCities(citiesByCountry[data.country] || []);
-      }
+      setSelectedCountry("");
+      setSelectedCity("");
+      setCities([]);
     }
     
     setEditingSection(section);
@@ -95,29 +135,96 @@ export default function SetupSummary({ data, updateField }) {
     setEditingSection(null);
   };
 
+  const applyRegionChange = (newRegion) => {
+    const regionChanged = newRegion !== data.region;
+    const nextLocations = regionChanged
+      ? []
+      : filterLocationsForRegion(newRegion, data.locations || []);
+    const validCountries = new Set(getValidCountryValuesForRegion(newRegion));
+    const nextCountry = regionChanged
+      ? ""
+      : (data.country && validCountries.has(data.country) ? data.country : "");
+    applyCompanyPatch({
+      region: newRegion,
+      locations: nextLocations,
+      country: nextCountry,
+    });
+    if (regionChanged) {
+      setFacilitiesEditData({ locations: [] });
+      setSelectedCountry("");
+      setSelectedCity("");
+      setCities([]);
+      if (onRegionResetLocations) onRegionResetLocations();
+    }
+    setEditingSection(null);
+  };
+
+  const handleRegionSave = () => {
+    const newRegion = editData.region;
+    if (!newRegion) {
+      setRegionInlineError("Please select a region.");
+      return;
+    }
+    setRegionInlineError("");
+    if (newRegion !== data.region) {
+      setPendingRegion(newRegion);
+      setShowRegionChangeConfirm(true);
+      return;
+    }
+    applyRegionChange(newRegion);
+  };
+
   const handleFacilitiesSave = () => {
-    updateField("country", facilitiesEditData.country);
-    updateField("locations", facilitiesEditData.locations);
+    setLocationsInlineError("");
+    if (!data.region) {
+      setLocationsInlineError("Please set a region first in the Region section.");
+      return;
+    }
+    const validCountries = new Set(getValidCountryValuesForRegion(data.region));
+    const normalizeCountry = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, "-");
+    const cleaned = facilitiesEditData.locations
+      .map((loc) => ({
+        ...loc,
+        country: normalizeCountry(loc?.country),
+      }))
+      .filter((loc) => loc?.country && validCountries.has(loc.country) && (loc?.city || loc?.name));
+    if (cleaned.length === 0) {
+      setLocationsInlineError("Add at least one country-city entry in your region.");
+      return;
+    }
+    setLocationsInlineError("");
+    applyCompanyPatch({
+      country: cleaned[0].country,
+      locations: cleaned,
+    });
     setEditingSection(null);
   };
 
   const handleCancel = () => setEditingSection(null);
 
-  // Facilities edit functions
   const handleCountryChange = (country) => {
-    setFacilitiesEditData(prev => ({ ...prev, country }));
+    setLocationsInlineError("");
+    setSelectedCountry(country);
     setCities(citiesByCountry[country] || []);
     setSelectedCity("");
   };
 
-  const handleAddCity = () => {
-    if (!selectedCity) return;
-    const cityExists = facilitiesEditData.locations.some(loc => loc.city === selectedCity);
-    if (cityExists) return;
+  const handleAddLocationPair = () => {
+    if (!selectedCountry || !selectedCity) {
+      setLocationsInlineError("Please select both country and city before adding.");
+      return;
+    }
+    const cityExists = facilitiesEditData.locations.some(
+      (loc) => loc.country === selectedCountry && loc.city === selectedCity
+    );
+    if (cityExists) {
+      setLocationsInlineError("This country-city pair is already added.");
+      return;
+    }
     
     const newLocation = {
       id: Date.now(),
-      country: facilitiesEditData.country,
+      country: selectedCountry,
       city: selectedCity,
     };
     
@@ -125,13 +232,17 @@ export default function SetupSummary({ data, updateField }) {
       ...prev,
       locations: [...prev.locations, newLocation]
     }));
+    setLocationsInlineError("");
+    setSelectedCountry("");
     setSelectedCity("");
+    setCities([]);
   };
 
-  const handleRemoveCity = (id) => {
+  const handleRemoveLocation = (id) => {
+    setLocationsInlineError("");
     setFacilitiesEditData(prev => ({
       ...prev,
-      locations: prev.locations.filter(loc => loc.id !== id)
+      locations: prev.locations.filter((loc) => String(loc.id) !== String(id))
     }));
   };
 
@@ -196,21 +307,21 @@ export default function SetupSummary({ data, updateField }) {
 
       <div className="summary-grid">
         {/* Company Info Card */}
-        <div className="summary-card">
+        <div className="summary-card" key="company-card">
           <div className="card-header">
             <div className="card-title">
               <FiCheckCircle className="title-icon" />
               <h4>Company Information</h4>
             </div>
             {editingSection !== 'company' && (
-              <button onClick={() => handleEdit('company')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('company')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
           </div>
 
           {editingSection === 'company' ? (
-            <div className="edit-mode">
+            <div className="edit-mode" key="company-edit">
               <InputField
                 label="Company Name"
                 value={editData.name}
@@ -232,48 +343,58 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row">
+              <div className="summary-row" key="company-name">
                 <span className="row-label">Company Name:</span>
                 <span className="row-value">{data.name || "—"}</span>
               </div>
-              <div className="summary-row">
+              <div className="summary-row" key="company-desc">
                 <span className="row-label">Description:</span>
                 <span className="row-value">{data.description || "—"}</span>
+              </div>
+              <div className="summary-row" key="company-logo">
+                <span className="row-label">Logo:</span>
+                <span className="row-value">
+                  {data.logo ? <img src={data.logo} alt="Company logo" className="company-logo-preview" /> : "—"}
+                </span>
               </div>
             </div>
           )}
         </div>
 
         {/* Region Card */}
-        <div className="summary-card">
+        <div className="summary-card" key="region-card">
           <div className="card-header">
             <div className="card-title">
               <FiGlobe className="title-icon" />
               <h4>Region</h4>
             </div>
             {editingSection !== 'region' && (
-              <button onClick={() => handleEdit('region')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('region')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
           </div>
 
           {editingSection === 'region' ? (
-            <div className="edit-mode">
+            <div className="edit-mode" key="region-edit">
               <SelectDropdown
                 label="Region"
                 value={editData.region}
-                onChange={(e) => setEditData({...editData, region: e.target.value})}
+                onChange={(e) => {
+                  setRegionInlineError("");
+                  setEditData({...editData, region: e.target.value});
+                }}
                 options={regions}
               />
+              {regionInlineError && <div className="inline-error">{regionInlineError}</div>}
               <div className="edit-actions">
-                <PrimaryButton onClick={handleSave} className="save-btn"><FiSave /> Save</PrimaryButton>
+                <PrimaryButton onClick={handleRegionSave} className="save-btn"><FiSave /> Save</PrimaryButton>
                 <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
               </div>
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row">
+              <div className="summary-row" key="region-value">
                 <span className="row-label">Region:</span>
                 <span className="row-value">{getRegionLabel(data.region)}</span>
               </div>
@@ -282,21 +403,21 @@ export default function SetupSummary({ data, updateField }) {
         </div>
 
         {/* Industry Card */}
-        <div className="summary-card">
+        <div className="summary-card" key="industry-card">
           <div className="card-header">
             <div className="card-title">
               <FiBriefcase className="title-icon" />
               <h4>Industry</h4>
             </div>
             {editingSection !== 'industry' && (
-              <button onClick={() => handleEdit('industry')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('industry')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
           </div>
 
           {editingSection === 'industry' ? (
-            <div className="edit-mode">
+            <div className="edit-mode" key="industry-edit">
               <SelectDropdown
                 label="Industry"
                 value={editData.industry}
@@ -310,7 +431,7 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row">
+              <div className="summary-row" key="industry-value">
                 <span className="row-label">Industry:</span>
                 <span className="row-value">{getIndustryLabel(data.industry)}</span>
               </div>
@@ -319,21 +440,21 @@ export default function SetupSummary({ data, updateField }) {
         </div>
 
         {/* Employees Card */}
-        <div className="summary-card">
+        <div className="summary-card" key="employees-card">
           <div className="card-header">
             <div className="card-title">
               <FiUsers className="title-icon" />
               <h4>Employees</h4>
             </div>
             {editingSection !== 'employees' && (
-              <button onClick={() => handleEdit('employees')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('employees')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
           </div>
 
           {editingSection === 'employees' ? (
-            <div className="edit-mode">
+            <div className="edit-mode" key="employees-edit">
               <InputField
                 label="Number of Employees"
                 type="number"
@@ -348,7 +469,7 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row">
+              <div className="summary-row" key="employees-value">
                 <span className="row-label">Employees:</span>
                 <div className="row-value">
                   {data.employees ? (
@@ -364,21 +485,21 @@ export default function SetupSummary({ data, updateField }) {
         </div>
 
         {/* Revenue Card */}
-        <div className="summary-card">
+        <div className="summary-card" key="revenue-card">
           <div className="card-header">
             <div className="card-title">
               <FiDollarSign className="title-icon" />
               <h4>Annual Revenue</h4>
             </div>
             {editingSection !== 'revenue' && (
-              <button onClick={() => handleEdit('revenue')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('revenue')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
           </div>
 
           {editingSection === 'revenue' ? (
-            <div className="edit-mode">
+            <div className="edit-mode" key="revenue-edit">
               <InputField
                 label="Annual Revenue (USD)"
                 type="number"
@@ -393,7 +514,7 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row">
+              <div className="summary-row" key="revenue-value">
                 <span className="row-label">Annual Revenue:</span>
                 <span className="row-value">{formatRevenue(data.revenue)}</span>
               </div>
@@ -401,71 +522,71 @@ export default function SetupSummary({ data, updateField }) {
           )}
         </div>
 
-        {/* Facilities Card - Updated with inline editing */}
-        <div className="summary-card facilities-card">
+        {/* Locations Card */}
+        <div
+          className={`summary-card facilities-card ${validationFocus === "cities" ? "validation-error" : ""}`}
+          key="facilities-card"
+        >
           <div className="card-header">
             <div className="card-title">
               <BiBuilding className="title-icon" />
-              <h4>Facilities ({data.locations.length})</h4>
+              <h4>Locations ({data.locations?.length || 0})</h4>
             </div>
             {editingSection !== 'facilities' && (
-              <button onClick={() => handleEdit('facilities')} className="edit-section-btn">
+              <button type="button" onClick={() => handleEdit('facilities')} className="edit-section-btn">
                 <FiEdit2 /> Edit
               </button>
             )}
           </div>
 
           {editingSection === 'facilities' ? (
-            <div className="edit-mode">
-              {/* Country Selection */}
-              <div className="field-group">
-                <label className="field-label">Country</label>
-                <select
-                  className="field-select"
-                  value={facilitiesEditData.country}
-                  onChange={(e) => handleCountryChange(e.target.value)}
-                >
-                  <option value="">Select Country</option>
-                  {Object.keys(citiesByCountry).map(country => (
-                    <option key={country} value={country}>{getCountryLabel(country)}</option>
-                  ))}
-                </select>
+            <div className="edit-mode" key="facilities-edit">
+              <div className="pair-grid">
+                <div className="field-group">
+                  <label className="field-label">Country</label>
+                  <ThemedSelect
+                    className="field-select"
+                    value={selectedCountry}
+                    onChange={(nextCountry) => handleCountryChange(nextCountry)}
+                    disabled={!data.region}
+                    options={countriesByRegion[data.region] || []}
+                    placeholder="Select Country"
+                  />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">City</label>
+                  <ThemedSelect
+                    className="field-select"
+                    value={selectedCity}
+                    onChange={(nextCity) => setSelectedCity(nextCity)}
+                    disabled={!selectedCountry}
+                    options={cities.map((city) => ({ value: city, label: city }))}
+                    placeholder="Select City"
+                  />
+                </div>
+                <div className="field-group add-inline-group">
+                  <label className="field-label"> </label>
+                  <button
+                    type="button"
+                    onClick={handleAddLocationPair}
+                    className="add-city-btn"
+                    disabled={!selectedCountry || !selectedCity}
+                  >
+                    <FiPlus /> Add more 
+                  </button>
+                </div>
               </div>
 
-              {/* City Selection and Add Button */}
-              {facilitiesEditData.country && (
-                <div className="add-city-section">
-                  <div className="field-group">
-                    <label className="field-label">Add City</label>
-                    <div className="city-input-group">
-                      <select
-                        className="field-select"
-                        value={selectedCity}
-                        onChange={(e) => setSelectedCity(e.target.value)}
-                      >
-                        <option value="">Select City</option>
-                        {cities.map(city => (
-                          <option key={city} value={city}>{city}</option>
-                        ))}
-                      </select>
-                      <button onClick={handleAddCity} className="add-city-btn" disabled={!selectedCity}>
-                        <FiPlus /> Add
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Locations List */}
               {facilitiesEditData.locations.length > 0 && (
                 <div className="locations-list">
-                  <label className="field-label">Added Locations</label>
+                  <label className="field-label">Added Country-City Pairs</label>
                   {facilitiesEditData.locations.map((loc) => (
                     <div key={loc.id} className="location-item">
                       <FiMapPin className="location-icon" />
                       <span>{getLocationDisplay(loc)}</span>
                       <button
-                        onClick={() => handleRemoveCity(loc.id)}
+                        type="button"
+                        onClick={() => handleRemoveLocation(loc.id)}
                         className="remove-location-btn"
                         title="Remove"
                       >
@@ -476,21 +597,16 @@ export default function SetupSummary({ data, updateField }) {
                 </div>
               )}
 
-              {facilitiesEditData.locations.length === 0 && facilitiesEditData.country && (
+              {facilitiesEditData.locations.length === 0 && (
                 <div className="empty-locations">
-                  <p>No cities added yet. Select a city above to add.</p>
+                  <p>No entries added yet. Select country and city, then click Add more .</p>
                 </div>
               )}
 
-              {!facilitiesEditData.country && (
-                <div className="empty-locations">
-                  <p>Please select a country first.</p>
-                </div>
-              )}
-
+              {locationsInlineError && <div className="inline-error">{locationsInlineError}</div>}
               <div className="edit-actions">
                 <PrimaryButton onClick={handleFacilitiesSave} className="save-btn">
-                  <FiSave /> Save Facilities
+                  <FiSave /> Save Entries
                 </PrimaryButton>
                 <SecondaryButton onClick={handleCancel} className="cancel-btn">
                   <FiX /> Cancel
@@ -499,8 +615,13 @@ export default function SetupSummary({ data, updateField }) {
             </div>
           ) : (
             <div className="facilities-list">
-              {data.locations.length === 0 ? (
-                <p className="empty-facilities">No facilities added</p>
+              {validationFocus === "cities" && validationMessage && (
+                <div className="validation-note">
+                  ⚠️ {validationMessage}
+                </div>
+              )}
+              {!data.locations || data.locations.length === 0 ? (
+                <p className="empty-facilities">No locations added</p>
               ) : (
                 data.locations.map((loc) => (
                   <div key={loc.id} className="facility-item">
@@ -518,6 +639,24 @@ export default function SetupSummary({ data, updateField }) {
         <FiCheckCircle className="note-icon" />
         <p>All information is correct. Click "Complete Setup" to finish.</p>
       </div>
+
+      <ConfirmationDialog
+        isOpen={showRegionChangeConfirm}
+        onClose={() => {
+          setShowRegionChangeConfirm(false);
+          setPendingRegion("");
+        }}
+        onConfirm={() => {
+          if (pendingRegion) applyRegionChange(pendingRegion);
+          setShowRegionChangeConfirm(false);
+          setPendingRegion("");
+        }}
+        title="Confirm Region Change"
+        message="Changing region will clear the selected country and all added cities. You will need to re-select them before completing setup."
+        confirmText="Yes, Change Region"
+        cancelText="Keep Current Region"
+        type="danger"
+      />
 
       <style jsx>{`
         .summary-step {
@@ -571,6 +710,11 @@ export default function SetupSummary({ data, updateField }) {
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
           border-color: #2E7D64;
         }
+        .summary-card.validation-error {
+          border-color: #EF4444;
+          background: #FFF7F7;
+          box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+        }
 
         .facilities-card {
           grid-column: span 2;
@@ -619,43 +763,73 @@ export default function SetupSummary({ data, updateField }) {
         .summary-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
         .row-label { font-size: 14px; color: #6B7280; font-weight: 500; }
         .row-value { font-size: 14px; font-weight: 600; color: #1B4D3E; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .company-logo-preview {
+          max-width: 130px;
+          max-height: 42px;
+          object-fit: contain;
+          border: 1px solid #E5E7EB;
+          border-radius: 6px;
+          background: #fff;
+          padding: 4px;
+        }
         .size-badge { font-size: 11px; padding: 2px 8px; background: #F8FAF8; color: #2E7D64; border-radius: 30px; font-weight: 500; border: 1px solid #E5E7EB; }
 
-        .edit-mode { display: flex; flex-direction: column; gap: 16px; }
-        .field-group { display: flex; flex-direction: column; gap: 8px; }
-        .field-label { font-size: 13px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.3px; }
-        .field-select {
-          width: 100%;
-          padding: 10px 12px;
-          border: 1px solid #E5E7EB;
-          border-radius: 8px;
-          font-size: 14px;
-          background: white;
-        }
-        .field-select:focus { outline: none; border-color: #2E7D64; }
-
-        .add-city-section { margin-top: 8px; }
-        .city-input-group {
+        .edit-mode {
           display: flex;
-          gap: 12px;
-          align-items: center;
+          flex-direction: column;
+          gap: 16px;
+          background: #FFFFFF;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          padding: 16px;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
         }
-        .city-input-group .field-select { flex: 1; }
+        .field-group { display: flex; flex-direction: column; gap: 8px; }
+        .field-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #6B7280;
+          text-transform: uppercase;
+          letter-spacing: 0.35px;
+          margin-bottom: 2px;
+        }
+        .field-select { width: 100%; }
+        .pair-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr auto;
+          gap: 12px;
+        }
+        .add-inline-group {
+          justify-content: flex-end;
+        }
+        .add-inline-group .field-label {
+          visibility: hidden;
+        }
         .add-city-btn {
           display: flex;
           align-items: center;
           gap: 6px;
-          padding: 10px 16px;
-          background: #2E7D64;
+          height: 42px;
+          padding: 0 16px;
+          background: linear-gradient(135deg, #2E7D64 0%, #1F9D7A 100%);
           color: white;
-          border: none;
-          border-radius: 8px;
+          border: 1px solid #2E7D64;
+          border-radius: 10px;
           cursor: pointer;
           font-size: 13px;
-          font-weight: 500;
+          font-weight: 600;
+          box-shadow: 0 6px 14px rgba(31, 157, 122, 0.2);
+          transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+        }
+        .add-city-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 9px 18px rgba(31, 157, 122, 0.28);
+          filter: saturate(1.03);
         }
         .add-city-btn:disabled {
           background: #9CA3AF;
+          border-color: #9CA3AF;
+          box-shadow: none;
           cursor: not-allowed;
         }
 
@@ -692,10 +866,69 @@ export default function SetupSummary({ data, updateField }) {
           border-radius: 8px;
         }
 
-        .edit-actions { display: flex; gap: 12px; margin-top: 8px; }
-        .save-btn, .cancel-btn { flex: 1; padding: 10px !important; font-size: 14px !important; }
+        .edit-actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 10px;
+          padding-top: 12px;
+          border-top: 1px solid #F3F4F6;
+        }
+        .save-btn,
+        .cancel-btn {
+          flex: 1;
+          min-height: 40px;
+          border-radius: 10px !important;
+          font-size: 14px !important;
+          font-weight: 600 !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 8px !important;
+          transition: all 0.18s ease !important;
+        }
+        .save-btn {
+          background: linear-gradient(135deg, #2E7D64 0%, #1F9D7A 100%) !important;
+          color: #FFFFFF !important;
+          border: 1px solid #2E7D64 !important;
+          box-shadow: 0 6px 16px rgba(31, 157, 122, 0.22);
+        }
+        .save-btn:hover {
+          border-color: #1F9D7A !important;
+          box-shadow: 0 10px 20px rgba(31, 157, 122, 0.28);
+          transform: translateY(-1px);
+        }
+        .cancel-btn {
+          background: #FFFFFF !important;
+          color: #4B5563 !important;
+          border: 1px solid #D1D5DB !important;
+          box-shadow: 0 3px 8px rgba(15, 23, 42, 0.06);
+        }
+        .cancel-btn:hover {
+          color: #1F2937 !important;
+          border-color: #9CA3AF !important;
+          background: #F9FAFB !important;
+          transform: translateY(-1px);
+        }
 
         .facilities-list { display: flex; flex-direction: column; gap: 12px; }
+        .validation-note {
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 10px 12px;
+          font-size: 13px;
+          font-weight: 500;
+        }
+        .inline-error {
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
         .facility-item {
           display: flex;
           align-items: center;
@@ -728,7 +961,8 @@ export default function SetupSummary({ data, updateField }) {
           .row-value { justify-content: flex-start; }
           .card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
           .edit-section-btn { align-self: flex-start; }
-          .city-input-group { flex-direction: column; }
+          .pair-grid { grid-template-columns: 1fr; }
+          .add-inline-group .field-label { display: none; }
           .add-city-btn { width: 100%; justify-content: center; }
         }
       `}</style>

@@ -1,12 +1,20 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response
+from fastapi.responses import StreamingResponse
 from app.middleware.auth import get_current_user
 from app.utils.firebase import get_db
+from app.services.calculator import BIOGENIC_FUEL_TYPES
+from app.utils.location_resolver import resolve_location
+from app.utils.location_resolver import resolve_location
 from datetime import datetime
 import openai
 import os
 import json
+import csv
+import io
+from collections import defaultdict
 
 router = APIRouter(tags=["Reports"])
+FISCAL_YEAR_START_MONTH = 6  # June
 
 # ---------------------------------------------------------------------------
 # Regional financial constants
@@ -76,19 +84,87 @@ def get_company_id(uid: str) -> tuple[str, dict]:
     return company_id, company_doc.to_dict()
 
 
-def fetch_scope_docs(company_id: str, scope: str, year: int, month: str | None) -> list[dict]:
+def _norm_loc(value: str | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def _doc_matches_location(d: dict, country: str | None, city: str | None) -> bool:
+    if not country and not city:
+        return True
+    doc_country = _norm_loc(d.get("country"))
+    doc_city = _norm_loc(d.get("city"))
+    if country and doc_country != _norm_loc(country):
+        return False
+    if city and doc_city != _norm_loc(city):
+        return False
+    return True
+
+
+def fetch_scope_docs(
+    company_id: str,
+    scope: str,
+    year: int,
+    month: str | None,
+    *,
+    country: str | None = None,
+    city: str | None = None,
+) -> list[dict]:
     db = get_db()
     docs = db.collection("emissionData").document(company_id).collection(scope).stream()
     results = []
     for doc in docs:
         d = doc.to_dict()
+        if not _doc_matches_location(d, country, city):
+            continue
         if month:
             if d.get("month") == month:
                 results.append(d)
         else:
-            if d.get("year") == year:
+            month_value = d.get("month")
+            if month_value and "-" in str(month_value):
+                try:
+                    y_str, m_str = str(month_value).split("-")
+                    y_num = int(y_str)
+                    m_num = int(m_str)
+                    in_fiscal_year = (y_num == year and m_num >= FISCAL_YEAR_START_MONTH) or (y_num == year + 1 and m_num < FISCAL_YEAR_START_MONTH)
+                    if in_fiscal_year:
+                        results.append(d)
+                except (ValueError, TypeError):
+                    pass
+            elif d.get("year") == year:
                 results.append(d)
     return results
+
+
+def calculate_data_coverage_months(scope1_docs: list[dict], scope2_docs: list[dict], year: int, month: str | None) -> int:
+    """
+    Return the number of distinct reporting months with submitted data.
+    For annual/fiscal reports: count distinct YYYY-MM months in the fiscal window (max 12).
+    For month-specific reports: return 1 when any data exists for that month, else 0.
+    """
+    if month:
+        return 1 if (scope1_docs or scope2_docs) else 0
+
+    covered = set()
+    for doc in [*scope1_docs, *scope2_docs]:
+        month_value = str(doc.get("month") or "")
+        if "-" not in month_value:
+            continue
+        try:
+            y_str, m_str = month_value.split("-")
+            y_num = int(y_str)
+            m_num = int(m_str)
+        except (ValueError, TypeError):
+            continue
+
+        in_fiscal_year = (
+            (y_num == year and m_num >= FISCAL_YEAR_START_MONTH)
+            or (y_num == year + 1 and m_num < FISCAL_YEAR_START_MONTH)
+        )
+        if in_fiscal_year:
+            covered.add(f"{y_num}-{m_num:02d}")
+
+    return min(len(covered), 12)
 
 
 def aggregate_scope1(docs: list[dict]) -> dict:
@@ -120,11 +196,882 @@ def aggregate_scope2(docs: list[dict]) -> dict:
     return agg
 
 
-def fetch_historical_totals(company_id: str, base_year: int, current_year: int) -> list[dict]:
+def _pick_quantity(entry: dict) -> float:
+    for key in ("consumption", "consumptionKWh", "litresConsumed", "distanceKm", "leakageKg", "emissionKg"):
+        try:
+            value = float(entry.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value > 0:
+            return value
+    return 0.0
+
+
+def _rows_from_scope1_doc(doc: dict) -> list[dict]:
+    month = str(doc.get("month") or "")
+    results = doc.get("results") or {}
+    rows: list[dict] = []
+    for category in ("mobile", "stationary", "refrigerants", "fugitive"):
+        entries = (results.get(category) or {}).get("entries") or []
+        for entry in entries:
+            rows.append({
+                "month": month,
+                "scope": "scope1",
+                "category": category,
+                "quantity": round(_pick_quantity(entry), 6),
+                "factor": float(entry.get("factorUsed", 0) or 0),
+                "kgCO2e": float(entry.get("kgCO2e", 0) or 0),
+            })
+    return rows
+
+
+def _rows_from_scope2_doc(doc: dict) -> list[dict]:
+    month = str(doc.get("month") or "")
+    results = doc.get("results") or {}
+    rows: list[dict] = []
+
+    # Electricity has both location- and market-based calculations per entry.
+    for entry in (results.get("electricity") or {}).get("entries") or []:
+        quantity = _pick_quantity(entry)
+        loc = entry.get("locationBased") or {}
+        mkt = entry.get("marketBased") or {}
+        rows.append({
+            "month": month,
+            "scope": "scope2",
+            "category": "electricity_location",
+            "quantity": round(quantity, 6),
+            "factor": float(loc.get("factorUsed", 0) or 0),
+            "kgCO2e": float(loc.get("kgCO2e", 0) or 0),
+        })
+        rows.append({
+            "month": month,
+            "scope": "scope2",
+            "category": "electricity_market",
+            "quantity": round(quantity, 6),
+            "factor": float(mkt.get("factorUsed", 0) or 0),
+            "kgCO2e": float(mkt.get("kgCO2e", 0) or 0),
+        })
+
+    for category in ("heating", "renewables"):
+        entries = (results.get(category) or {}).get("entries") or []
+        for entry in entries:
+            rows.append({
+                "month": month,
+                "scope": "scope2",
+                "category": category,
+                "quantity": round(_pick_quantity(entry), 6),
+                "factor": float(entry.get("factorUsed", 0) or 0),
+                "kgCO2e": float(entry.get("kgCO2e", 0) or 0),
+            })
+    return rows
+
+
+def _quarter_months(year: int, quarter: str) -> list[str]:
+    q = str(quarter or "").upper()
+    # Fiscal quarters for FY starting in June
+    mapping = {
+        "Q1": [f"{year}-06", f"{year}-07", f"{year}-08"],
+        "Q2": [f"{year}-09", f"{year}-10", f"{year}-11"],
+        "Q3": [f"{year}-12", f"{year + 1}-01", f"{year + 1}-02"],
+        "Q4": [f"{year + 1}-03", f"{year + 1}-04", f"{year + 1}-05"],
+    }
+    return mapping.get(q, [])
+
+
+def _is_month_in_fiscal_year(month_value: str, fiscal_year_start: int) -> bool:
+    try:
+        year_part, month_part = map(int, str(month_value).split("-"))
+    except Exception:
+        return False
+    if month_part >= FISCAL_YEAR_START_MONTH:
+        return year_part == fiscal_year_start
+    return year_part == (fiscal_year_start + 1)
+
+
+def _fetch_scope_docs_all_months(
+    company_id: str,
+    scope: str,
+    *,
+    country: str | None = None,
+    city: str | None = None,
+) -> list[dict]:
+    """Fetch all docs for a scope and apply only location filter."""
+    db = get_db()
+    docs = db.collection("emissionData").document(company_id).collection(scope).stream()
+    rows: list[dict] = []
+    for doc in docs:
+        data = doc.to_dict() or {}
+        if not _doc_matches_location(data, country, city):
+            continue
+        rows.append(data)
+    return rows
+
+
+def _scope1_entry_is_biogenic(entry: dict, category: str) -> bool:
+    if category == "stationary":
+        if entry.get("isBiogenic"):
+            return True
+        return str(entry.get("fuelType") or "") in BIOGENIC_FUEL_TYPES
+    if category == "mobile":
+        return str(entry.get("fuelType") or "") in BIOGENIC_FUEL_TYPES
+    return False
+
+
+def build_scope1_detail_for_report(scope1_docs: list[dict], s1_total_kg: float, top_n: int = 10) -> dict:
+    """
+    Card 16: top contributing fuel/source lines (non-biogenic) and biogenic fuels separately.
+    """
+    contributors: dict[str, float] = {}
+    biogenic_by_type: dict[str, float] = {}
+    biogenic_total = 0.0
+
+    for doc in scope1_docs:
+        res = doc.get("results") or {}
+        for cat_key, _prefix in (
+            ("mobile", "Mobile"),
+            ("stationary", "Stationary"),
+            ("refrigerants", "Refrigerant"),
+            ("fugitive", "Fugitive"),
+        ):
+            entries = (res.get(cat_key) or {}).get("entries") or []
+            for e in entries:
+                kg = float(e.get("kgCO2e", 0))
+                if _scope1_entry_is_biogenic(e, cat_key):
+                    biogenic_total += kg
+                    ft = str(
+                        e.get("fuelType")
+                        or e.get("refrigerantType")
+                        or e.get("sourceType")
+                        or "unknown"
+                    )
+                    biogenic_by_type[ft] = biogenic_by_type.get(ft, 0.0) + kg
+                    continue
+                if cat_key == "mobile":
+                    label = f"Mobile — {e.get('fuelType') or 'unknown'}"
+                elif cat_key == "stationary":
+                    label = f"Stationary — {e.get('fuelType') or 'unknown'}"
+                elif cat_key == "refrigerants":
+                    label = f"Refrigerant — {e.get('refrigerantType') or 'unknown'}"
+                else:
+                    label = f"Fugitive — {e.get('sourceType') or 'unknown'}"
+                contributors[label] = contributors.get(label, 0.0) + kg
+
+    sorted_contrib = sorted(contributors.items(), key=lambda x: -x[1])[:top_n]
+    denom = s1_total_kg if s1_total_kg > 0 else 1.0
+    top_contributors = [
+        {
+            "label": lab,
+            "kg": round(kg, 4),
+            "t": round(kg / 1000, 4),
+            "pct_of_scope1": round(kg / denom * 100, 1),
+        }
+        for lab, kg in sorted_contrib
+    ]
+
+    biogenic_fuels = [
+        {
+            "fuel_type": ft,
+            "label": ft.replace("_", " ").title(),
+            "kg": round(kg, 4),
+            "t": round(kg / 1000, 4),
+            "pct_of_biogenic": round(kg / (biogenic_total or 1) * 100, 1),
+        }
+        for ft, kg in sorted(biogenic_by_type.items(), key=lambda x: -x[1])
+    ]
+
+    return {
+        "top_contributors": top_contributors,
+        "biogenic": {
+            "total_kg": round(biogenic_total, 4),
+            "total_t": round(biogenic_total / 1000, 4),
+            "fuels": biogenic_fuels,
+            "note": (
+                "Biogenic CO₂ from biomass-derived fuels is shown separately for transparency "
+                "(GHG Protocol biogenic reporting)."
+            ),
+        },
+    }
+
+
+def collect_certificate_holdings(scope2_docs: list[dict]) -> list[dict]:
+    """Market-based electricity backed by renewable certificates (non grid_average)."""
+    generic_site_labels = {"main city", "main facility", "hq", "head office", "facility"}
+    holdings: list[dict] = []
+    for doc in scope2_docs:
+        res = doc.get("results") or {}
+        elec = res.get("electricity") or {}
+        entries = elec.get("entries") or []
+        month = doc.get("month") or ""
+        city = str(doc.get("city") or "").strip()
+        country = str(doc.get("country") or "").strip()
+        location_label = f"{city}, {country}".strip(", ") if (city or country) else "—"
+        for e in entries:
+            ct = str(e.get("certificateType") or "")
+            if not ct or ct == "grid_average":
+                continue
+            if str(e.get("method") or "") != "market":
+                continue
+            site_name = str(e.get("facilityName") or "").strip()
+            if site_name.lower() in generic_site_labels:
+                site_name = ""
+            loc_lb = e.get("locationBased") or {}
+            mk_lb = e.get("marketBased") or {}
+            holdings.append({
+                "reporting_month": month,
+                "site_name": site_name or None,
+                "location": location_label,
+                "certificate_type": ct,
+                "certificate_label": e.get("certificateLabel") or ct,
+                "issuing_body": e.get("issuingBody") or e.get("issuer"),
+                "consumption_kwh": round(float(e.get("consumptionKwh", 0)), 2),
+                "location_based_kg": round(float(loc_lb.get("kgCO2e", 0)), 4),
+                "market_based_kg": round(float(mk_lb.get("kgCO2e", 0)), 4),
+            })
+    holdings.sort(key=lambda x: -float(x["consumption_kwh"]))
+    return holdings
+
+
+def build_scope2_detail_for_report(s2: dict) -> dict:
+    """Card 16: explicit location vs market vs renewables."""
+    loc_e = s2["electricity_location"]
+    mkt_e = s2["electricity_market"]
+    heat = s2["heating"]
+    ren = s2["renewables"]
+    return {
+        "location_based": {
+            "electricity_kg": round(loc_e, 4),
+            "heating_kg": round(heat, 4),
+            "total_kg": round(s2["total_location"], 4),
+            "total_t": round(s2["total_location"] / 1000, 4),
+            "note": "Location-based Scope 2 = location electricity + heating & cooling.",
+        },
+        "market_based": {
+            "electricity_kg": round(mkt_e, 4),
+            "heating_kg": round(heat, 4),
+            "total_kg": round(s2["total_market"], 4),
+            "total_t": round(s2["total_market"] / 1000, 4),
+            "note": "Market-based electricity reflects certificate selection; heating uses the same energy basis as location.",
+        },
+        "renewables": {
+            "total_kg": round(ren, 4),
+            "total_t": round(ren / 1000, 4),
+            "note": "On-site / PPA renewable generation reported separately; not netted against Scope 2 totals here.",
+        },
+    }
+
+
+def _month_label(month_value: str | None) -> str:
+    if not month_value or "-" not in str(month_value):
+        return ""
+    try:
+        year_s, month_s = str(month_value).split("-")
+        dt = datetime(int(year_s), int(month_s), 1)
+        return dt.strftime("%b %Y")
+    except Exception:
+        return str(month_value)
+
+
+def build_scope1_section(scope1_docs: list[dict], scope1_total_kg: float) -> dict:
+    mobile_breakdown = defaultdict(float)
+    stationary_breakdown = defaultdict(float)
+    refrigerant_breakdown = defaultdict(float)
+    fugitive_breakdown = defaultdict(float)
+    monthly_totals = defaultdict(float)
+
+    mobile_total = stationary_total = refrigerants_total = fugitive_total = biogenic_total = 0.0
+
+    for doc in scope1_docs:
+        month = str(doc.get("month") or "")
+        res = doc.get("results") or {}
+
+        for e in (res.get("mobile") or {}).get("entries", []):
+            kg = float(e.get("kgCO2e", 0))
+            fuel = str(e.get("fuelType") or "unknown")
+            mobile_breakdown[fuel] += kg
+            mobile_total += kg
+            monthly_totals[month] += kg
+
+        for e in (res.get("stationary") or {}).get("entries", []):
+            kg = float(e.get("kgCO2e", 0))
+            fuel = str(e.get("fuelType") or "unknown")
+            if _scope1_entry_is_biogenic(e, "stationary"):
+                biogenic_total += kg
+                continue
+            stationary_breakdown[fuel] += kg
+            stationary_total += kg
+            monthly_totals[month] += kg
+
+        for e in (res.get("refrigerants") or {}).get("entries", []):
+            kg = float(e.get("kgCO2e", 0))
+            gas = str(e.get("refrigerantType") or "unknown")
+            gwp = float(e.get("factorUsed", 0) or 0)
+            refrigerant_breakdown[gas] += kg
+            refrigerants_total += kg
+            monthly_totals[month] += kg
+            # store max gwp seen for this gas
+            key = f"{gas}::__gwp"
+            refrigerant_breakdown[key] = max(float(refrigerant_breakdown.get(key, 0)), gwp)
+
+        for e in (res.get("fugitive") or {}).get("entries", []):
+            kg = float(e.get("kgCO2e", 0))
+            src = str(e.get("sourceType") or "unknown")
+            fugitive_breakdown[src] += kg
+            fugitive_total += kg
+            monthly_totals[month] += kg
+
+    def _as_rows(d: dict, *, add_gwp: bool = False) -> list[dict]:
+        rows = []
+        for k, v in d.items():
+            if str(k).endswith("::__gwp"):
+                continue
+            item = {
+                "key": k,
+                "label": k.replace("_", " ").title(),
+                "kg": round(float(v), 4),
+                "t": round(float(v) / 1000, 4),
+            }
+            if add_gwp:
+                gwp = float(d.get(f"{k}::__gwp", 0) or 0)
+                item["gwp"] = round(gwp, 2)
+                item["high_gwp"] = gwp > 1000
+            rows.append(item)
+        rows.sort(key=lambda x: x["kg"], reverse=True)
+        return rows
+
+    top_mobile = _as_rows(mobile_breakdown)[:5]
+    monthly_chart = []
+    for month, kg in sorted(monthly_totals.items()):
+        if not month:
+            continue
+        monthly_chart.append({"month": month, "label": _month_label(month), "kg": round(kg, 4), "t": round(kg / 1000, 4)})
+
+    scope1_total_excluding_biogenic_kg = max(float(scope1_total_kg or 0) - biogenic_total, 0.0)
+
+    return {
+        "mobile_combustion": {
+            "total_kg": round(mobile_total, 4),
+            "total_t": round(mobile_total / 1000, 4),
+            "fuel_breakdown": _as_rows(mobile_breakdown),
+            "top5_bar": [{"label": x["label"], "tCO2e": x["t"]} for x in top_mobile],
+        },
+        "stationary_combustion": {
+            "total_kg": round(stationary_total, 4),
+            "total_t": round(stationary_total / 1000, 4),
+            "fuel_breakdown": _as_rows(stationary_breakdown),
+            "biogenic_total_kg": round(biogenic_total, 4),
+            "biogenic_total_t": round(biogenic_total / 1000, 4),
+            "biogenic_note": "Biogenic fuels are reported separately and excluded from Scope 1 totals.",
+        },
+        "refrigerants": {
+            "total_kg": round(refrigerants_total, 4),
+            "total_t": round(refrigerants_total / 1000, 4),
+            "gas_breakdown": _as_rows(refrigerant_breakdown, add_gwp=True),
+        },
+        "fugitive_emissions": {
+            "total_kg": round(fugitive_total, 4),
+            "total_t": round(fugitive_total / 1000, 4),
+            "source_breakdown": _as_rows(fugitive_breakdown),
+        },
+        "scope1_total": {
+            "kg": round(scope1_total_excluding_biogenic_kg, 4),
+            "t": round(scope1_total_excluding_biogenic_kg / 1000, 4),
+        },
+        "monthly_breakdown_bar": monthly_chart,
+    }
+
+
+def build_scope2_section(s2: dict, scope2_docs: list[dict], recommendations: list[dict]) -> dict:
+    district_cooling_kg = 0.0
+    heating_kg = 0.0
+    for doc in scope2_docs:
+        for e in ((doc.get("results") or {}).get("heating") or {}).get("entries", []):
+            kg = float(e.get("kgCO2e", 0) or 0)
+            et = str(e.get("energyType") or "").lower()
+            if "cool" in et:
+                district_cooling_kg += kg
+            else:
+                heating_kg += kg
+
+    certs = collect_certificate_holdings(scope2_docs)
+    cert_rows = []
+    for c in certs:
+        cert_rows.append({
+            "certificate_type": c.get("certificate_label"),
+            "mwh_covered": round(float(c.get("consumption_kwh", 0)) / 1000, 4),
+            "issuing_body": c.get("issuing_body") or None,
+            "location": c.get("location"),
+            "site_name": c.get("site_name"),
+        })
+
+    rec_opportunity = next((r for r in recommendations if r.get("trigger") == "electricity_location_gt_market"), None)
+    gap_t = round((s2["electricity_location"] - s2["electricity_market"]) / 1000, 4)
+
+    return {
+        "location_based_total_t": round(s2["total_location"] / 1000, 4),
+        "market_based_total_t": round(s2["total_market"] / 1000, 4),
+        "renewables_reported_separately_t": round(s2["renewables"] / 1000, 4),
+        "sub_category_breakdown_t": {
+            "electricity_location_based": round(s2["electricity_location"] / 1000, 4),
+            "electricity_market_based": round(s2["electricity_market"] / 1000, 4),
+            "heating": round(heating_kg / 1000, 4),
+            "district_cooling": round(district_cooling_kg / 1000, 4),
+        },
+        "certificate_holdings": cert_rows,
+        "recommendation_if_gap": {
+            "applicable": gap_t > 0,
+            "gap_tco2e": max(gap_t, 0),
+            "recommendation": rec_opportunity.get("description") if rec_opportunity else None,
+        },
+    }
+
+
+def build_yoy_section(current_s1: dict, current_s2: dict, prior_s1: dict, prior_s2: dict, employees: int) -> dict:
+    def pct(curr: float, prev: float) -> float | None:
+        if prev == 0:
+            return None
+        return round((curr - prev) / prev * 100, 2)
+
+    curr_total = current_s1["total"] + current_s2["total_location"]
+    prev_total = prior_s1["total"] + prior_s2["total_location"]
+    curr_int = (curr_total / 1000) / max(employees, 1)
+    prev_int = (prev_total / 1000) / max(employees, 1)
+
+    drivers = [
+        ("Mobile combustion", (current_s1["mobile"] - prior_s1["mobile"]) / 1000),
+        ("Stationary combustion", (current_s1["stationary"] - prior_s1["stationary"]) / 1000),
+        ("Refrigerants", (current_s1["refrigerants"] - prior_s1["refrigerants"]) / 1000),
+        ("Fugitive emissions", (current_s1["fugitive"] - prior_s1["fugitive"]) / 1000),
+        ("Electricity (location-based)", (current_s2["electricity_location"] - prior_s2["electricity_location"]) / 1000),
+        ("Heating & cooling", (current_s2["heating"] - prior_s2["heating"]) / 1000),
+    ]
+    waterfall = [{"category": name, "delta_tco2e": round(delta, 4)} for name, delta in drivers]
+    top_moves = sorted(drivers, key=lambda x: abs(x[1]), reverse=True)[:2]
+    movement_text = ", ".join([f"{name} {'increased' if d > 0 else 'decreased'} by {abs(d):.2f} tCO2e" for name, d in top_moves]) if top_moves else "No significant movement detected."
+    variance_explanation = f"Year-over-year movement is primarily driven by {movement_text}."
+
+    probable_causes = {
+        "Mobile combustion": "Higher transport activity, route length, or fuel mix changes in fleet operations.",
+        "Stationary combustion": "Changes in generator/boiler runtime, fuel switching, or backup power reliance.",
+        "Refrigerants": "Leak events, recharge cycles, or use of higher-GWP refrigerants.",
+        "Fugitive emissions": "Operational leaks, maintenance incidents, or detection/reporting improvements.",
+        "Electricity (location-based)": "Grid electricity consumption changes and demand profile shifts.",
+        "Heating & cooling": "Seasonal HVAC loads or heating/cooling intensity changes.",
+    }
+
+    comparison_rows = [
+        {"metric": "Total Scope 1 + 2 (tCO2e)", "current": round(curr_total / 1000, 4), "prior": round(prev_total / 1000, 4), "delta_pct": pct(curr_total, prev_total)},
+        {"metric": "Scope 1 — Mobile", "current": round(current_s1["mobile"] / 1000, 4), "prior": round(prior_s1["mobile"] / 1000, 4), "delta_pct": pct(current_s1["mobile"], prior_s1["mobile"])},
+        {"metric": "Scope 1 — Stationary", "current": round(current_s1["stationary"] / 1000, 4), "prior": round(prior_s1["stationary"] / 1000, 4), "delta_pct": pct(current_s1["stationary"], prior_s1["stationary"])},
+        {"metric": "Scope 1 — Refrigerants", "current": round(current_s1["refrigerants"] / 1000, 4), "prior": round(prior_s1["refrigerants"] / 1000, 4), "delta_pct": pct(current_s1["refrigerants"], prior_s1["refrigerants"])},
+        {"metric": "Scope 1 — Fugitive", "current": round(current_s1["fugitive"] / 1000, 4), "prior": round(prior_s1["fugitive"] / 1000, 4), "delta_pct": pct(current_s1["fugitive"], prior_s1["fugitive"])},
+        {"metric": "Scope 2 — Location-based", "current": round(current_s2["total_location"] / 1000, 4), "prior": round(prior_s2["total_location"] / 1000, 4), "delta_pct": pct(current_s2["total_location"], prior_s2["total_location"])},
+        {"metric": "Scope 2 — Market-based", "current": round(current_s2["total_market"] / 1000, 4), "prior": round(prior_s2["total_market"] / 1000, 4), "delta_pct": pct(current_s2["total_market"], prior_s2["total_market"])},
+    ]
+
+    return {
+        "total_scope1_2_t": {
+            "current": round(curr_total / 1000, 4),
+            "prior": round(prev_total / 1000, 4),
+            "delta_pct": pct(curr_total, prev_total),
+        },
+        "scope1_subcategories_t": {
+            "mobile": {"current": round(current_s1["mobile"] / 1000, 4), "prior": round(prior_s1["mobile"] / 1000, 4), "delta_pct": pct(current_s1["mobile"], prior_s1["mobile"])},
+            "stationary": {"current": round(current_s1["stationary"] / 1000, 4), "prior": round(prior_s1["stationary"] / 1000, 4), "delta_pct": pct(current_s1["stationary"], prior_s1["stationary"])},
+            "refrigerants": {"current": round(current_s1["refrigerants"] / 1000, 4), "prior": round(prior_s1["refrigerants"] / 1000, 4), "delta_pct": pct(current_s1["refrigerants"], prior_s1["refrigerants"])},
+            "fugitive": {"current": round(current_s1["fugitive"] / 1000, 4), "prior": round(prior_s1["fugitive"] / 1000, 4), "delta_pct": pct(current_s1["fugitive"], prior_s1["fugitive"])},
+        },
+        "scope2_location_t": {"current": round(current_s2["total_location"] / 1000, 4), "prior": round(prior_s2["total_location"] / 1000, 4), "delta_pct": pct(current_s2["total_location"], prior_s2["total_location"])},
+        "scope2_market_t": {"current": round(current_s2["total_market"] / 1000, 4), "prior": round(prior_s2["total_market"] / 1000, 4), "delta_pct": pct(current_s2["total_market"], prior_s2["total_market"])},
+        "intensity_tco2e_per_employee": {"current": round(curr_int, 4), "prior": round(prev_int, 4), "delta_pct": pct(curr_int, prev_int)},
+        "comparison_table_rows": comparison_rows,
+        "waterfall_chart": waterfall,
+        "largest_movements": [
+            {
+                "category": name,
+                "delta_tco2e": round(delta, 4),
+                "direction": "increase" if delta > 0 else "decrease" if delta < 0 else "flat",
+                "probable_cause": probable_causes.get(name, "Operational activity level and submission patterns."),
+            }
+            for name, delta in top_moves
+        ],
+        "ai_variance_explanation": variance_explanation,
+    }
+
+
+def build_yoy_variance_explanation_ai(
+    client: openai.OpenAI,
+    *,
+    company_name: str,
+    industry: str,
+    city: str,
+    year: int,
+    table_rows: list[dict],
+    largest_movements: list[dict],
+) -> str:
+    prompt = f"""
+You are an ESG reporting analyst.
+Write one concise paragraph (55-90 words) explaining year-on-year variance using only the provided data.
+The first sentence MUST explicitly connect company and industry as:
+"In {year}, {company_name} impacted the {industry} industry ..."
+Mention the two largest movement categories and likely operational causes in plain business language.
+
+Context:
+- Industry: {industry}
+- City: {city}
+- Reporting year: {year}
+- YoY rows: {json.dumps(table_rows, ensure_ascii=False)}
+- Largest movements: {json.dumps(largest_movements, ensure_ascii=False)}
+
+Return JSON only: {{"variance_explanation":"..."}}
+"""
+    try:
+        data = call_openai(client, prompt)
+        txt = str((data or {}).get("variance_explanation", "")).strip()
+        if txt:
+            lc = txt.lower()
+            company_l = str(company_name or "").strip().lower()
+            industry_l = str(industry or "").strip().lower()
+            if (company_l and company_l not in lc) or (industry_l and industry_l not in lc):
+                txt = f"In {year}, {company_name} impacted the {industry} industry through its reported operational emissions. {txt}"
+        return txt
+    except Exception:
+        return ""
+
+
+def _collect_sources_from_factor_doc(node, acc: list[str]) -> None:
+    if isinstance(node, dict):
+        src = node.get("source")
+        if isinstance(src, str) and src.strip():
+            acc.append(src.strip())
+        for value in node.values():
+            _collect_sources_from_factor_doc(value, acc)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_sources_from_factor_doc(item, acc)
+
+
+def _pick_primary_source(source_list: list[str]) -> str:
+    if not source_list:
+        return "Not specified in factor records"
+    freq: dict[str, int] = {}
+    for s in source_list:
+        freq[s] = freq.get(s, 0) + 1
+    return sorted(freq.items(), key=lambda x: (-x[1], x[0]))[0][0]
+
+
+def _collect_factor_records_from_doc(node, acc: list[dict]) -> None:
+    if isinstance(node, dict):
+        has_source = isinstance(node.get("source"), str) and node.get("source").strip()
+        has_value = any(k in node for k in ("value", "factor", "emissionFactor"))
+        if has_source and has_value:
+            raw_value = node.get("value", node.get("factor", node.get("emissionFactor")))
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError):
+                value = raw_value
+            acc.append({
+                "name": str(node.get("name") or "Unnamed factor").strip(),
+                "value": value,
+                "unit": str(node.get("unit") or "").strip(),
+                "source": str(node.get("source") or "").strip(),
+            })
+        for value in node.values():
+            _collect_factor_records_from_doc(value, acc)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_factor_records_from_doc(item, acc)
+
+
+def _format_factor_record(rec: dict) -> str:
+    value = rec.get("value")
+    if isinstance(value, (int, float)):
+        value_txt = f"{float(value):.6g}"
+    else:
+        value_txt = str(value or "—")
+    unit_txt = f" {rec.get('unit')}" if rec.get("unit") else ""
+    return f"{rec.get('name')}: {value_txt}{unit_txt} ({rec.get('source')})"
+
+
+def _dedupe_factor_records(records: list[dict]) -> list[dict]:
+    seen = set()
+    out = []
+    for r in records:
+        key = (
+            str(r.get("name") or "").strip().lower(),
+            str(r.get("value")),
+            str(r.get("unit") or "").strip().lower(),
+            str(r.get("source") or "").strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+    return out
+
+
+def _norm_factor_key(value: str) -> str:
+    return str(value or "").strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+
+
+def _lookup_factor_node(scope_doc: dict, key: str, group_candidates: list[str] | None = None) -> dict:
+    if not isinstance(scope_doc, dict):
+        return {}
+    group_candidates = group_candidates or []
+    key_raw = str(key or "").strip()
+    key_norm = _norm_factor_key(key_raw)
+    if not key_raw:
+        return {}
+
+    def _from_container(container: dict) -> dict:
+        if not isinstance(container, dict):
+            return {}
+        if key_raw in container and isinstance(container.get(key_raw), dict):
+            return container.get(key_raw) or {}
+        for k, v in container.items():
+            if _norm_factor_key(k) == key_norm and isinstance(v, dict):
+                return v
+        return {}
+
+    # top-level match
+    node = _from_container(scope_doc)
+    if node:
+        return node
+
+    # grouped match
+    for g in group_candidates:
+        group = scope_doc.get(g)
+        node = _from_container(group if isinstance(group, dict) else {})
+        if node:
+            return node
+
+    # deep one-level fallback
+    for v in scope_doc.values():
+        if isinstance(v, dict):
+            node = _from_container(v)
+            if node:
+                return node
+    return {}
+
+
+def _record_from_factor_node(node: dict) -> dict:
+    raw_value = node.get("value", node.get("factor", node.get("emissionFactor")))
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        value = raw_value
+    return {
+        "name": str(node.get("name") or "Unnamed factor").strip(),
+        "value": value,
+        "unit": str(node.get("unit") or "").strip(),
+        "source": str(node.get("source") or "").strip(),
+    }
+
+
+def _build_used_factor_records(scope1_docs: list[dict], scope2_docs: list[dict], s1_doc: dict, s2_doc: dict) -> tuple[list[dict], list[dict]]:
+    return _build_used_factor_records_for_period(
+        scope1_docs, scope2_docs, s1_doc, s2_doc, allowed_months=None
+    )
+
+
+def _build_used_factor_records_for_period(
+    scope1_docs: list[dict],
+    scope2_docs: list[dict],
+    s1_doc: dict,
+    s2_doc: dict,
+    allowed_months: set[str] | None,
+) -> tuple[list[dict], list[dict]]:
+    s1_used: list[dict] = []
+    s2_used: list[dict] = []
+    month_filter = {str(m) for m in (allowed_months or set())}
+
+    def _entry_in_period(entry: dict, doc_month: str) -> bool:
+        if not month_filter:
+            return True
+        em = str(entry.get("month") or "").strip()
+        if em:
+            return em in month_filter
+        return str(doc_month or "").strip() in month_filter
+
+    for doc in scope1_docs or []:
+        res = doc.get("results") or {}
+        doc_month = str(doc.get("month") or "")
+
+        for e in (res.get("mobile") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s1_doc, e.get("fuelType"), ["mobile"])
+            if node:
+                s1_used.append(_record_from_factor_node(node))
+
+        for e in (res.get("stationary") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s1_doc, e.get("fuelType"), ["stationary"])
+            if node:
+                s1_used.append(_record_from_factor_node(node))
+
+        for e in (res.get("refrigerants") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s1_doc, e.get("refrigerantType"), ["refrigerants", "fugitive"])
+            if node:
+                s1_used.append(_record_from_factor_node(node))
+
+        for e in (res.get("fugitive") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s1_doc, e.get("sourceType"), ["fugitive"])
+            if node:
+                s1_used.append(_record_from_factor_node(node))
+
+    for doc in scope2_docs or []:
+        res = doc.get("results") or {}
+        doc_month = str(doc.get("month") or "")
+
+        for e in (res.get("electricity") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s2_doc, e.get("certificateType"), ["electricity"])
+            if node:
+                s2_used.append(_record_from_factor_node(node))
+
+        for e in (res.get("heating") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s2_doc, e.get("energyType"), ["heating"])
+            if node:
+                s2_used.append(_record_from_factor_node(node))
+
+        for e in (res.get("renewables") or {}).get("entries") or []:
+            if not _entry_in_period(e, doc_month):
+                continue
+            if _pick_quantity(e) <= 0:
+                continue
+            node = _lookup_factor_node(s2_doc, e.get("sourceType"), ["renewables"])
+            if node:
+                s2_used.append(_record_from_factor_node(node))
+
+    return _dedupe_factor_records(s1_used), _dedupe_factor_records(s2_used)
+
+
+def _fetch_factor_doc(db, region: str, country: str, city: str, scope: str) -> dict:
+    candidate_paths = [
+        f"emissionFactors/regions/{region}/countries/{country}/cities/city_data/{city}/{scope}/factors",
+        f"emissionFactors/regions/{region}/countries/{country}/cities/city_data/{city}/('{scope}',)/factors",
+    ]
+    for p in candidate_paths:
+        snap = db.document(p).get()
+        if snap.exists:
+            return snap.to_dict() or {}
+    return {}
+
+
+def _fetch_country_scope_doc(db, region: str, country: str, anchor_city: str, scope: str) -> dict:
+    # Try anchor city first.
+    doc = _fetch_factor_doc(db, region, country, anchor_city, scope)
+    if doc:
+        return doc
+
+    # Fallback: iterate all city docs for this country and pick first with valid scope factors.
+    base_path = f"emissionFactors/regions/{region}/countries/{country}/cities/city_data"
+    try:
+        for city_doc in db.collection(base_path).stream():
+            city_key = city_doc.id
+            candidate = _fetch_factor_doc(db, region, country, city_key, scope)
+            if candidate:
+                return candidate
+    except Exception:
+        pass
+    return {}
+
+
+def build_methodology_section(
+    db,
+    countries: list[str],
+    *,
+    scope1_docs: list[dict] | None = None,
+    scope2_docs: list[dict] | None = None,
+    allowed_months: set[str] | None = None,
+) -> dict:
+    # Country anchors for methodology factor-source table.
+    country_anchor_map = {
+        "uae": {"region_label": "UAE", "anchor_city": "dubai"},
+        "singapore": {"region_label": "Singapore", "anchor_city": "singapore"},
+        "saudi-arabia": {"region_label": "Saudi Arabia", "anchor_city": "riyadh"},
+    }
+
+    normalized_countries = sorted({_norm_loc(c) for c in (countries or []) if _norm_loc(c)})
+    anchors = [
+        {"country_key": c, **country_anchor_map[c]}
+        for c in normalized_countries
+        if c in country_anchor_map
+    ]
+
+    factor_source_rows = []
+    for a in anchors:
+        resolved_region, resolved_country, resolved_city = resolve_location(
+            a["country_key"], a["anchor_city"]
+        )
+        s1_doc = _fetch_country_scope_doc(db, resolved_region, resolved_country, resolved_city, "scope1")
+        s2_doc = _fetch_country_scope_doc(db, resolved_region, resolved_country, resolved_city, "scope2")
+        s1_sources: list[str] = []
+        s2_sources: list[str] = []
+        s1_records: list[dict] = []
+        s2_records: list[dict] = []
+        _collect_sources_from_factor_doc(s1_doc, s1_sources)
+        _collect_sources_from_factor_doc(s2_doc, s2_sources)
+        if scope1_docs is not None and scope2_docs is not None:
+            s1_records, s2_records = _build_used_factor_records_for_period(
+                scope1_docs, scope2_docs, s1_doc, s2_doc, allowed_months=allowed_months
+            )
+        else:
+            _collect_factor_records_from_doc(s1_doc, s1_records)
+            _collect_factor_records_from_doc(s2_doc, s2_records)
+            s1_records = _dedupe_factor_records(s1_records)
+            s2_records = _dedupe_factor_records(s2_records)
+        factor_source_rows.append({
+            "region": a["region_label"],
+            "scope1_source": _pick_primary_source([r.get("source") for r in s1_records if r.get("source")] or s1_sources),
+            "scope2_source": _pick_primary_source([r.get("source") for r in s2_records if r.get("source")] or s2_sources),
+            "scope1_factors_used": [_format_factor_record(r) for r in s1_records[:12]],
+            "scope2_factors_used": [_format_factor_record(r) for r in s2_records[:12]],
+        })
+
+    return {
+        "organisational_boundary": "Operational control approach — emissions are reported for assets/facilities under operational control.",
+        "reporting_standard": "GHG Protocol Corporate Accounting and Reporting Standard (2015 edition)",
+        "gwp_basis": "IPCC AR5 GWP100 values",
+        "scope2_method": "Location-based and market-based are both calculated and disclosed separately.",
+        "factor_source_table": factor_source_rows,
+        "biogenic_exclusion_note": "Biogenic emissions are reported separately and excluded from Scope 1 totals.",
+        "scope3_exclusion_note": "Scope 3 emissions are excluded from this report at the current stage.",
+    }
+
+
+def fetch_historical_totals(
+    company_id: str,
+    base_year: int,
+    current_year: int,
+    *,
+    country: str | None = None,
+    city: str | None = None,
+) -> list[dict]:
     history = []
     for yr in range(base_year, current_year + 1):
-        s1 = aggregate_scope1(fetch_scope_docs(company_id, "scope1", yr, None))
-        s2 = aggregate_scope2(fetch_scope_docs(company_id, "scope2", yr, None))
+        s1 = aggregate_scope1(fetch_scope_docs(company_id, "scope1", yr, None, country=country, city=city))
+        s2 = aggregate_scope2(fetch_scope_docs(company_id, "scope2", yr, None, country=country, city=city))
         if s1["total"] > 0 or s2["total_location"] > 0:
             history.append({
                 "year":              yr,
@@ -244,8 +1191,15 @@ def calculate_financial_impact(
             },
         })
 
-    # Sort by annual saving descending (CFO view)
-    enriched.sort(key=lambda r: r["financial"]["annual_saving_usd"], reverse=True)
+    # Card 14: keep recommendation order by emissions impact first.
+    # Financial values are still provided, but sorting is by tCO2e impact.
+    enriched.sort(
+        key=lambda r: (
+            float(r.get("estimated_reduction_tco2e", 0) or 0),
+            r["financial"]["annual_saving_usd"],
+        ),
+        reverse=True,
+    )
 
     return {
         "carbon_cost_exposure": {
@@ -417,6 +1371,85 @@ def calculate_carbon_score(
 
 
 # ---------------------------------------------------------------------------
+# Deterministic Category-Level Recommendations (Card 14)
+# ---------------------------------------------------------------------------
+
+def build_category_level_recommendations(s1: dict, s2: dict) -> list[dict]:
+    """
+    Build recommendations from fixed trigger rules:
+      1) Mobile >30% of total            -> fleet electrification
+      2) Electricity location > market   -> REC/PPA procurement
+      3) Refrigerant leakage >10% total  -> low-GWP refrigerant switch
+    Sorted by estimated_reduction_tco2e DESC.
+    """
+    total_kg = (s1.get("total") or 0.0) + (s2.get("total_location") or 0.0)
+    if total_kg <= 0:
+        return []
+
+    mobile_kg = float(s1.get("mobile") or 0.0)
+    refrigerants_kg = float(s1.get("refrigerants") or 0.0)
+    electricity_location_kg = float(s2.get("electricity_location") or 0.0)
+    electricity_market_kg = float(s2.get("electricity_market") or 0.0)
+
+    mobile_share = mobile_kg / total_kg
+    refrigerant_share = refrigerants_kg / total_kg
+    elec_gap_kg = max(electricity_location_kg - electricity_market_kg, 0.0)
+
+    recs: list[dict] = []
+
+    # Trigger 1: Mobile >30% -> fleet electrification
+    if mobile_share > 0.30:
+        estimated_reduction_t = round((mobile_kg * 0.50) / 1000, 3)  # assume 50% cut
+        recs.append({
+            "title": "Electrify Priority Fleet",
+            "category": "Fleet & Transport",
+            "description": "Mobile emissions exceed 30% of total. Prioritize EV transition for high-mileage vehicles and phase combustion vehicles with charging and route planning support.",
+            "estimated_reduction_tco2e": estimated_reduction_t,
+            "reduction_percentage_of_category": 50.0,
+            "effort": "High",
+            "implementation_timeline": "1-2 years",
+            "why_this_company": f"Mobile combustion is {mobile_share * 100:.1f}% of total emissions.",
+            "trigger": "mobile_share_gt_30pct",
+        })
+
+    # Trigger 2: Electricity location > market -> REC/PPA
+    if electricity_location_kg > electricity_market_kg:
+        location_t = electricity_location_kg / 1000
+        market_t = electricity_market_kg / 1000
+        estimated_reduction_t = round(elec_gap_kg / 1000, 3)
+        recs.append({
+            "title": "Scale REC/PPA Procurement",
+            "category": "Renewable Energy",
+            "description": "Location-based electricity emissions are higher than market-based results. Expand REC/PPA coverage for grid consumption to close the residual emissions gap.",
+            "estimated_reduction_tco2e": estimated_reduction_t,
+            "reduction_percentage_of_category": round((elec_gap_kg / electricity_location_kg) * 100, 1) if electricity_location_kg > 0 else 0.0,
+            "effort": "Medium",
+            "implementation_timeline": "6-12 months",
+            "why_this_company": f"Electricity location-based is {location_t:.2f} tCO2e vs market-based {market_t:.2f} tCO2e.",
+            "trigger": "electricity_location_gt_market",
+        })
+
+    # Trigger 3: Refrigerants >10% -> low-GWP switch
+    if refrigerant_share > 0.10:
+        estimated_reduction_t = round((refrigerants_kg * 0.60) / 1000, 3)  # assume 60% cut
+        recs.append({
+            "title": "Switch to Low-GWP Refrigerants",
+            "category": "Refrigerant Management",
+            "description": "Refrigerant leakage is a material share of emissions. Adopt low-GWP refrigerants with enhanced leak detection and preventive maintenance protocols.",
+            "estimated_reduction_tco2e": estimated_reduction_t,
+            "reduction_percentage_of_category": 60.0,
+            "effort": "Medium",
+            "implementation_timeline": "6-12 months",
+            "why_this_company": f"Refrigerant leakage contributes {refrigerant_share * 100:.1f}% of total emissions.",
+            "trigger": "refrigerant_share_gt_10pct",
+        })
+
+    # Card 14 requirement: sort by estimated impact descending.
+    recs.sort(key=lambda r: float(r.get("estimated_reduction_tco2e", 0) or 0), reverse=True)
+    return recs
+
+
+# ---------------------------------------------------------------------------
 # OpenAI
 # ---------------------------------------------------------------------------
 
@@ -445,6 +1478,42 @@ def call_openai(client: openai.OpenAI, user_prompt: str) -> dict:
         return json.loads(raw)
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail=f"OpenAI returned invalid JSON: {raw[:300]}")
+
+
+def build_source_recommendation(
+    client: openai.OpenAI,
+    *,
+    source_name: str,
+    source_share_pct: float,
+    source_tco2e: float,
+    month_label: str,
+    industry: str,
+    city: str,
+) -> str:
+    prompt = f"""
+You are an experienced sustainability advisor.
+Write ONE human, practical recommendation sentence for the largest current-month emission source.
+
+Context:
+- Industry: {industry}
+- City/region: {city}
+- Month: {month_label}
+- Largest source: {source_name}
+- Source emissions: {source_tco2e:.2f} tCO2e
+- Source share of total monthly emissions: {source_share_pct:.1f}%
+
+Rules:
+1) Return JSON only: {{"recommendation":"..."}}
+2) Recommendation must be one sentence, 16-30 words, clear and natural.
+3) Mention the source category by name.
+4) Must be action-oriented and realistic for operations teams.
+5) Do not use vague phrases like "consider sustainability initiatives".
+"""
+    data = call_openai(client, prompt)
+    recommendation = str((data or {}).get("recommendation", "")).strip()
+    if not recommendation:
+        raise HTTPException(status_code=500, detail="OpenAI returned empty recommendation.")
+    return recommendation
 
 
 def build_ai_content(
@@ -485,6 +1554,7 @@ def build_ai_content(
         "electricity_location_based": {"tco2e": t(s2["electricity_location"]), "pct_of_scope2": round(s2["electricity_location"] / s2_safe * 100, 1), "estimated_annual_cost_usd": elec_cost},
         "electricity_market_based":   {"tco2e": t(s2["electricity_market"]),   "pct_of_scope2": round(s2["electricity_market"]   / s2_safe * 100, 1)},
         "heating_and_cooling":        {"tco2e": t(s2["heating"]),              "pct_of_scope2": round(s2["heating"]              / s2_safe * 100, 1)},
+        "renewables_reported_separately": {"tco2e": t(s2["renewables"]), "note": "Reported separately; not netted into Scope 2 totals"},
     }
 
     annual_reduction_needed = t((total_kg - base_total_kg * 0.58) / max(2030 - current_year, 1))
@@ -577,24 +1647,36 @@ async def generate_report(
 
     try:
         company_id, company_data = get_company_id(uid)
+        db = get_db()
         client = get_openai_client()
 
         year      = body.get("year", datetime.utcnow().year)
         month     = body.get("month")
         base_year = body.get("base_year", year - 1)
+        period_type = str(body.get("period") or ("monthly" if month else "yearly")).lower()
+        quarter = str(body.get("quarter") or "").upper()
 
         company_name = (company_data.get("basicInfo") or {}).get("name", "the company")
         industry     = (company_data.get("basicInfo") or {}).get("industry", "General Industry")
 
-        # Resolve primary city for regional financial constants
+        # Resolve selected/report location. If no city/country selected, fall back to primary location.
         locations = company_data.get("locations", [])
         primary   = next((l for l in locations if l.get("isPrimary")), locations[0] if locations else {})
-        city      = (primary.get("city") or "dubai").lower()
-        fin       = {**REGIONAL_FINANCIALS.get(city, DEFAULT_FINANCIALS), "city": city}
+        requested_city = str(body.get("city") or "").strip().lower()
+        requested_country = str(body.get("country") or "").strip().lower()
+        selected_city = requested_city if requested_city and requested_city != "all" else (primary.get("city") or "dubai").lower()
+        selected_country = requested_country if requested_country and requested_country != "all" else (primary.get("country") or "").lower()
+        fin       = {**REGIONAL_FINANCIALS.get(selected_city, DEFAULT_FINANCIALS), "city": selected_city}
 
         # ── Fetch & aggregate ─────────────────────────────────────────────
-        s1 = aggregate_scope1(fetch_scope_docs(company_id, "scope1", year, month))
-        s2 = aggregate_scope2(fetch_scope_docs(company_id, "scope2", year, month))
+        scope1_docs = fetch_scope_docs(
+            company_id, "scope1", year, month, country=selected_country or None, city=selected_city or None
+        )
+        scope2_docs = fetch_scope_docs(
+            company_id, "scope2", year, month, country=selected_country or None, city=selected_city or None
+        )
+        s1 = aggregate_scope1(scope1_docs)
+        s2 = aggregate_scope2(scope2_docs)
 
         if s1["total"] == 0 and s2["total_location"] == 0:
             raise HTTPException(
@@ -603,11 +1685,21 @@ async def generate_report(
             )
 
         # ── Historical trend ──────────────────────────────────────────────
-        history = fetch_historical_totals(company_id, base_year, year)
+        history = fetch_historical_totals(
+            company_id,
+            base_year,
+            year,
+            country=selected_country or None,
+            city=selected_city or None,
+        )
 
         # ── SBTi baseline ─────────────────────────────────────────────────
-        base_s1       = aggregate_scope1(fetch_scope_docs(company_id, "scope1", base_year, None))
-        base_s2       = aggregate_scope2(fetch_scope_docs(company_id, "scope2", base_year, None))
+        base_s1       = aggregate_scope1(
+            fetch_scope_docs(company_id, "scope1", base_year, None, country=selected_country or None, city=selected_city or None)
+        )
+        base_s2       = aggregate_scope2(
+            fetch_scope_docs(company_id, "scope2", base_year, None, country=selected_country or None, city=selected_city or None)
+        )
         base_total_kg = base_s1["total"] + base_s2["total_location"] or s1["total"] + s2["total_location"]
 
         milestones      = build_reduction_milestones(base_total_kg, base_year)
@@ -630,12 +1722,164 @@ async def generate_report(
         )
 
         # ── Financial impact (enriches AI recommendations) ────────────────
-        raw_recs      = ai.get("recommendations", [])
-        financial     = calculate_financial_impact(s1, s2, city, raw_recs)
+        card14_recs   = build_category_level_recommendations(s1, s2)
+        raw_recs      = card14_recs if card14_recs else ai.get("recommendations", [])
+        financial     = calculate_financial_impact(s1, s2, selected_city, raw_recs)
         enriched_recs = financial.pop("recommendations_with_financials", raw_recs)
 
         total_kg = s1["total"] + s2["total_location"]
+
+        # Executive-summary metrics (Card 15)
+        yoy_change_pct = carbon_score.get("dimensions", {}).get("trajectory_score", {}).get("yoy_change_pct")
+        if yoy_change_pct is not None:
+            try:
+                yoy_change_pct = round(float(yoy_change_pct), 2)
+            except (TypeError, ValueError):
+                yoy_change_pct = None
+        yoy_direction = (
+            "up" if (yoy_change_pct is not None and yoy_change_pct > 0)
+            else "down" if (yoy_change_pct is not None and yoy_change_pct < 0)
+            else "flat"
+        )
+        zone = str(carbon_score.get("zone") or "").strip().lower()
+        if zone in {"climate leader", "on track"}:
+            danger_level = "Green"
+        elif zone == "needs attention":
+            danger_level = "Amber"
+        else:
+            danger_level = "Red"
+
+        data_coverage_months = calculate_data_coverage_months(
+            scope1_docs,
+            scope2_docs,
+            year,
+            month,
+        )
+        missing_months = max(12 - int(data_coverage_months), 0)
+
+        # Card 16 — Scope 1 & 2 detail (contributors, biogenic, scope2 split, certificates)
+        scope1_detail = build_scope1_detail_for_report(scope1_docs, s1["total"])
+        scope1_section = build_scope1_section(scope1_docs, s1["total"])
+        scope1_report_kg = float((scope1_section.get("scope1_total") or {}).get("kg") or 0)
+        s1_report = {
+            "mobile": float((scope1_section.get("mobile_combustion") or {}).get("total_kg") or 0),
+            "stationary": float((scope1_section.get("stationary_combustion") or {}).get("total_kg") or 0),
+            "refrigerants": float((scope1_section.get("refrigerants") or {}).get("total_kg") or 0),
+            "fugitive": float((scope1_section.get("fugitive_emissions") or {}).get("total_kg") or 0),
+            "total": scope1_report_kg,
+        }
+        report_total_kg = scope1_report_kg + float(s2["total_location"] or 0)
+        scope2_detail_block = build_scope2_detail_for_report(s2)
+        certificate_holdings = collect_certificate_holdings(scope2_docs)
+
+        # Current-vs-prior and intensity (Section 3.5)
+        prior_scope1_docs = fetch_scope_docs(
+            company_id, "scope1", year - 1, None, country=selected_country or None, city=selected_city or None
+        )
+        prior_s1 = aggregate_scope1(prior_scope1_docs)
+        prior_scope1_section = build_scope1_section(prior_scope1_docs, prior_s1["total"])
+        prior_scope1_report_kg = float((prior_scope1_section.get("scope1_total") or {}).get("kg") or 0)
+        prior_s1_report = {
+            "mobile": float((prior_scope1_section.get("mobile_combustion") or {}).get("total_kg") or 0),
+            "stationary": float((prior_scope1_section.get("stationary_combustion") or {}).get("total_kg") or 0),
+            "refrigerants": float((prior_scope1_section.get("refrigerants") or {}).get("total_kg") or 0),
+            "fugitive": float((prior_scope1_section.get("fugitive_emissions") or {}).get("total_kg") or 0),
+            "total": prior_scope1_report_kg,
+        }
+        prior_s2 = aggregate_scope2(
+            fetch_scope_docs(company_id, "scope2", year - 1, None, country=selected_country or None, city=selected_city or None)
+        )
+        employees = (
+            (company_data.get("basicInfo") or {}).get("employees")
+            or (company_data.get("basicInfo") or {}).get("employeeCount")
+            or 1
+        )
+        try:
+            employees = max(int(employees), 1)
+        except Exception:
+            employees = 1
+        yoy_section = build_yoy_section(s1_report, s2, prior_s1_report, prior_s2, employees)
+        ai_yoy_text = build_yoy_variance_explanation_ai(
+            client,
+            company_name=company_name,
+            industry=industry,
+            city=selected_city,
+            year=year,
+            table_rows=yoy_section.get("comparison_table_rows", []),
+            largest_movements=yoy_section.get("largest_movements", []),
+        )
+        enforced_prefix = f"In {year}, {company_name} impacted the {industry} industry through its reported operational emissions."
+        if ai_yoy_text:
+            yoy_section["ai_variance_explanation"] = f"{enforced_prefix} {ai_yoy_text}".strip()
+        else:
+            yoy_section["ai_variance_explanation"] = (
+                f"{enforced_prefix} {yoy_section.get('ai_variance_explanation') or ''}"
+            ).strip()
+
+        # Section 3.1 cover/metadata (fiscal-year aligned period labels)
+        fiscal_months = [
+            f"{year}-06", f"{year}-07", f"{year}-08",
+            f"{year}-09", f"{year}-10", f"{year}-11",
+            f"{year}-12", f"{year + 1}-01", f"{year + 1}-02",
+            f"{year + 1}-03", f"{year + 1}-04", f"{year + 1}-05",
+        ]
+        quarter_ranges = {
+            "Q1": (f"{year}-06", f"{year}-08"),
+            "Q2": (f"{year}-09", f"{year}-11"),
+            "Q3": (f"{year}-12", f"{year + 1}-02"),
+            "Q4": (f"{year + 1}-03", f"{year + 1}-05"),
+        }
+        if period_type == "quarterly" and quarter:
+            report_title = f"Quarterly ESG Report — {quarter} {year}"
+            q_start, q_end = quarter_ranges.get(quarter, (f"{year}-06", f"{year}-08"))
+            report_period = f"{q_start} – {q_end}"
+        elif period_type == "monthly" and month:
+            report_title = f"GHG Emissions Report — {month}"
+            report_period = month
+        else:
+            report_title = f"GHG Emissions Report — {year}"
+            report_period = f"{fiscal_months[0]} – {fiscal_months[-1]}"
+        prepared_with = "Lumyina ESG Calculator, AstrumAI v1.0"
+
+        # Section 3.7 card-style recommendations (already deterministic-first)
+        category_recommendations = [
+            {
+                "category": r.get("category") or "General",
+                "current_tco2e": round(float(r.get("estimated_reduction_tco2e", 0) or 0), 4),  # best available numeric anchor
+                "specific_action": r.get("description"),
+                "estimated_reduction_tco2e_range": {
+                    "min": round(float(r.get("estimated_reduction_tco2e", 0) or 0) * 0.8, 4),
+                    "max": round(float(r.get("estimated_reduction_tco2e", 0) or 0) * 1.2, 4),
+                },
+                "difficulty": r.get("effort") or "Medium",
+                "local_programme": (
+                    "UAE Green Agenda" if selected_country == "uae"
+                    else "Singapore Green Plan 2030" if selected_country == "singapore"
+                    else "Saudi Vision 2030" if selected_country in {"saudi-arabia", "saudi arabia"}
+                    else None
+                ),
+                "trigger": r.get("trigger"),
+            }
+            for r in enriched_recs
+        ]
+
+        configured_countries = sorted({
+            _norm_loc(loc.get("country"))
+            for loc in (company_data.get("locations") or [])
+            if _norm_loc(loc.get("country"))
+        })
+        methodology_countries = (
+            [selected_country]
+            if _norm_loc(selected_country)
+            else configured_countries
+        )
+
         def t(kg): return round(kg / 1000, 4)
+        allowed_months_for_methodology: set[str] | None = None
+        if month:
+            allowed_months_for_methodology = {str(month)}
+        elif period_type == "quarterly" and quarter:
+            allowed_months_for_methodology = set(_quarter_months(year, quarter))
 
         trend_milestone_years = {2025, 2026, 2027, 2028, 2029, 2030, 2035, 2040, 2045, 2050}
 
@@ -644,7 +1888,8 @@ async def generate_report(
             "meta": {
                 "company_name":   company_name,
                 "industry":       industry,
-                "city":           city,
+                "city":           selected_city,
+                "country":        selected_country,
                 "year":           year,
                 "month":          month,
                 "base_year":      base_year,
@@ -660,19 +1905,28 @@ async def generate_report(
             "financial_summary":      ai.get("financial_summary", ""),
             "carbon_score_narrative": ai.get("carbon_score_narrative", ""),
 
+            # Card 16 — structured Scope 1 & 2 detail
+            "scope_detail": {
+                "scope1": scope1_detail,
+                "scope2": {
+                    **scope2_detail_block,
+                    "certificate_holdings": certificate_holdings,
+                },
+            },
+
             # Recommendations enriched with financial metrics
             "recommendations": enriched_recs,
 
             # Emission breakdown
             "breakdown": {
                 "scope1": {
-                    "total_kg": round(s1["total"], 2),
-                    "total_t":  t(s1["total"]),
+                    "total_kg": round(scope1_report_kg, 2),
+                    "total_t":  t(scope1_report_kg),
                     "categories": {
-                        "Mobile Combustion":     {"kg": round(s1["mobile"], 2),       "t": t(s1["mobile"])},
-                        "Stationary Combustion": {"kg": round(s1["stationary"], 2),   "t": t(s1["stationary"])},
-                        "Refrigerant Leakage":   {"kg": round(s1["refrigerants"], 2), "t": t(s1["refrigerants"])},
-                        "Fugitive Emissions":    {"kg": round(s1["fugitive"], 2),     "t": t(s1["fugitive"])},
+                        "Mobile Combustion":     {"kg": round(s1_report["mobile"], 2),       "t": t(s1_report["mobile"])},
+                        "Stationary Combustion": {"kg": round(s1_report["stationary"], 2),   "t": t(s1_report["stationary"])},
+                        "Refrigerant Leakage":   {"kg": round(s1_report["refrigerants"], 2), "t": t(s1_report["refrigerants"])},
+                        "Fugitive Emissions":    {"kg": round(s1_report["fugitive"], 2),     "t": t(s1_report["fugitive"])},
                     },
                 },
                 "scope2": {
@@ -684,10 +1938,23 @@ async def generate_report(
                         "Electricity (Location-based)": {"kg": round(s2["electricity_location"], 2), "t": t(s2["electricity_location"])},
                         "Electricity (Market-based)":   {"kg": round(s2["electricity_market"], 2),   "t": t(s2["electricity_market"])},
                         "Heating & Cooling":            {"kg": round(s2["heating"], 2),              "t": t(s2["heating"])},
+                        "Renewables (reported separately)": {"kg": round(s2["renewables"], 2),       "t": t(s2["renewables"])},
                     },
                 },
-                "combined_total_kg": round(total_kg, 2),
-                "combined_total_t":  t(total_kg),
+                "combined_total_kg": round(report_total_kg, 2),
+                "combined_total_t":  t(report_total_kg),
+            },
+
+            # Card 15 - Executive Summary structured metrics
+            "executive_metrics": {
+                "total_tco2e": round(report_total_kg / 1000, 4),
+                "yoy_change_pct": yoy_change_pct,
+                "yoy_direction": yoy_direction,
+                "danger_level": danger_level,
+                "scope1_tco2e": round(scope1_report_kg / 1000, 4),
+                "scope2_tco2e": round(s2["total_location"] / 1000, 4),
+                "data_coverage_months": data_coverage_months,
+                "data_coverage_statement": f"{data_coverage_months} of 12 months",
             },
 
             # Carbon Score
@@ -699,7 +1966,7 @@ async def generate_report(
             # Chart datasets
             "charts": {
                 "scope_share_pie": [
-                    {"name": "Scope 1 — Direct",   "value": t(s1["total"]),          "unit": "tCO2e"},
+                    {"name": "Scope 1 — Direct",   "value": round(scope1_report_kg / 1000, 4),          "unit": "tCO2e"},
                     {"name": "Scope 2 — Indirect", "value": t(s2["total_location"]), "unit": "tCO2e"},
                 ],
                 "category_bar": [
@@ -709,6 +1976,15 @@ async def generate_report(
                     {"category": "Fugitive Emissions",    "scope": "Scope 1", "tCO2e": t(s1["fugitive"])},
                     {"category": "Electricity",           "scope": "Scope 2", "tCO2e": t(s2["electricity_location"])},
                     {"category": "Heating & Cooling",     "scope": "Scope 2", "tCO2e": t(s2["heating"])},
+                    {"category": "Renewables (reported)", "scope": "Scope 2", "tCO2e": t(s2["renewables"])},
+                ],
+                "scope1_top_contributors_bar": [
+                    {
+                        "label": x["label"],
+                        "tCO2e": x["t"],
+                        "pct_of_scope1": x["pct_of_scope1"],
+                    }
+                    for x in scope1_detail["top_contributors"]
                 ],
                 # Savings vs capex bar — for financial dashboard chart
                 "savings_bar": [
@@ -761,6 +2037,41 @@ async def generate_report(
 
             "milestones":      milestones,
             "quarterly_steps": quarterly_steps,
+
+            # Market-standard report sections (requested strict structure)
+            "report_standard": {
+                "section_3_1_cover_metadata": {
+                    "company_name": company_name,
+                    "company_logo": (company_data.get("basicInfo") or {}).get("logo")
+                        or (company_data.get("basicInfo") or {}).get("logoUrl"),
+                    "report_title": report_title,
+                    "reporting_period": report_period,
+                    "primary_operating_region": (company_data.get("region") or "").strip() or "—",
+                    "date_of_generation": datetime.utcnow().date().isoformat(),
+                    "prepared_using": prepared_with,
+                    "ghg_protocol_statement": "Prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard",
+                },
+                "section_3_2_executive_summary": {
+                    "total_emissions_tco2e": round(report_total_kg / 1000, 4),
+                    "year_on_year_change_pct": yoy_change_pct,
+                    "danger_level": danger_level,
+                    "scope1_tco2e": round(scope1_report_kg / 1000, 4),
+                    "scope2_tco2e": round(s2["total_location"] / 1000, 4),
+                    "top_1_recommended_action": (enriched_recs[0].get("description") if enriched_recs else None),
+                    "data_coverage_statement": f"This report covers {data_coverage_months} of 12 months. {missing_months} months of data were not submitted.",
+                },
+                "section_3_3_scope1_detail": scope1_section,
+                "section_3_4_scope2_detail": build_scope2_section(s2, scope2_docs, enriched_recs),
+                "section_3_5_yoy_comparison": yoy_section,
+                "section_6_methodology_disclosure": build_methodology_section(
+                    db,
+                    methodology_countries,
+                    scope1_docs=scope1_docs,
+                    scope2_docs=scope2_docs,
+                    allowed_months=allowed_months_for_methodology,
+                ),
+                "section_3_7_category_recommendations": category_recommendations,
+            },
         }
 
         return report
@@ -769,3 +2080,111 @@ async def generate_report(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+
+@router.get("/export-csv")
+async def export_report_csv(
+    year: int,
+    period: str = "yearly",
+    month: str | None = None,
+    quarter: str | None = None,
+    country: str | None = None,
+    city: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
+    uid = current_user.get("uid")
+    company_id, _company_data = get_company_id(uid)
+
+    normalized_period = str(period or "yearly").strip().lower()
+    scope1_docs = _fetch_scope_docs_all_months(company_id, "scope1", country=country, city=city)
+    scope2_docs = _fetch_scope_docs_all_months(company_id, "scope2", country=country, city=city)
+
+    if normalized_period == "monthly" and month:
+        scope1_docs = [d for d in scope1_docs if str(d.get("month") or "") == str(month)]
+        scope2_docs = [d for d in scope2_docs if str(d.get("month") or "") == str(month)]
+    elif normalized_period == "quarterly" and quarter:
+        allowed_months = set(_quarter_months(year, quarter))
+        scope1_docs = [d for d in scope1_docs if str(d.get("month") or "") in allowed_months]
+        scope2_docs = [d for d in scope2_docs if str(d.get("month") or "") in allowed_months]
+    else:
+        scope1_docs = [d for d in scope1_docs if _is_month_in_fiscal_year(str(d.get("month") or ""), year)]
+        scope2_docs = [d for d in scope2_docs if _is_month_in_fiscal_year(str(d.get("month") or ""), year)]
+
+    rows: list[dict] = []
+    for doc in scope1_docs:
+        rows.extend(_rows_from_scope1_doc(doc))
+    for doc in scope2_docs:
+        rows.extend(_rows_from_scope2_doc(doc))
+
+    rows.sort(key=lambda r: (str(r["month"]), str(r["scope"]), str(r["category"])))
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["month", "scope", "category", "quantity", "factor", "kgCO2e"])
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+
+    content = output.getvalue()
+    output.close()
+    filename = f"esg_raw_data_{year}.csv"
+    if normalized_period == "monthly" and month:
+        filename = f"esg_raw_data_{month}.csv"
+    elif normalized_period == "quarterly" and quarter:
+        filename = f"esg_raw_data_{year}_{quarter.upper()}.csv"
+
+    return StreamingResponse(
+        iter([content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/source-recommendation")
+async def generate_source_recommendation(
+    body: dict,
+    current_user: dict = Depends(get_current_user),
+    response: Response = None,
+):
+    """
+    Generate a one-line AI recommendation for dashboard top emission source card.
+    """
+    uid = current_user.get("uid")
+    company_id, company_data = get_company_id(uid)
+    _ = company_id
+
+    source_name = str(body.get("source_name", "")).strip()
+    month_label = str(body.get("month_label", "")).strip()
+    source_share_pct = float(body.get("source_share_pct", 0) or 0)
+    source_tco2e = float(body.get("source_tco2e", 0) or 0)
+
+    if not source_name:
+        raise HTTPException(status_code=400, detail="source_name is required.")
+    if not month_label:
+        raise HTTPException(status_code=400, detail="month_label is required.")
+
+    basic = company_data.get("basicInfo") or {}
+    industry = basic.get("industry") or "General Industry"
+    locations = company_data.get("locations", [])
+    primary = next((l for l in locations if l.get("isPrimary")), locations[0] if locations else {})
+    city = (primary.get("city") or "global").lower()
+
+    try:
+        client = get_openai_client()
+        recommendation = build_source_recommendation(
+            client,
+            source_name=source_name,
+            source_share_pct=source_share_pct,
+            source_tco2e=source_tco2e,
+            month_label=month_label,
+            industry=industry,
+            city=city,
+        )
+        if response is not None:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return {"recommendation": recommendation}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate recommendation: {str(e)}")

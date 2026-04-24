@@ -1,18 +1,13 @@
 // src/components/company/LocationManager.jsx
-import React, { useState, useEffect } from "react";
-import CountrySelector from "./CountrySelector";
+import React, { useState, useEffect, useMemo } from "react";
 import PrimaryButton from "../ui/PrimaryButton";
+import ThemedSelect from "../ui/ThemedSelect";
 import { FiMapPin, FiTrash2, FiPlus } from "react-icons/fi";
+import { countriesByRegion, citiesByCountry, filterLocationsForRegion } from "../../utils/companyLocations";
 
 export default function LocationManager({ data, updateField }) {
+  const [selectedCountry, setSelectedCountry] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
-
-  const citiesByCountry = {
-    uae: ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"],
-    qatar: ["Doha", "Al Wakrah", "Al Khor", "Al Rayyan"],
-    "saudi-arabia": ["Riyadh", "Jeddah", "Dammam", "Khobar", "Medina", "Mecca"],
-    singapore: ["Singapore"]
-  };
 
   const getCountryDisplayName = (countryCode) => {
     const names = {
@@ -24,28 +19,43 @@ export default function LocationManager({ data, updateField }) {
     return names[countryCode] || countryCode;
   };
 
-  const availableCities = citiesByCountry[data.country] || [];
+  const availableCountries = countriesByRegion[data.region] || [];
+  const availableCities = citiesByCountry[selectedCountry] || [];
+  const validLocations = useMemo(
+    () => filterLocationsForRegion(data.region, data.locations || []),
+    [data.region, data.locations]
+  );
 
   useEffect(() => {
+    setSelectedCountry("");
     setSelectedCity("");
-  }, [data.country]);
+  }, [data.region]);
 
-  const addCity = () => {
-    if (!selectedCity) return;
-    const cityExists = data.locations.some(loc => loc.city === selectedCity);
+  const addLocationPair = () => {
+    if (!selectedCountry || !selectedCity) return;
+    const cityExists = validLocations.some(
+      (loc) => loc.country === selectedCountry && loc.city === selectedCity
+    );
     if (cityExists) return;
     const newLocation = {
       id: Date.now(),
-      country: data.country,
+      country: selectedCountry,
       city: selectedCity,
     };
-    updateField("locations", [...data.locations, newLocation]);
+    const nextLocations = [...validLocations, newLocation];
+    updateField("locations", nextLocations);
+    updateField("country", selectedCountry);
+    setSelectedCountry("");
     setSelectedCity("");
   };
 
-  const removeCity = (id) => {
-    const updated = data.locations.filter(loc => loc.id !== id);
+  const removeLocationPair = (id) => {
+    const updated = validLocations.filter(loc => loc.id !== id);
     updateField("locations", updated);
+    if (updated.length === 0) updateField("country", "");
+    else if (!updated.some((loc) => loc.country === data.country)) {
+      updateField("country", updated[0].country);
+    }
   };
 
   if (!data.region) {
@@ -78,108 +88,107 @@ export default function LocationManager({ data, updateField }) {
   return (
     <div className="location-manager">
       <div className="step-header">
-        <h3>Add Facility Locations</h3>
-        {data.country && (
+        <h3>Add City Locations</h3>
+        {validLocations.length > 0 && (
           <span className="step-badge">
-            {data.locations.length} {data.locations.length === 1 ? 'city' : 'cities'} added
+            {validLocations.length} {validLocations.length === 1 ? 'entry' : 'entries'} added
           </span>
         )}
       </div>
-      
-      {data.region && !data.country && (
-        <>
-          <p className="step-description">
-            First, select the country where your facilities are located.
-          </p>
-          <CountrySelector data={data} updateField={updateField} />
-        </>
-      )}
+      <p className="step-description">
+        Add each location as a country + city pair. You can include multiple countries and multiple cities.
+      </p>
 
-      {data.country && (
-        <>
-          <div className="country-info">
-            <FiMapPin className="info-icon" />
-            <span>Adding locations for <strong>{getCountryDisplayName(data.country)}</strong></span>
-          </div>
+      <div className="add-section">
+        <div className="field-group">
+          <label className="field-label">Country</label>
+          <ThemedSelect
+            className="field-select"
+            value={selectedCountry}
+            onChange={(nextCountry) => {
+              setSelectedCountry(nextCountry);
+              setSelectedCity("");
+            }}
+            options={availableCountries}
+            placeholder="Select country"
+          />
+        </div>
+        <div className="field-group">
+          <label className="field-label">City</label>
+          <ThemedSelect
+            className="field-select"
+            value={selectedCity}
+            onChange={(nextCity) => setSelectedCity(nextCity)}
+            disabled={!selectedCountry}
+            options={availableCities.map((city) => ({ value: city, label: city }))}
+            placeholder="Select city"
+          />
+        </div>
+      </div>
 
-          <div className="add-section">
-            <div className="field-group">
-              <label className="field-label">Select City</label>
-              <select
-                className="field-select"
-                value={selectedCity}
-                onChange={(e) => setSelectedCity(e.target.value)}
-              >
-                <option value="">Choose a city</option>
-                {availableCities.map((city) => (
-                  <option key={city} value={city}>{city}</option>
-                ))}
-              </select>
-            </div>
-            <PrimaryButton onClick={addCity} className="add-btn" disabled={!selectedCity}>
-              <FiPlus /> Add City
-            </PrimaryButton>
-          </div>
-
-          <div className="cities-section">
-            <div className="section-header">
-              <h4>Added Locations</h4>
-              {data.locations.length > 0 && (
-                <span className="badge">{data.locations.length} total</span>
-              )}
-            </div>
-
-            {data.locations.length === 0 ? (
-              <div className="empty-cities">
-                <FiMapPin />
-                <p>No cities added yet. Select a city above to add.</p>
-              </div>
-            ) : (
-              <div className="table-wrapper">
-                <table className="cities-table">
-                  <thead>
-                    <tr>
-                      <th>City Name</th>
-                      <th>Country</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.locations.map((loc) => (
-                      <tr key={loc.id}>
-                        <td data-label="City Name">
-                          <div className="city-cell">
-                            <FiMapPin />
-                            <span>{loc.city}</span>
-                          </div>
-                        </td>
-                        <td data-label="Country">
-                          <span className="country-badge">{getCountryDisplayName(loc.country)}</span>
-                        </td>
-                        <td data-label="Status">
-                          <span className="status-badge">Active</span>
-                        </td>
-                        <td>
-                          <button onClick={() => removeCity(loc.id)} className="remove-btn" title="Remove city">
-                            <FiTrash2 size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {data.locations.length === 0 && (
-            <div className="note-message">
-              <span>ℹ️</span>
-              <span>You need to add at least one city to continue</span>
-            </div>
+      <div className="cities-section">
+        <div className="section-header">
+          <h4>Added Location Pairs</h4>
+          {validLocations.length > 0 && (
+            <span className="badge">{validLocations.length} total</span>
           )}
-        </>
+        </div>
+
+        {validLocations.length === 0 ? (
+          <div className="empty-cities">
+            <FiMapPin />
+            <p>No location entries yet. Add your first country-city pair.</p>
+          </div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="cities-table">
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th>City</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {validLocations.map((loc) => (
+                  <tr key={loc.id}>
+                    <td data-label="Country">
+                      <span className="country-badge">{getCountryDisplayName(loc.country)}</span>
+                    </td>
+                    <td data-label="City">
+                      <div className="city-cell">
+                        <FiMapPin />
+                        <span>{loc.city}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <button onClick={() => removeLocationPair(loc.id)} className="remove-btn" title="Remove entry">
+                        <FiTrash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="add-more-row">
+        <PrimaryButton
+          onClick={addLocationPair}
+          className="add-btn"
+          disabled={!selectedCountry || !selectedCity}
+        >
+          <FiPlus /> Add more
+        </PrimaryButton>
+      </div>
+
+      {validLocations.length === 0 && (
+        <div className="note-message">
+          <span>ℹ️</span>
+          <span>You need to add at least one location pair to continue</span>
+        </div>
       )}
 
       <style jsx>{`
@@ -222,36 +231,15 @@ export default function LocationManager({ data, updateField }) {
           font-size: 14px;
         }
 
-        .country-info {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 12px 16px;
-          background: #F8FAF8;
-          border-radius: 8px;
-          margin-bottom: 24px;
-          border: 1px solid #E5E7EB;
-        }
-
-        .info-icon {
-          color: #2E7D64;
-          font-size: 18px;
-        }
-
-        .country-info span {
-          font-size: 14px;
-          color: #374151;
-        }
-
         .add-section {
           background: white;
           border-radius: 12px;
           padding: 24px;
           margin-bottom: 32px;
           border: 1px solid #E5E7EB;
-          display: flex;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
           gap: 16px;
-          align-items: flex-end;
         }
 
         .field-group {
@@ -272,8 +260,12 @@ export default function LocationManager({ data, updateField }) {
           border: 1px solid #E5E7EB;
           border-radius: 8px;
           font-size: 14px;
-          background: white;
+          background: #FFFFFF;
+          color: #111827;
           cursor: pointer;
+          color-scheme: light;
+          -webkit-appearance: none;
+          appearance: none;
         }
 
         .field-select:focus {
@@ -281,13 +273,24 @@ export default function LocationManager({ data, updateField }) {
           border-color: #2E7D64;
         }
 
+        .field-select option {
+          background: #FFFFFF;
+          color: #111827;
+        }
+
         .add-btn {
-          padding: 12px 24px !important;
+          padding: 11px 20px !important;
           background: #2E7D64 !important;
           display: flex !important;
           align-items: center !important;
           gap: 8px !important;
         }
+        .add-more-row {
+          display: flex;
+          justify-content: flex-end;
+          margin-top: 12px;
+        }
+
 
         .add-btn:disabled {
           opacity: 0.5;
@@ -445,12 +448,14 @@ export default function LocationManager({ data, updateField }) {
 
         @media (max-width: 768px) {
           .add-section {
-            flex-direction: column;
-            align-items: stretch;
+            grid-template-columns: 1fr;
           }
 
           .add-btn {
             width: 100%;
+          }
+          .add-more-row {
+            justify-content: stretch;
           }
 
           .cities-table thead {

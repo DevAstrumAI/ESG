@@ -1,16 +1,18 @@
 // src/components/scope1/VehicleTable.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiTruck } from "react-icons/fi";
+import { FiTrash2, FiTruck, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
+import { useCompanyStore } from "../../store/companyStore";
+import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
 const DISTANCE_BASED_TYPES = new Set([
   "jet_aircraft_per_km",
   "cargo_ship_hfo",
   "marine_hfo",
   "diesel_train",
-  "diesel_bus",
 ]);
 
 function mapVehicleFuelType(vehicleType, fuelTypeUI) {
@@ -48,49 +50,122 @@ const currentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function VehicleTable({ onSubmitSuccess }) {
+export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
   const vehicles      = useEmissionStore((s) => s.scope1Vehicles);
   const addVehicle    = useEmissionStore((s) => s.addScope1Vehicle);
   const deleteVehicle = useEmissionStore((s) => s.deleteScope1Vehicle);
   const selectedYear  = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
-
+  const company = useCompanyStore((s) => s.company);
+  const getSelectedLocation = useSelectedLocationStore((s) => s.getSelectedLocation);
+  const [deletingIds, setDeletingIds] = useState(new Set());
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    vehicleType: "",
+    fuelType: "",
+    quantity: "",
+    month: "",
+  });
   const handleDeleteVehicle = async (id, month) => {
+    if (deletingIds.has(id)) return;
     const deleted = vehicles.find((v) => v.id === id);
     if (!deleted) return;
 
+    setDeletingIds((prev) => new Set(prev).add(id));
     const fuelType = mapVehicleFuelType(deleted.vehicleType, deleted.fuelType);
     const entry = DISTANCE_BASED_TYPES.has(fuelType)
       ? { fuelType, distanceKm: Number(deleted.km || 0) }
       : { fuelType, litresConsumed: Number(deleted.litres || 0) };
 
     const [year] = month ? month.split("-").map(Number) : [selectedYear];
+    const loc = getSelectedLocation(company);
 
     try {
+      // Animate first, then remove from UI for snappy feedback.
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      deleteVehicle(id);
       await emissionsAPI.deleteScope1Entry(token, {
         year,
         month,
         category: "mobile",
         entry,
+        country: loc?.country,
+        city: loc?.city,
       });
-      deleteVehicle(id);
     } catch (error) {
-      console.error("Failed to delete vehicle entry:", error);
+      console.warn("Vehicle deletion sync failed, local row removed:", error);
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
   const [vehicleType, setVehicleType] = useState("");
   const [fuelType, setFuelType]       = useState("");
   const [quantity, setQuantity]       = useState("");
-  const [month, setMonth]             = useState(currentMonth());
+  const [month, setMonth]             = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
+
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
 
   const mappedFuelType = vehicleType && fuelType
     ? mapVehicleFuelType(vehicleType, fuelType)
     : "";
   const useDistance = DISTANCE_BASED_TYPES.has(mappedFuelType);
 
+  const startEdit = (entry) => {
+    const existingFuel = FUEL_OPTIONS.includes(entry.fuelType) ? entry.fuelType : "Diesel";
+    const rowFuelType = mapVehicleFuelType(entry.vehicleType, existingFuel);
+    const rowUsesDistance = DISTANCE_BASED_TYPES.has(rowFuelType);
+    setEditingId(entry.id);
+    setEditValues({
+      vehicleType: entry.vehicleType,
+      fuelType: existingFuel,
+      quantity: rowUsesDistance ? Number(entry.km || 0) : Number(entry.litres || 0),
+      month: entry.month || currentMonth(),
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({ vehicleType: "", fuelType: "", quantity: "", month: "" });
+  };
+
+  const saveEdit = () => {
+    if (!editValues.vehicleType || !editValues.fuelType || editValues.quantity === "") return;
+    const fuelKey = mapVehicleFuelType(editValues.vehicleType, editValues.fuelType);
+    const rowUsesDistance = DISTANCE_BASED_TYPES.has(fuelKey);
+    useEmissionStore.getState().updateScope1Vehicle({
+      id: editingId,
+      vehicleType: editValues.vehicleType,
+      fuelType: editValues.fuelType,
+      km: rowUsesDistance ? Number(editValues.quantity) : 0,
+      litres: rowUsesDistance ? 0 : Number(editValues.quantity),
+      month: editValues.month,
+    });
+    cancelEdit();
+  };
+
   const handleAddRow = () => {
-    if (!vehicleType || !fuelType || quantity === "") return;
+    if (!vehicleType) {
+      setAddRowError("Please select a vehicle type.");
+      return;
+    }
+    if (!fuelType) {
+      setAddRowError("Please select a fuel type.");
+      return;
+    }
+    if (quantity === "" || Number(quantity) <= 0) {
+      setAddRowError("Please enter a valid quantity.");
+      return;
+    }
     addVehicle({
       id: Date.now(),
       vehicleType,
@@ -102,7 +177,8 @@ export default function VehicleTable({ onSubmitSuccess }) {
     setVehicleType("");
     setFuelType("");
     setQuantity("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
   };
 
   return (
@@ -113,6 +189,7 @@ export default function VehicleTable({ onSubmitSuccess }) {
           Road vehicles use <strong>litres consumed</strong>. Aviation, marine, and rail use <strong>distance (km)</strong>.
         </p>
       </div>
+      {addRowError && <div className="vt-inline-error">⚠️ {addRowError}</div>}
 
       <div className="vt-table-wrap">
         <table className="vt-table">
@@ -135,12 +212,57 @@ export default function VehicleTable({ onSubmitSuccess }) {
             )}
 
             {vehicles.map((v) => {
+              if (editingId === v.id) {
+                const editFuelType = mapVehicleFuelType(editValues.vehicleType, editValues.fuelType);
+                const editUsesDistance = DISTANCE_BASED_TYPES.has(editFuelType);
+                return (
+                  <tr key={v.id}>
+                    <td>
+                      <ThemedSelect
+                        value={editValues.vehicleType}
+                        onChange={(nextValue) => setEditValues({ ...editValues, vehicleType: nextValue })}
+                        options={VEHICLE_OPTIONS.map((opt) => ({ value: opt, label: opt }))}
+                        placeholder="Vehicle Type"
+                        className="vt-select"
+                      />
+                    </td>
+                    <td>
+                      <ThemedSelect
+                        value={editValues.fuelType}
+                        onChange={(nextValue) => setEditValues({ ...editValues, fuelType: nextValue })}
+                        options={FUEL_OPTIONS.map((opt) => ({ value: opt, label: opt }))}
+                        placeholder="Fuel Type"
+                        className="vt-select"
+                      />
+                    </td>
+                    <td>
+                      <div className="vt-qty-input">
+                        <input type="number" value={editValues.quantity} onChange={(e) => setEditValues({ ...editValues, quantity: e.target.value })} className="vt-input" min="0" />
+                        <span className="vt-unit-tag">{editUsesDistance ? "km" : "L"}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <ThemedSelect
+                        value={editValues.month}
+                        onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                        options={MONTHS.map((m) => ({ value: m, label: m }))}
+                        placeholder="Month"
+                        className="vt-select"
+                      />
+                    </td>
+                    <td>
+                      <button className="vt-action-btn vt-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
+                      <button className="vt-action-btn vt-cancel-btn" onClick={cancelEdit}><FiX size={13} /></button>
+                    </td>
+                  </tr>
+                );
+              }
               const ft = mapVehicleFuelType(v.vehicleType, v.fuelType);
               const isDistRow = DISTANCE_BASED_TYPES.has(ft);
               const qty  = isDistRow ? v.km : v.litres;
               const unit = isDistRow ? "km" : "L";
               return (
-                <tr key={v.id}>
+                <tr key={v.id} className={deletingIds.has(v.id) ? "row-deleting" : ""}>
                   <td>{v.vehicleType}</td>
                   <td>{v.fuelType}</td>
                   <td>
@@ -149,9 +271,13 @@ export default function VehicleTable({ onSubmitSuccess }) {
                   </td>
                   <td>{v.month || "—"}</td>
                   <td>
+                    <button className="vt-edit" onClick={() => startEdit(v)} title="Edit">
+                      <FiEdit2 size={14} />
+                    </button>
                     <button
                       className="vt-delete"
                       onClick={() => handleDeleteVehicle(v.id, v.month)}
+                      disabled={deletingIds.has(v.id)}
                       title="Remove"
                     >
                       <FiTrash2 size={14} />
@@ -164,28 +290,22 @@ export default function VehicleTable({ onSubmitSuccess }) {
             {/* ── Inline Add Row ── */}
             <tr className="vt-add-row">
               <td>
-                <select
+                <ThemedSelect
                   value={vehicleType}
-                  onChange={(e) => setVehicleType(e.target.value)}
+                  onChange={setVehicleType}
+                  options={VEHICLE_OPTIONS.map((v) => ({ value: v, label: v }))}
+                  placeholder="Vehicle Type"
                   className="vt-select"
-                >
-                  <option value="">Vehicle Type</option>
-                  {VEHICLE_OPTIONS.map((v) => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={fuelType}
-                  onChange={(e) => setFuelType(e.target.value)}
+                  onChange={setFuelType}
+                  options={FUEL_OPTIONS.map((f) => ({ value: f, label: f }))}
+                  placeholder="Fuel Type"
                   className="vt-select"
-                >
-                  <option value="">Fuel Type</option>
-                  {FUEL_OPTIONS.map((f) => (
-                    <option key={f} value={f}>{f}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <div className="vt-qty-input">
@@ -203,15 +323,13 @@ export default function VehicleTable({ onSubmitSuccess }) {
                 </div>
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={month}
-                  onChange={(e) => setMonth(e.target.value)}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
                   className="vt-select"
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
+                />
               </td>
               {/* ── Add button at end of row ── */}
               <td>
@@ -242,11 +360,13 @@ export default function VehicleTable({ onSubmitSuccess }) {
         .vt-table-wrap {
           border: 1px solid #E5E7EB;
           border-radius: 10px;
-          overflow: hidden;
+          overflow-x: auto;
+          overflow-y: hidden;
         }
 
         .vt-table {
           width: 100%;
+          min-width: 820px;
           border-collapse: collapse;
           font-size: 14px;
         }
@@ -270,6 +390,9 @@ export default function VehicleTable({ onSubmitSuccess }) {
         }
 
         .vt-table tbody tr:last-child td { border-bottom: none; }
+        .vt-table tbody tr.row-deleting {
+          animation: vtFadeOut 220ms ease forwards;
+        }
 
         .vt-empty {
           text-align: center;
@@ -288,10 +411,32 @@ export default function VehicleTable({ onSubmitSuccess }) {
           cursor: pointer;
           padding: 4px;
           border-radius: 4px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
         }
         .vt-delete:hover { color: #DC2626; background: #FEF2F2; }
+        .vt-delete:disabled { opacity: 0.45; cursor: wait; }
+        .vt-edit {
+          background: none;
+          border: none;
+          color: #2E7D64;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          margin-right: 6px;
+        }
+        .vt-edit:hover { background: #E8F5F0; }
+        .vt-action-btn {
+          border: none;
+          cursor: pointer;
+          padding: 5px 7px;
+          border-radius: 4px;
+          margin-right: 4px;
+        }
+        .vt-save-btn { background: #2E7D64; color: white; }
+        .vt-cancel-btn { background: #F3F4F6; color: #6B7280; }
 
         .vt-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
 
@@ -352,6 +497,16 @@ export default function VehicleTable({ onSubmitSuccess }) {
           transition: background 0.15s;
         }
         .vt-add-btn-inline:hover { background: #2E7D64; }
+        .vt-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
 
         .vt-footer {
           display: flex;
@@ -389,6 +544,10 @@ export default function VehicleTable({ onSubmitSuccess }) {
         @media (max-width: 640px) {
           .vt-table th:nth-child(4),
           .vt-table td:nth-child(4) { display: none; }
+        }
+        @keyframes vtFadeOut {
+          0% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-4px); }
         }
       `}</style>
     </div>

@@ -8,6 +8,12 @@ export default function Scope2Summary() {
   const renewable = useEmissionStore((s) => s.scope2Renewable || []);
   const scope2Results = useEmissionStore((s) => s.scope2Results);
 
+  // Debug log to see what data is available
+  console.log("Scope2Summary - electricity count:", electricity.length);
+  console.log("Scope2Summary - heating count:", heating.length);
+  console.log("Scope2Summary - renewable count:", renewable.length);
+  console.log("Scope2Summary - scope2Results:", scope2Results);
+
   // Use backend results after submission
   const totals = scope2Results ? {
     electricityLocation: scope2Results.electricity?.locationBasedKgCO2e || 0,
@@ -19,7 +25,7 @@ export default function Scope2Summary() {
   } : {
     // Live estimates before submission
     electricityLocation: electricity.reduce((sum, e) => {
-      const factor = 0.428;
+      const factor = e.certificateType === "grid_average" ? 0.428 : 0;
       return sum + (Number(e.consumption) * factor);
     }, 0),
     electricityMarket: electricity.reduce((sum, e) => {
@@ -75,7 +81,7 @@ export default function Scope2Summary() {
         <>
           {hasData && !scope2Results && (
             <div className="ss-warning">
-              ⚠️ Submit data from each tab to calculate your CO₂e emissions.
+              ⚠️ Click "Calculate All" below to calculate your CO₂e emissions.
             </div>
           )}
 
@@ -104,9 +110,10 @@ export default function Scope2Summary() {
                 <span className="ss-card-pct market">M: {getMarketPercentage(totals.electricityMarket)}%</span>
               </div>
               <div className="ss-card-value">{fmt(totals.electricityLocation)} kg</div>
-              <div className="ss-card-count">{electricity.length} entries</div>
+              {/* ✅ Fixed: Show count from electricity array */}
+              <div className="ss-card-count">{electricity.length} {electricity.length === 1 ? 'entry' : 'entries'}</div>
               
-              {/* Electricity Dual Breakdown - Shows both location and market values */}
+              {/* Electricity Dual Breakdown */}
               <div className="dual-breakdown">
                 <div className="dual-row">
                   <span className="dual-name">Location:</span>
@@ -132,7 +139,8 @@ export default function Scope2Summary() {
                 <span className="ss-card-pct market">M: {getMarketPercentage(totals.heating)}%</span>
               </div>
               <div className="ss-card-value">{fmt(totals.heating)} kg</div>
-              <div className="ss-card-count">{heating.length} entries</div>
+              {/* ✅ Fixed: Show count from heating array */}
+              <div className="ss-card-count">{heating.length} {heating.length === 1 ? 'entry' : 'entries'}</div>
               <div className="ss-bar-track">
                 <div className="ss-bar-fill" style={{ width: `${getLocationPercentage(totals.heating)}%`, background: "#F59E0B" }} />
               </div>
@@ -147,7 +155,8 @@ export default function Scope2Summary() {
                 <span className="ss-card-pct market">M: {getMarketPercentage(totals.renewable)}%</span>
               </div>
               <div className="ss-card-value">{fmt(totals.renewable)} kg</div>
-              <div className="ss-card-count">{renewable.length} entries</div>
+              {/* ✅ Fixed: Show count from renewable array */}
+              <div className="ss-card-count">{renewable.length} {renewable.length === 1 ? 'entry' : 'entries'}</div>
               <div className="ss-bar-track">
                 <div className="ss-bar-fill" style={{ width: `${getLocationPercentage(totals.renewable)}%`, background: "#10B981" }} />
               </div>
@@ -162,7 +171,9 @@ export default function Scope2Summary() {
             </div>
             <div className="ss-stat">
               <span className="ss-stat-label">Categories</span>
-              <span className="ss-stat-value">{([electricity, heating, renewable].filter(a => a.length > 0).length)}/3</span>
+              <span className="ss-stat-value">
+                {[electricity.length > 0, heating.length > 0, renewable.length > 0].filter(Boolean).length}/3
+              </span>
             </div>
             <div className="ss-stat">
               <span className="ss-stat-label">Reporting Method</span>

@@ -16,7 +16,10 @@ export default function SignupPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
   const { register, loading, error, clearError } = useAuthStore();
+
+  const [localError, setLocalError] = useState("");
 
   // Clear error on component mount
   useEffect(() => {
@@ -27,22 +30,78 @@ export default function SignupPage() {
     setIsVisible(true);
   }, []);
 
+  // ✅ Fixed: validateSignupFields function
+  const validateSignupFields = () => {
+    const errors = {};
+    if (!name || name.trim().length < 2) {
+      errors.name = "Name must be at least 2 characters.";
+    }
+    if (!email || !email.includes("@") || !email.includes(".")) {
+      errors.email = "Enter a valid email address.";
+    }
+    const passwordChecks = [
+      { ok: (password || "").length >= 8, message: "at least 8 characters" },
+      { ok: /[A-Za-z]/.test(password || ""), message: "at least one alphabet letter" },
+    ];
+    const missingPasswordRules = passwordChecks.filter((rule) => !rule.ok).map((rule) => rule.message);
+    if (missingPasswordRules.length > 0) {
+      errors.password = `Password must include ${missingPasswordRules.join(", ")}.`;
+    }
+    if (password !== confirmPassword) {
+      errors.confirmPassword = "Passwords do not match.";
+    }
+    if (!agreeTerms) {
+      errors.terms = "You must agree to the Terms of Service.";
+    }
+    return errors;
+  };
+
+  // ✅ Fixed: Friendly error message mapping
+  const getFriendlyAuthError = (error) => {
+    const code = error?.code || error?.message || "";
+    if (code.includes("email-already-in-use")) {
+      return "An account with this email already exists. Please login instead.";
+    }
+    if (code.includes("weak-password")) {
+      return "Password is too weak. Please use a stronger password.";
+    }
+    if (code.includes("invalid-email")) {
+      return "Please enter a valid email address.";
+    }
+    if (code.includes("network-request-failed")) {
+      return "Connection failed. Please check your internet.";
+    }
+    return "Registration failed. Please try again.";
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     // Clear previous error before new submission
     clearError();
+    setFieldErrors({});
     
-    // Validation
-    if (password !== confirmPassword) {
-      // You might want to set a local error here
+    // Validate fields
+    const errors = validateSignupFields();
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
     
     const result = await register(email, password, name);
     if (result.success) {
       navigate("/setup");
+    } else {
+  const friendlyError = getFriendlyAuthError(result.error);
+  setLocalError(friendlyError); // ← was missing, this is why it didn't show
     }
+
+    // Replace the error display div at the top of the form JSX:
+    {(localError || error || fieldErrors.general) && (
+      <div className="error-message">
+        ⚠️ {localError || error || fieldErrors.general}
+      </div>
+    )}
   };
 
   return (
@@ -52,14 +111,14 @@ export default function SignupPage() {
         <div className="brand-section">
           <div className="logo-wrapper">
             <BiLeaf className="logo-icon" />
-            <span className="logo-text">Lumyna</span>
+            <span className="logo-text">Lumyina</span>
           </div>
           <h2 className="welcome-text">Create your account</h2>
         </div>
 
-        {error && (
+        {(error || fieldErrors.general) && (
           <div className="error-message">
-            ⚠️ {error}
+            ⚠️ {error || fieldErrors.general}
           </div>
         )}
 
@@ -73,11 +132,17 @@ export default function SignupPage() {
                 type="text"
                 id="name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (fieldErrors.name) setFieldErrors({ ...fieldErrors, name: "" });
+                }}
                 placeholder="Enter your full name"
                 required
               />
             </div>
+            {fieldErrors.name && (
+              <div className="field-error">{fieldErrors.name}</div>
+            )}
           </div>
 
           <div className="input-group">
@@ -88,11 +153,17 @@ export default function SignupPage() {
                 type="email"
                 id="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: "" });
+                }}
                 placeholder="you@company.com"
                 required
               />
             </div>
+            {fieldErrors.email && (
+              <div className="field-error">{fieldErrors.email}</div>
+            )}
           </div>
 
           <div className="input-group">
@@ -103,7 +174,10 @@ export default function SignupPage() {
                 type={showPassword ? "text" : "password"}
                 id="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (fieldErrors.password) setFieldErrors({ ...fieldErrors, password: "" });
+                }}
                 placeholder="Create a strong password"
                 required
               />
@@ -116,6 +190,12 @@ export default function SignupPage() {
                 {showPassword ? <FiEyeOff /> : <FiEye />}
               </button>
             </div>
+            <div className="password-helper">
+              Password must be at least 8 characters and include at least one alphabet letter.
+            </div>
+            {fieldErrors.password && (
+              <div className="field-error">{fieldErrors.password}</div>
+            )}
           </div>
 
           <div className="input-group">
@@ -126,7 +206,10 @@ export default function SignupPage() {
                 type={showConfirmPassword ? "text" : "password"}
                 id="confirmPassword"
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  if (fieldErrors.confirmPassword) setFieldErrors({ ...fieldErrors, confirmPassword: "" });
+                }}
                 placeholder="Confirm your password"
                 required
               />
@@ -139,7 +222,10 @@ export default function SignupPage() {
                 {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
               </button>
             </div>
-            {confirmPassword && (
+            {fieldErrors.confirmPassword && (
+              <div className="field-error">{fieldErrors.confirmPassword}</div>
+            )}
+            {confirmPassword && !fieldErrors.confirmPassword && (
               <div className="password-match">
                 {password === confirmPassword ? (
                   <span className="match-success">✓ Passwords match</span>
@@ -155,7 +241,10 @@ export default function SignupPage() {
               <input
                 type="checkbox"
                 checked={agreeTerms}
-                onChange={(e) => setAgreeTerms(e.target.checked)}
+                onChange={(e) => {
+                  setAgreeTerms(e.target.checked);
+                  if (fieldErrors.terms) setFieldErrors({ ...fieldErrors, terms: "" });
+                }}
                 required
               />
               <span>
@@ -163,6 +252,9 @@ export default function SignupPage() {
                 <Link to="/privacy">Privacy Policy</Link>
               </span>
             </label>
+            {fieldErrors.terms && (
+              <div className="field-error">{fieldErrors.terms}</div>
+            )}
           </div>
 
           <PrimaryButton type="submit" className="signup-button" disabled={loading}>
@@ -186,13 +278,14 @@ export default function SignupPage() {
           justify-content: center;
           background: #F8FAF8;
           padding: 20px;
+          overflow-x: auto;
         }
 
         .signup-card {
           background: white;
           padding: 40px;
           border-radius: 12px;
-          width: 100%;
+          width: min(100%, 440px);
           max-width: 440px;
           border: 1px solid #E5E7EB;
           transform: translateY(20px);
@@ -244,6 +337,12 @@ export default function SignupPage() {
           border-radius: 8px;
           font-size: 14px;
           margin-bottom: 20px;
+        }
+
+        .field-error {
+          font-size: 12px;
+          color: #EF4444;
+          margin-top: 6px;
         }
 
         .signup-form {
@@ -319,6 +418,13 @@ export default function SignupPage() {
           font-size: 12px;
         }
 
+        .password-helper {
+          margin-top: 6px;
+          font-size: 12px;
+          color: #6B7280;
+          line-height: 1.45;
+        }
+
         .match-success {
           color: #10B981;
         }
@@ -338,6 +444,8 @@ export default function SignupPage() {
           font-size: 14px;
           color: #4A5568;
           cursor: pointer;
+          line-height: 1.45;
+          overflow-wrap: anywhere;
         }
 
         .checkbox-label input[type="checkbox"] {
@@ -396,13 +504,31 @@ export default function SignupPage() {
           text-decoration: underline;
         }
 
-        @media (max-width: 480px) {
+        @media (max-width: 768px) {
+          .signup-container {
+            align-items: flex-start;
+            padding: 14px;
+          }
+
           .signup-card {
-            padding: 30px 20px;
+            padding: 24px 16px;
+            border-radius: 10px;
+            margin: 0;
           }
 
           .welcome-text {
-            font-size: 24px;
+            font-size: 32px;
+            line-height: 1.12;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .signup-card {
+            padding: 20px 14px;
+          }
+
+          .welcome-text {
+            font-size: 28px;
           }
 
           .logo-text {

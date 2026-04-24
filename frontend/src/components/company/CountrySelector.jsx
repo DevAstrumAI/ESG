@@ -6,11 +6,11 @@ export default function CountrySelector({ data, updateField }) {
   // Countries by region
   const countriesByRegion = {
     "middle-east": [
-      { label: "🇦🇪 United Arab Emirates", value: "uae" },
-      { label: "🇸🇦 Saudi Arabia", value: "saudi-arabia" },
+      { label: "United Arab Emirates", value: "uae" },
+      { label: "Saudi Arabia", value: "saudi-arabia" },
     ],
     "asia-pacific": [
-      { label: "🇸🇬 Singapore", value: "singapore" },
+      { label: "Singapore", value: "singapore" },
     ],
     "eu": [],
     "uk": [],
@@ -34,7 +34,7 @@ export default function CountrySelector({ data, updateField }) {
       </div>
 
       <p className="sub-description">
-        Choose the country where your facilities are located.
+        Choose the country where your cities are located.
       </p>
 
       <div className="country-grid">
@@ -92,6 +92,23 @@ export default function CountrySelector({ data, updateField }) {
 
         .country-grid {
           max-width: 400px;
+        }
+
+        @media (max-width: 768px) {
+          .country-selector {
+            margin-top: 18px;
+            padding-top: 18px;
+          }
+          .step-subheader h4 {
+            font-size: 15px;
+          }
+          .sub-description {
+            font-size: 13px;
+            margin-bottom: 14px;
+          }
+          .country-grid {
+            max-width: 100%;
+          }
         }
       `}</style>
     </div>

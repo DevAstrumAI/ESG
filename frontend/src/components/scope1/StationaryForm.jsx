@@ -1,9 +1,12 @@
 // src/components/scope1/StationaryForm.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { emissionsAPI } from "../../services/api";
 import { useEmissionStore } from "../../store/emissionStore";
-import { FiTrash2, FiBriefcase, FiDroplet } from "react-icons/fi";
+import { FiTrash2, FiBriefcase, FiEdit2, FiSave, FiX } from "react-icons/fi";
 import { useAuthStore } from "../../store/authStore";
+import { useCompanyStore } from "../../store/companyStore";
+import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+import ThemedSelect from "../ui/ThemedSelect";
 
 const EQUIPMENT_TYPES = [
   "Generators", "Stove", "Heater", "Oven", "Boiler",
@@ -33,25 +36,41 @@ const MONTHS = [
   "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
 ];
 
+
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export default function StationaryForm({ onSubmitSuccess }) {
+export default function StationaryForm({ onSubmitSuccess, reportingMonth }) {
   const entries        = useEmissionStore((s) => s.scope1Stationary);
   const addStationary  = useEmissionStore((s) => s.addScope1Stationary);
+  const updateStationary = useEmissionStore((s) => s.updateScope1Stationary);
   const deleteStationary = useEmissionStore((s) => s.deleteScope1Stationary);
   const selectedYear  = useEmissionStore((s) => s.selectedYear);
   const token = useAuthStore((s) => s.token);
-
+  const company = useCompanyStore((s) => s.company);
+  const getSelectedLocation = useSelectedLocationStore((s) => s.getSelectedLocation);
+  const [deletingIds, setDeletingIds] = useState(new Set());
+  const [editingId, setEditingId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    equipment: "",
+    fuelKey: "",
+    quantity: "",
+    month: "",
+  });
   const handleDeleteStationary = async (id, month) => {
+    if (deletingIds.has(id)) return;
     const deleted = entries.find((e) => e.id === id);
     if (!deleted) return;
 
+    setDeletingIds((prev) => new Set(prev).add(id));
     const [year] = month ? month.split("-").map(Number) : [selectedYear];
+    const loc = getSelectedLocation(company);
 
     try {
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      deleteStationary(id);
       await emissionsAPI.deleteScope1Entry(token, {
         year,
         month,
@@ -60,22 +79,47 @@ export default function StationaryForm({ onSubmitSuccess }) {
           fuelType: deleted.fuelType,
           consumption: Number(deleted.consumption || 0),
         },
+        country: loc?.country,
+        city: loc?.city,
       });
-      deleteStationary(id);
     } catch (error) {
-      console.error("Failed to delete stationary entry:", error);
+      console.warn("Stationary deletion sync failed, local row removed:", error);
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
   const [equipment, setEquipment] = useState("");
   const [fuelKey, setFuelKey]     = useState("");
   const [quantity, setQuantity]   = useState("");
-  const [month, setMonth]         = useState(currentMonth());
+  const [month, setMonth]         = useState(reportingMonth || currentMonth());
+  const [addRowError, setAddRowError] = useState("");
+
+  useEffect(() => {
+    if (reportingMonth) {
+      setMonth(reportingMonth);
+    }
+  }, [reportingMonth]);
 
   const selectedFuel = FUEL_TYPES.find((f) => f.key === fuelKey);
 
   const handleAddRow = () => {
-    if (!equipment || !fuelKey || quantity === "") return;
+    if (!equipment) {
+      setAddRowError("Please select an equipment type.");
+      return;
+    }
+    if (!fuelKey) {
+      setAddRowError("Please select a fuel type.");
+      return;
+    }
+    if (quantity === "" || Number(quantity) <= 0) {
+      setAddRowError("Please enter a valid quantity.");
+      return;
+    }
     addStationary({
       id: Date.now(),
       equipment,
@@ -88,7 +132,35 @@ export default function StationaryForm({ onSubmitSuccess }) {
     setEquipment("");
     setFuelKey("");
     setQuantity("");
-    setMonth(currentMonth());
+    setMonth(reportingMonth || currentMonth());
+    setAddRowError("");
+  };
+  const startEdit = (entry) => {
+    setEditingId(entry.id);
+    setEditValues({
+      equipment: entry.equipment,
+      fuelKey: entry.fuelType,
+      quantity: entry.consumption,
+      month: entry.month || currentMonth(),
+    });
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({ equipment: "", fuelKey: "", quantity: "", month: "" });
+  };
+  const saveEdit = () => {
+    if (!editValues.equipment || !editValues.fuelKey || editValues.quantity === "") return;
+    const fuel = FUEL_TYPES.find((f) => f.key === editValues.fuelKey);
+    updateStationary({
+      id: editingId,
+      equipment: editValues.equipment,
+      fuel: fuel?.label || editValues.fuelKey,
+      fuelType: editValues.fuelKey,
+      consumption: Number(editValues.quantity),
+      unit: fuel?.unit || "",
+      month: editValues.month,
+    });
+    cancelEdit();
   };
 
   return (
@@ -96,9 +168,10 @@ export default function StationaryForm({ onSubmitSuccess }) {
       <div className="sf-desc-header">
         <FiBriefcase className="sf-header-icon" />
         <p className="sf-desc">
-          Enter fuel consumption for <strong>fixed equipment</strong> at your facilities — generators, boilers, heaters, and other stationary sources.
+          Enter fuel consumption for <strong>fixed equipment</strong> across your city operations — generators, boilers, heaters, and other stationary sources.
         </p>
       </div>
+      {addRowError && <div className="sf-inline-error">⚠️ {addRowError}</div>}
 
       <div className="sf-table-wrap">
         <table className="sf-table">
@@ -120,7 +193,48 @@ export default function StationaryForm({ onSubmitSuccess }) {
               </tr>
             )}
             {entries.map((e) => (
-              <tr key={e.id}>
+              editingId === e.id ? (
+                <tr key={e.id}>
+                  <td>
+                    <ThemedSelect
+                      value={editValues.equipment}
+                      onChange={(nextValue) => setEditValues({ ...editValues, equipment: nextValue })}
+                      options={EQUIPMENT_TYPES.map((et) => ({ value: et, label: et }))}
+                      placeholder="Equipment Type"
+                      className="sf-select"
+                    />
+                  </td>
+                  <td>
+                    <ThemedSelect
+                      value={editValues.fuelKey}
+                      onChange={(nextValue) => setEditValues({ ...editValues, fuelKey: nextValue })}
+                      options={FUEL_TYPES.map((f) => ({ value: f.key, label: f.label }))}
+                      placeholder="Fuel Type"
+                      className="sf-select"
+                    />
+                  </td>
+                  <td>
+                    <div className="sf-qty-input">
+                      <input type="number" value={editValues.quantity} onChange={(ev) => setEditValues({ ...editValues, quantity: ev.target.value })} className="sf-input" min="0" />
+                      <span className="sf-unit-tag">{FUEL_TYPES.find((f) => f.key === editValues.fuelKey)?.unit || "—"}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <ThemedSelect
+                      value={editValues.month}
+                      onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
+                      options={MONTHS.map((m) => ({ value: m, label: m }))}
+                      placeholder="Month"
+                      className="sf-select"
+                    />
+                  </td>
+                  <td>
+                    <button className="sf-action-btn sf-save-btn" onClick={saveEdit}><FiSave size={13} /></button>
+                    <button className="sf-action-btn sf-cancel-btn" onClick={cancelEdit}><FiX size={13} /></button>
+                  </td>
+                </tr>
+              ) : (
+              <tr key={e.id} className={deletingIds.has(e.id) ? "row-deleting" : ""}>
                 <td>{e.equipment}</td>
                 <td>{e.fuel}</td>
                 <td>
@@ -129,41 +243,39 @@ export default function StationaryForm({ onSubmitSuccess }) {
                 </td>
                 <td>{e.month || "—"}</td>
                 <td>
+                  <button className="sf-edit" onClick={() => startEdit(e)} title="Edit">
+                    <FiEdit2 size={14} />
+                  </button>
                   <button
                     className="sf-delete"
                     onClick={() => handleDeleteStationary(e.id, e.month)}
+                    disabled={deletingIds.has(e.id)}
                     title="Remove"
                   >
                     <FiTrash2 size={14} />
                   </button>
                 </td>
               </tr>
-            ))}
+            )))}
 
             <tr className="sf-add-row">
               <td>
-                <select
+                <ThemedSelect
                   value={equipment}
-                  onChange={(e) => setEquipment(e.target.value)}
+                  onChange={setEquipment}
+                  options={EQUIPMENT_TYPES.map((et) => ({ value: et, label: et }))}
+                  placeholder="Equipment Type"
                   className="sf-select"
-                >
-                  <option value="">Equipment Type</option>
-                  {EQUIPMENT_TYPES.map((et) => (
-                    <option key={et} value={et}>{et}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={fuelKey}
-                  onChange={(e) => setFuelKey(e.target.value)}
+                  onChange={setFuelKey}
+                  options={FUEL_TYPES.map((f) => ({ value: f.key, label: f.label }))}
+                  placeholder="Fuel Type"
                   className="sf-select"
-                >
-                  <option value="">Fuel Type</option>
-                  {FUEL_TYPES.map((f) => (
-                    <option key={f.key + f.label} value={f.key}>{f.label}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <div className="sf-qty-input">
@@ -181,15 +293,13 @@ export default function StationaryForm({ onSubmitSuccess }) {
                 </div>
               </td>
               <td>
-                <select
+                <ThemedSelect
                   value={month}
-                  onChange={(e) => setMonth(e.target.value)}
+                  onChange={setMonth}
+                  options={MONTHS.map((m) => ({ value: m, label: m }))}
+                  placeholder="Month"
                   className="sf-select"
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
+                />
               </td>
               <td>
                 <button className="sf-add-btn-inline" onClick={handleAddRow}>
@@ -228,11 +338,13 @@ export default function StationaryForm({ onSubmitSuccess }) {
         .sf-table-wrap {
           border: 1px solid #E5E7EB;
           border-radius: 10px;
-          overflow: hidden;
+          overflow-x: auto;
+          overflow-y: hidden;
         }
 
         .sf-table {
           width: 100%;
+          min-width: 820px;
           border-collapse: collapse;
           font-size: 14px;
         }
@@ -256,6 +368,9 @@ export default function StationaryForm({ onSubmitSuccess }) {
         }
 
         .sf-table tbody tr:last-child td { border-bottom: none; }
+        .sf-table tbody tr.row-deleting {
+          animation: sfFadeOut 220ms ease forwards;
+        }
 
         .sf-empty {
           text-align: center;
@@ -274,10 +389,26 @@ export default function StationaryForm({ onSubmitSuccess }) {
           cursor: pointer;
           padding: 4px;
           border-radius: 4px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
         }
         .sf-delete:hover { color: #DC2626; background: #FEF2F2; }
+        .sf-delete:disabled { opacity: 0.45; cursor: wait; }
+        .sf-edit {
+          background: none;
+          border: none;
+          color: #2E7D64;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          margin-right: 6px;
+        }
+        .sf-edit:hover { background: #E8F5F0; }
+        .sf-action-btn { border: none; cursor: pointer; padding: 5px 7px; border-radius: 4px; margin-right: 4px; }
+        .sf-save-btn { background: #2E7D64; color: white; }
+        .sf-cancel-btn { background: #F3F4F6; color: #6B7280; }
 
         .sf-add-row td { background: #FAFAFA; border-top: 1px solid #E5E7EB; }
 
@@ -341,6 +472,16 @@ export default function StationaryForm({ onSubmitSuccess }) {
           font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
         .sf-add-btn-inline:hover { background: #2E7D64; }
+        .sf-inline-error {
+          margin-top: 10px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #B91C1C;
+          border-radius: 8px;
+          padding: 9px 11px;
+          font-size: 13px;
+          font-weight: 500;
+        }
 
         .sf-error { font-size: 13px; color: #DC2626; }
 
@@ -365,6 +506,10 @@ export default function StationaryForm({ onSubmitSuccess }) {
         @media (max-width: 640px) {
           .sf-table th:nth-child(4),
           .sf-table td:nth-child(4) { display: none; }
+        }
+        @keyframes sfFadeOut {
+          0% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-4px); }
         }
       `}</style>
     </div>

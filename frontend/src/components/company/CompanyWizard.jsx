@@ -1,5 +1,5 @@
 // src/components/company/CompanyWizard.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import CompanyInfoForm from "./CompanyInfoForm";
 import RegionSelector from "./RegionSelector";
 import IndustrySelector from "./IndustrySelector";
@@ -11,20 +11,47 @@ import LocationManager from "./LocationManager";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
 import Card from "../ui/Card";
-import { FiCheck, FiArrowRight, FiArrowLeft } from "react-icons/fi";
+import {
+  FiCheck,
+  FiArrowRight,
+  FiArrowLeft,
+  FiSave,
+  FiBriefcase,
+  FiGlobe,
+  FiMapPin,
+  FiUsers,
+  FiDollarSign,
+  FiClipboard,
+  FiHome,
+} from "react-icons/fi";
 import { BiLeaf } from "react-icons/bi";
 import { useAuthStore } from "../../store/authStore";
 import { useCompanyStore } from "../../store/companyStore";
 import { useNavigate } from "react-router-dom";
+import { settingsAPI } from "../../services/api";
+import { filterLocationsForRegion } from "../../utils/companyLocations";
+
+// Storage key for localStorage draft - NEVER EXPIRES
+const COMPANY_DRAFT_KEY = "company_setup_draft";
 
 export default function CompanyWizard() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loadingSubmit, setLoadingSubmit] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState("saved"); // 'saving', 'saved', 'error'
+  const [saveType, setSaveType] = useState(null); // 'local' or 'backend'
+  const [regionChangeNeedsCities, setRegionChangeNeedsCities] = useState(false);
+  const [summaryValidationFocus, setSummaryValidationFocus] = useState(null);
+  const [savedSnapshot, setSavedSnapshot] = useState(null);
+  const autoSaveTimer = useRef(null);
+  const hasHydrated = useRef(false);
+  
   const [companyData, setCompanyData] = useState({
     name: "",
     description: "",
+    logo: "",
     region: "",
     country: "",
     industry: "",
@@ -32,66 +59,290 @@ export default function CompanyWizard() {
     revenue: "",
     locations: [],
   });
-  
+
   const { company, fetchCompany, updateCompany, createCompany, loading } = useCompanyStore();
   const token = useAuthStore((state) => state.token);
-  const { user } = useAuthStore();
 
-  // Fetch company data when component mounts
-  useEffect(() => {
-    const loadCompany = async () => {
-      if (token) {
-        await fetchCompany(token);
-      }
-    };
-    loadCompany();
-  }, [token, fetchCompany]);
+  const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
-  // If company exists, populate the wizard data
-  useEffect(() => {
-    if (company) {
-      setCompanyData({
-        name: company.basicInfo?.name || "",
-        description: company.basicInfo?.description || "",
-        region: company.basicInfo?.region || "",
-        country: company.locations?.[0]?.country || "",
-        industry: company.basicInfo?.industry || "",
-        employees: company.basicInfo?.employees || "",
-        revenue: company.basicInfo?.revenue || "",
-        locations: company.locations || [],
+  const toCleanString = (value) => (value ?? "").toString().trim();
+  const toNumberOrNull = (value) => {
+    if (value === "" || value === null || value === undefined) return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const buildSnapshot = useCallback((data) => {
+    const region = toCleanString(data?.region);
+    const normalizedLocations = (filterLocationsForRegion(region, data?.locations || []) || [])
+      .map((loc) => ({
+        country: toCleanString(loc?.country),
+        city: toCleanString(loc?.city || loc?.name),
+        isPrimary: Boolean(loc?.isPrimary),
+      }))
+      .filter((loc) => loc.country && loc.city)
+      .sort((a, b) => {
+        const ka = `${a.country}|${a.city}|${a.isPrimary ? 1 : 0}`;
+        const kb = `${b.country}|${b.city}|${b.isPrimary ? 1 : 0}`;
+        return ka.localeCompare(kb);
       });
+    return {
+      name: toCleanString(data?.name),
+      description: toCleanString(data?.description),
+      logo: toCleanString(data?.logo),
+      region,
+      industry: toCleanString(data?.industry),
+      employees: toNumberOrNull(data?.employees),
+      revenue: toNumberOrNull(data?.revenue),
+      locations: normalizedLocations,
+    };
+  }, []);
+
+  // Update field and trigger auto-save
+  const updateField = (field, value) => {
+    setCompanyData(prev => {
+      const newData = { ...prev, [field]: value };
+      // Trigger auto-save after state update
+      setTimeout(() => autoSave(newData), 0);
+      return newData;
+    });
+  };
+
+  // Auto-save to localStorage (always) and backend (if company exists)
+  const autoSave = useCallback(async (data) => {
+    if (!token) return;
+    
+    // Clear previous timer
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
     }
-  }, [company]);
+    
+    // Don't save empty company name
+    if (!data.name?.trim()) return;
+    
+    setSaveStatus("saving");
+    
+    // Debounce save by 1 second
+    autoSaveTimer.current = setTimeout(async () => {
+      let localSuccess = false;
+      let backendSuccess = false;
+      
+      // 1. ALWAYS save to localStorage (draft - NEVER EXPIRES)
+      try {
+        const draft = {
+          data: data,
+          timestamp: Date.now(),
+          step: step,
+        };
+        localStorage.setItem(COMPANY_DRAFT_KEY, JSON.stringify(draft));
+        localSuccess = true;
+        setSaveType("local");
+      } catch (error) {
+        console.error("Failed to save draft to localStorage:", error);
+      }
+      
+      // 2. Save to backend ONLY if company already exists
+      if (company && company.id) {
+        try {
+          const response = await fetch(`${API_URL}/api/companies/me`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              name: data.name,
+              description: data.description || "",
+              logo: data.logo || "",
+              industry: data.industry || "",
+              employees: Number(data.employees) || 0,
+              revenue: Number(data.revenue) || 0,
+              region: data.region || "",
+              locations: data.locations || [],
+            }),
+          });
+          backendSuccess = response.ok;
+          if (backendSuccess) setSaveType("backend");
+        } catch (error) {
+          console.error("Failed to save to backend:", error);
+          backendSuccess = false;
+        }
+      }
+      
+      // Update status
+      if (localSuccess || backendSuccess) {
+        setSaveStatus("saved");
+      } else {
+        setSaveStatus("error");
+      }
+      
+      // Clear saved indicator after 2 seconds
+      setTimeout(() => {
+        setSaveStatus("saved");
+      }, 2000);
+    }, 1000);
+  }, [token, company, step, API_URL]);
+
+  const mergeCompanyData = useCallback((partial) => {
+    setCompanyData((prev) => {
+      const newData = { ...prev, ...partial };
+      if (Object.prototype.hasOwnProperty.call(partial, "locations")) {
+        setRegionChangeNeedsCities(!(partial.locations || []).length);
+      }
+      setTimeout(() => autoSave(newData), 0);
+      return newData;
+    });
+  }, [autoSave]);
+
+  // Load draft from localStorage (NO EXPIRATION)
+  const loadDraftFromLocalStorage = () => {
+    try {
+      const savedDraft = localStorage.getItem(COMPANY_DRAFT_KEY);
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed.data && parsed.data.name) {
+          setCompanyData(parsed.data);
+          if (parsed.step && parsed.step > 1) {
+            setStep(parsed.step);
+          }
+          console.log("Loaded draft from localStorage:", new Date(parsed.timestamp).toLocaleString());
+          return true;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load draft:", e);
+    }
+    return false;
+  };
+
+  // Load initial data
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (!token) return;
+      setInitialLoading(true);
+      hasHydrated.current = false;
+
+      // First, try to fetch company from backend
+      const fetchResult = await fetchCompany(token, { force: true }).catch(() => null);
+      await settingsAPI.get(token).catch(() => ({}));
+
+      // Read latest company snapshot after fetch without depending on company changes.
+      const latestCompany =
+        fetchResult?.company || useCompanyStore.getState().company || null;
+
+      // If company exists, use company data
+      if (latestCompany && latestCompany.basicInfo?.name && !hasHydrated.current) {
+        hasHydrated.current = true;
+        const region = latestCompany.basicInfo?.region || "";
+        const locations = filterLocationsForRegion(region, latestCompany.locations || []);
+        const validFirstCountry = locations[0]?.country || "";
+        setCompanyData({
+          name: latestCompany.basicInfo?.name || "",
+          description: latestCompany.basicInfo?.description || "",
+          logo: latestCompany.basicInfo?.logo || latestCompany.basicInfo?.logoUrl || "",
+          region,
+          country: validFirstCountry,
+          industry: latestCompany.basicInfo?.industry || "",
+          employees: latestCompany.basicInfo?.employees || "",
+          revenue: latestCompany.basicInfo?.revenue || "",
+          locations,
+        });
+        setSavedSnapshot(buildSnapshot({
+          name: latestCompany.basicInfo?.name || "",
+          description: latestCompany.basicInfo?.description || "",
+          logo: latestCompany.basicInfo?.logo || latestCompany.basicInfo?.logoUrl || "",
+          region,
+          industry: latestCompany.basicInfo?.industry || "",
+          employees: latestCompany.basicInfo?.employees || "",
+          revenue: latestCompany.basicInfo?.revenue || "",
+          locations,
+        }));
+        // Clear localStorage draft since company exists
+        localStorage.removeItem(COMPANY_DRAFT_KEY);
+      } else {
+        // Otherwise, load from localStorage draft
+        loadDraftFromLocalStorage();
+      }
+
+      setInitialLoading(false);
+    };
+
+    loadInitialData();
+  }, [token, fetchCompany, buildSnapshot]);
+
+  const hasSummaryChanges = useMemo(() => {
+    if (!(company && company.basicInfo?.name)) return true;
+    if (!savedSnapshot) return false;
+    const currentSnapshot = buildSnapshot(companyData);
+    return JSON.stringify(currentSnapshot) !== JSON.stringify(savedSnapshot);
+  }, [company, companyData, savedSnapshot, buildSnapshot]);
+
+  // Clear draft on successful completion
+  const clearDraft = () => {
+    localStorage.removeItem(COMPANY_DRAFT_KEY);
+  };
 
   const steps = [
-    { id: 1, label: "Company Info", icon: "🏢" },
-    { id: 2, label: "Region", icon: "🌍" },
-    { id: 3, label: "Location", icon: "🗺️" },
-    { id: 4, label: "Industry", icon: "🏭" },
-    { id: 5, label: "Employees", icon: "👥" },
-    { id: 6, label: "Revenue", icon: "💰" },
-    { id: 7, label: "Facilities", icon: "🏛️" },
-    { id: 8, label: "Summary", icon: "📋" },
+    { id: 1, label: "Company Info", icon: <FiHome /> },
+    { id: 2, label: "Region", icon: <FiGlobe /> },
+    { id: 3, label: "Location", icon: <FiMapPin /> },
+    { id: 4, label: "Industry", icon: <FiBriefcase /> },
+    { id: 5, label: "Employees", icon: <FiUsers /> },
+    { id: 6, label: "Revenue", icon: <FiDollarSign /> },
+    { id: 7, label: "Locations", icon: <FiMapPin /> },
+    { id: 8, label: "Summary", icon: <FiClipboard /> },
   ];
 
-  function updateField(field, value) {
-    setCompanyData((prev) => ({ ...prev, [field]: value }));
-  }
+  const clearSummaryValidationFeedback = useCallback(() => {
+    setSubmitError(null);
+    setSummaryValidationFocus(null);
+  }, []);
+
+  const validateFacilitiesForSubmit = () => {
+    const region = companyData.region;
+    if (!region) return { message: "Please select a region.", field: "region" };
+    const locations = filterLocationsForRegion(region, companyData.locations);
+    if (locations.length === 0) {
+      if (regionChangeNeedsCities) {
+        return {
+          message: "Region changed. Please add at least one city to complete setup.",
+          field: "cities",
+        };
+      }
+      return {
+        message: "Please add at least one city to complete setup.",
+        field: "cities",
+      };
+    }
+    if (locations.some((l) => !l.city || !l.country)) {
+      return { message: "Each city entry must include a country and city.", field: "cities" };
+    }
+    return { message: null, field: null };
+  };
 
   const handleUpdateCompany = async () => {
-    setLoadingSubmit(true);
     setSubmitError(null);
-    
-    // In CompanyWizard.jsx, in the nextStep function when creating company:
+    const { message: validationError, field: validationField } = validateFacilitiesForSubmit();
+    if (validationError) {
+      setSubmitError(validationError);
+      setSummaryValidationFocus(validationField);
+      return;
+    }
+    setSummaryValidationFocus(null);
+    setLoadingSubmit(true);
+
+    const region = companyData.region;
+    const locations = filterLocationsForRegion(region, companyData.locations);
+
     const payload = {
       name: companyData.name,
       description: companyData.description,
+      logo: companyData.logo,
       industry: companyData.industry,
       employees: Number(companyData.employees),
       revenue: Number(companyData.revenue),
-      region: companyData.region,  // ← Make sure this is included
+      region,
       fiscalYear: new Date().getFullYear(),
-      locations: companyData.locations.map((loc) => ({
+      locations: locations.map((loc) => ({
         city: loc.city || loc.name,
         country: loc.country,
         isPrimary: loc.isPrimary || false,
@@ -102,6 +353,12 @@ export default function CompanyWizard() {
     setLoadingSubmit(false);
     
     if (result.success) {
+      setSavedSnapshot(buildSnapshot({
+        ...companyData,
+        region,
+        locations,
+      }));
+      clearDraft(); // Clear draft on success
       navigate("/dashboard");
     } else {
       setSubmitError(result.error || "Failed to update company");
@@ -109,18 +366,29 @@ export default function CompanyWizard() {
   };
 
   const handleCreateCompany = async () => {
-    setLoadingSubmit(true);
     setSubmitError(null);
-    
+    const { message: validationError, field: validationField } = validateFacilitiesForSubmit();
+    if (validationError) {
+      setSubmitError(validationError);
+      setSummaryValidationFocus(validationField);
+      return;
+    }
+    setSummaryValidationFocus(null);
+    setLoadingSubmit(true);
+
+    const region = companyData.region;
+    const locations = filterLocationsForRegion(region, companyData.locations);
+
     const payload = {
       name: companyData.name,
       description: companyData.description,
+      logo: companyData.logo,
       industry: companyData.industry,
       employees: Number(companyData.employees),
       revenue: Number(companyData.revenue),
-      region: companyData.region,
+      region,
       fiscalYear: new Date().getFullYear(),
-      locations: companyData.locations.map((loc) => ({
+      locations: locations.map((loc) => ({
         city: loc.city || loc.name,
         country: loc.country,
         isPrimary: loc.isPrimary || false,
@@ -131,6 +399,7 @@ export default function CompanyWizard() {
     setLoadingSubmit(false);
     
     if (result.success) {
+      clearDraft(); // Clear draft on success
       navigate("/dashboard");
     } else {
       setSubmitError(result.error || "Failed to create company");
@@ -140,8 +409,14 @@ export default function CompanyWizard() {
   async function nextStep() {
     if (step < steps.length) {
       setStep((prev) => prev + 1);
+      // Save current step to draft
+      const draft = {
+        data: companyData,
+        timestamp: Date.now(),
+        step: step + 1,
+      };
+      localStorage.setItem(COMPANY_DRAFT_KEY, JSON.stringify(draft));
     } else {
-      // Final step - create or update company
       if (company) {
         await handleUpdateCompany();
       } else {
@@ -158,21 +433,118 @@ export default function CompanyWizard() {
     switch(step) {
       case 1: return companyData.name.trim() !== "";
       case 2: return companyData.region !== "";
-      case 3: return companyData.country !== "";
+      case 3: return filterLocationsForRegion(companyData.region, companyData.locations).length > 0;
       case 4: return companyData.industry !== "";
       case 5: return companyData.employees !== "";
       case 6: return companyData.revenue !== "";
       case 7: return companyData.locations.length > 0;
-      case 8: return true;
+      case 8: {
+        const locs = filterLocationsForRegion(companyData.region, companyData.locations);
+        return (
+          companyData.region !== "" &&
+          locs.length > 0 &&
+          locs.every((l) => l.country && (l.city || l.name))
+        );
+      }
       default: return true;
     }
   };
+
+  // Keep final action clickable and validate on submit handler.
+  // This avoids intermittent disabled states after inline summary edits.
+  const isFinalStep = step === steps.length;
+  const isNextDisabled = isFinalStep ? false : !isStepValid();
+
+  // Reset draft (clear all saved data)
+  const handleResetDraft = () => {
+    if (window.confirm("Are you sure you want to reset all unsaved progress? This cannot be undone.")) {
+      localStorage.removeItem(COMPANY_DRAFT_KEY);
+      setCompanyData({
+        name: "",
+        description: "",
+        logo: "",
+        region: "",
+        country: "",
+        industry: "",
+        employees: "",
+        revenue: "",
+        locations: [],
+      });
+      setStep(1);
+      setSaveStatus("saved");
+    }
+  };
+
+  // Loading skeleton
+  if (initialLoading) {
+    return (
+      <div className="loading-skeleton">
+        <div className="skeleton-header"></div>
+        <div className="skeleton-field"></div>
+        <div className="skeleton-field"></div>
+        <div className="skeleton-field"></div>
+        <div className="skeleton-button"></div>
+        <style jsx>{`
+          .loading-skeleton {
+            background: white;
+            border-radius: 12px;
+            padding: 32px;
+            border: 1px solid #E5E7EB;
+          }
+          .skeleton-header {
+            height: 40px;
+            width: 60%;
+            background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+            margin-bottom: 24px;
+          }
+          .skeleton-field {
+            height: 70px;
+            background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+            margin-bottom: 16px;
+          }
+          .skeleton-button {
+            height: 48px;
+            width: 150px;
+            background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+            margin-top: 24px;
+            margin-left: auto;
+          }
+          @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   // If company exists, show summary view
   if (company && company.basicInfo?.name) {
     return (
       <div className="wizard-container">
-        <SetupSummary data={companyData} updateField={updateField} />
+        <div className="auto-save-status">
+          {saveStatus === "saving" && <span className="saving"><FiSave /> Saving...</span>}
+          {saveStatus === "saved" && <span className="saved">✓ All changes saved</span>}
+          {saveStatus === "error" && <span className="error">⚠️ Unable to save</span>}
+        </div>
+        
+        <SetupSummary
+          data={companyData}
+          updateField={updateField}
+          mergeCompanyData={mergeCompanyData}
+          validationFocus={summaryValidationFocus}
+          validationMessage={summaryValidationFocus === "cities" ? submitError : ""}
+          onClearValidationFeedback={clearSummaryValidationFeedback}
+        />
         <div className="summary-actions">
           {submitError && (
             <div className="error-message">
@@ -182,7 +554,7 @@ export default function CompanyWizard() {
           <PrimaryButton 
             onClick={handleUpdateCompany} 
             className="update-btn"
-            disabled={loadingSubmit}
+            disabled={loadingSubmit || !hasSummaryChanges}
           >
             {loadingSubmit ? "Saving..." : "Save Changes"}
           </PrimaryButton>
@@ -192,6 +564,17 @@ export default function CompanyWizard() {
             max-width: 900px;
             margin: 0 auto;
           }
+          .auto-save-status {
+            text-align: right;
+            font-size: 12px;
+            margin-bottom: 16px;
+            padding: 8px 12px;
+            background: #F9FAFB;
+            border-radius: 8px;
+          }
+          .saving { color: #F59E0B; display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
+          .saved { color: #10B981; }
+          .error { color: #EF4444; }
           .summary-actions {
             margin-top: 24px;
             display: flex;
@@ -219,40 +602,27 @@ export default function CompanyWizard() {
     );
   }
 
-  // Show loading state while fetching company
-  if (loading && !company) {
-    return (
-      <div className="loading-container">
-        <div className="spinner"></div>
-        <p>Loading company data...</p>
-        <style jsx>{`
-          .loading-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 400px;
-          }
-          .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #E5E7EB;
-            border-top-color: #2E7D64;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-          }
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-          p { margin-top: 16px; color: #6B7280; }
-        `}</style>
-      </div>
-    );
-  }
-
   return (
     <div className="wizard-container">
-      {/* Step Progress Header */}
+      <div className="auto-save-status">
+        {saveStatus === "saving" && (
+          <span className="saving">
+            <FiSave /> Saving draft...
+          </span>
+        )}
+        {saveStatus === "saved" && (
+          <span className="saved">
+            ✓ Your progress has been saved
+          </span>
+        )}
+        {saveStatus === "error" && (
+          <span className="error">⚠️ Auto-save failed</span>
+        )}
+        <button onClick={handleResetDraft} className="reset-draft-btn" type="button">
+          Reset Draft
+        </button>
+      </div>
+
       <div className="wizard-header">
         <div className="steps-progress">
           {steps.map((s) => (
@@ -274,7 +644,6 @@ export default function CompanyWizard() {
         </div>
       </div>
 
-      {/* Main Content Card */}
       <Card className="wizard-content-card">
         <div className="wizard-content">
           {step === 1 && <CompanyInfoForm data={companyData} updateField={updateField} />}
@@ -284,10 +653,25 @@ export default function CompanyWizard() {
           {step === 5 && <EmployeeForm data={companyData} updateField={updateField} />}
           {step === 6 && <RevenueForm data={companyData} updateField={updateField} />}
           {step === 7 && <FacilitiesList locations={companyData.locations} />}
-          {step === 8 && <SetupSummary data={companyData} updateField={updateField} />}
+          {step === 8 && (
+            <SetupSummary
+              data={companyData}
+              updateField={updateField}
+              mergeCompanyData={mergeCompanyData}
+              onRegionResetLocations={() => setRegionChangeNeedsCities(true)}
+              validationFocus={summaryValidationFocus}
+              validationMessage={summaryValidationFocus === "cities" ? submitError : ""}
+              onClearValidationFeedback={clearSummaryValidationFeedback}
+            />
+          )}
         </div>
 
-        {/* Navigation Buttons */}
+        {step === 8 && submitError && (
+          <div className="summary-inline-error">
+            ⚠️ {submitError}
+          </div>
+        )}
+
         <div className="wizard-footer">
           {step > 1 && (
             <SecondaryButton onClick={prevStep} className="nav-btn back-btn">
@@ -297,12 +681,12 @@ export default function CompanyWizard() {
           
           <PrimaryButton 
             onClick={nextStep} 
-            className={`nav-btn next-btn ${!isStepValid() ? 'disabled' : ''}`}
-            disabled={!isStepValid()}
+            className={`nav-btn next-btn ${isNextDisabled ? 'disabled' : ''}`}
+            disabled={isNextDisabled}
           >
-            {step === steps.length ? "Complete Setup" : "Continue"} 
-            {step < steps.length && <FiArrowRight />}
-            {step === steps.length && <BiLeaf />}
+            {isFinalStep ? "Complete Setup" : "Continue"} 
+            {!isFinalStep && <FiArrowRight />}
+            {isFinalStep && <BiLeaf />}
           </PrimaryButton>
         </div>
       </Card>
@@ -312,6 +696,34 @@ export default function CompanyWizard() {
           width: 100%;
           max-width: 900px;
           margin: 0 auto;
+        }
+
+        .auto-save-status {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 12px;
+          margin-bottom: 16px;
+          padding: 8px 12px;
+          background: #F9FAFB;
+          border-radius: 8px;
+        }
+        
+        .saving { color: #F59E0B; display: flex; align-items: center; gap: 4px; }
+        .saved { color: #10B981; }
+        .error { color: #EF4444; }
+        
+        .reset-draft-btn {
+          background: none;
+          border: none;
+          color: #9CA3AF;
+          font-size: 12px;
+          cursor: pointer;
+          text-decoration: underline;
+        }
+        
+        .reset-draft-btn:hover {
+          color: #EF4444;
         }
 
         .wizard-header {
@@ -404,6 +816,17 @@ export default function CompanyWizard() {
           padding-top: 24px;
           border-top: 1px solid #E5E7EB;
         }
+        .summary-inline-error {
+          margin-top: -8px;
+          margin-bottom: 16px;
+          background: #FEF2F2;
+          border: 1px solid #FECACA;
+          color: #B91C1C;
+          padding: 12px 14px;
+          border-radius: 10px;
+          font-size: 14px;
+          font-weight: 500;
+        }
 
         .nav-btn {
           padding: 12px 28px !important;
@@ -435,26 +858,66 @@ export default function CompanyWizard() {
           pointer-events: none;
         }
 
+        @media (max-width: 1024px) {
+          .wizard-content-card {
+            padding: 24px !important;
+          }
+          .step-label {
+            font-size: 11px;
+          }
+        }
+
         @media (max-width: 768px) {
+          .wizard-container {
+            max-width: 100%;
+          }
+          .auto-save-status {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+          }
           .steps-progress {
-            flex-wrap: wrap;
-            gap: 10px;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px 8px;
           }
           .step-item {
-            flex: 0 0 calc(33.333% - 10px);
+            min-width: 0;
+          }
+          .step-indicator {
+            width: 34px;
+            height: 34px;
+            font-size: 14px;
+            margin-bottom: 6px;
           }
           .step-label {
             font-size: 10px;
+            line-height: 1.25;
           }
           .wizard-content-card {
-            padding: 20px !important;
+            padding: 16px !important;
+          }
+          .wizard-content {
+            min-height: 0;
+            margin-bottom: 20px;
           }
           .wizard-footer {
             flex-direction: column-reverse;
+            gap: 10px;
           }
           .nav-btn {
             width: 100%;
             justify-content: center;
+            min-height: 42px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .steps-progress {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .step-label {
+            font-size: 11px;
           }
         }
       `}</style>

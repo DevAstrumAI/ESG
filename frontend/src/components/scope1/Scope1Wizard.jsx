@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useEmissionStore } from "../../store/emissionStore";
 import { useAuthStore } from "../../store/authStore";
 import { emissionsAPI } from "../../services/api";
+import { normalizeScope1MobileEntry, normalizeScope1StationaryEntry, normalizeScope1RefrigerantEntry, normalizeScope1FugitiveEntry } from "../../utils/emissionHydration";
 import { FiTruck, FiBriefcase, FiWind, FiAlertCircle, FiBarChart2 } from "react-icons/fi";
 import VehicleTable from "./VehicleTable";
 import StationaryForm from "./StationaryForm";
@@ -11,132 +12,6 @@ import FugitiveForm from "./FugitiveForm";
 import Scope1Summary from "./Scope1Summary";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
-
-const VEHICLE_TYPE_BY_CODE = {
-  petrol_car: "Car",
-  diesel_car: "Car",
-  diesel_truck: "Truck",
-  diesel_bus: "Bus",
-  petrol_motorcycle: "Motorcycle",
-  motorcycle: "Motorcycle",
-  jet_aircraft_per_km: "Airplane",
-  cargo_ship_hfo: "Ship",
-  diesel_train: "Train",
-  diesel_van: "Cargo van",
-};
-
-const FUEL_LABEL_BY_CODE = {
-  petrol_car: "Petrol",
-  diesel_car: "Diesel",
-  diesel_truck: "Diesel",
-  diesel_bus: "Diesel",
-  petrol_motorcycle: "Petrol",
-  motorcycle: "Petrol",
-  jet_aircraft_per_km: "Jet Fuel",
-  cargo_ship_hfo: "HFO",
-  diesel_train: "Diesel",
-  diesel_van: "Diesel",
-};
-
-const STATIONARY_FUEL_META = {
-  biodiesel: { label: "Biodiesel", unit: "litres" },
-  bioethanol: { label: "Bioethanol", unit: "litres" },
-  biogas: { label: "Biogas", unit: "tons" },
-  diesel: { label: "Diesel", unit: "litres" },
-  cng: { label: "CNG", unit: "litres" },
-  coal: { label: "Coal", unit: "tons" },
-  heavy_fuel_oil: { label: "Heating Oil", unit: "litres" },
-  lpg: { label: "LPG", unit: "litres" },
-  petrol: { label: "Petrol", unit: "litres" },
-  wood_pellets: { label: "Wood Pellets", unit: "tons" },
-  kerosene: { label: "Kerosene", unit: "tons" },
-  natural_gas: { label: "Natural Gas", unit: "kWh" },
-};
-
-const REFRIGERANT_LABEL_BY_CODE = {
-  r134a: "R-134a",
-  r410a: "R-410A",
-  r22: "R-22",
-  r404a: "R-404A",
-  r407c: "R-407C",
-  r32: "R-32",
-  r507: "R-507",
-  sf6: "SF6",
-  hfc23: "HFC-23",
-  pfc14: "PFC-14",
-  pfc116: "PFC-116",
-};
-
-const REFRIGERANT_GWP_BY_CODE = {
-  r134a: 1300,
-  r410a: 2088,
-  r22: 1760,
-  r404a: 3942.8,
-  r407c: 1624.21,
-  r32: 67,
-  r507: 3985,
-  sf6: 23500,
-  hfc23: 12400,
-  pfc14: 6630,
-  pfc116: 11100,
-};
-
-const FUGITIVE_SOURCE_LABELS = {
-  methane: "Methane",
-  n2o: "N2O",
-};
-
-const normalizeMobileEntry = (entry) => {
-  const fuelCode = entry.fuelType || "";
-  const vehicleType = VEHICLE_TYPE_BY_CODE[fuelCode] || "Vehicle";
-  const fuelLabel = FUEL_LABEL_BY_CODE[fuelCode] || fuelCode;
-  return {
-    id: entry.id || `${fuelCode}_${entry.month || "unknown"}_${Math.random()}`,
-    vehicleType,
-    fuelType: fuelLabel,
-    km: entry.distanceKm || entry.km || 0,
-    litres: entry.litresConsumed || entry.litres || 0,
-    month: entry.month ? String(entry.month) : "",
-  };
-};
-
-const normalizeStationaryEntry = (entry) => {
-  const key = entry.fuelType || "";
-  const meta = STATIONARY_FUEL_META[key] || { label: key || "Fuel", unit: "" };
-  return {
-    id: entry.id || `${key}_${entry.month || "unknown"}_${Math.random()}`,
-    equipment: entry.equipment || meta.label,
-    fuel: meta.label,
-    fuelType: key,
-    consumption: entry.consumption || 0,
-    unit: entry.unit || meta.unit || "",
-    month: entry.month ? String(entry.month) : "",
-  };
-};
-
-const normalizeRefrigerantEntry = (entry) => {
-  const key = entry.refrigerantType || entry.refrigerantKey || "";
-  return {
-    id: entry.id || `${key}_${entry.month || "unknown"}_${Math.random()}`,
-    refrigerantType: REFRIGERANT_LABEL_BY_CODE[key] || key || "Refrigerant",
-    refrigerantKey: key,
-    leakageKg: entry.leakageKg || 0,
-    gwp: entry.gwp || REFRIGERANT_GWP_BY_CODE[key] || 0,
-    month: String(entry.month || ""),
-  };
-};
-
-const normalizeFugitiveEntry = (entry) => {
-  const key = entry.sourceType || "methane";
-  return {
-    id: entry.id || `${key}_${entry.month || "unknown"}_${Math.random()}`,
-    source: entry.source || FUGITIVE_SOURCE_LABELS[key] || key || "Source",
-    sourceType: key,
-    emissionKg: entry.emissionKg || entry.amount || 0,
-    amount: entry.amount || entry.emissionKg || 0,
-    month: String(entry.month || ""),
-  };
-};
 
 export default function Scope1Wizard() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -155,6 +30,8 @@ export default function Scope1Wizard() {
   const addScope1Fugitive = useEmissionStore((s) => s.addScope1Fugitive);
   const reset = useEmissionStore((s) => s.reset);
   const submitScope1 = useEmissionStore((s) => s.submitScope1);
+  const isSubmitting = useEmissionStore((s) => s.isSubmitting);
+
   const selectedYear = useEmissionStore((s) => s.selectedYear);
 
   const { token } = useAuthStore();
@@ -182,19 +59,27 @@ export default function Scope1Wizard() {
           // Populate the store with existing data
           if (data.mobile && data.mobile.length > 0) {
             console.log(`📝 Adding ${data.mobile.length} mobile entries`);
-            data.mobile.forEach(entry => addScope1Vehicle(normalizeMobileEntry(entry)));
+            data.mobile.forEach((entry, index) =>
+              addScope1Vehicle(normalizeScope1MobileEntry(entry, `${Date.now()}-mobile-${index}`))
+            );
           }
           if (data.stationary && data.stationary.length > 0) {
             console.log(`📝 Adding ${data.stationary.length} stationary entries`);
-            data.stationary.forEach(entry => addScope1Stationary(normalizeStationaryEntry(entry)));
+            data.stationary.forEach((entry, index) =>
+              addScope1Stationary(normalizeScope1StationaryEntry(entry, `${Date.now()}-stationary-${index}`))
+            );
           }
           if (data.refrigerants && data.refrigerants.length > 0) {
             console.log(`📝 Adding ${data.refrigerants.length} refrigerant entries`);
-            data.refrigerants.forEach(entry => addScope1Refrigerant(normalizeRefrigerantEntry(entry)));
+            data.refrigerants.forEach((entry, index) =>
+              addScope1Refrigerant(normalizeScope1RefrigerantEntry(entry, `${Date.now()}-refrigerant-${index}`))
+            );
           }
           if (data.fugitive && data.fugitive.length > 0) {
             console.log(`📝 Adding ${data.fugitive.length} fugitive entries`);
-            data.fugitive.forEach(entry => addScope1Fugitive(normalizeFugitiveEntry(entry)));
+            data.fugitive.forEach((entry, index) =>
+              addScope1Fugitive(normalizeScope1FugitiveEntry(entry, `${Date.now()}-fugitive-${index}`))
+            );
           }
       } catch (error) {
         console.error('❌ Error loading existing scope 1 data:', error);
@@ -213,8 +98,7 @@ export default function Scope1Wizard() {
     try {
       const rows = currentStep === 1 ? vehicles : currentStep === 2 ? stationary : currentStep === 3 ? refrigerants : fugitive;
       const monthString = rows[0]?.month || `${selectedYear}-01`;
-      const [year, month] = monthString.split("-").map(Number);
-      const result = await submitScope1(token, year, month);
+      const result = await submitScope1(token, selectedYear, monthString);
       if (!result.success) {
         console.error("Scope1 submit failed:", result.error);
         return false;

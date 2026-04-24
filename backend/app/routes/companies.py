@@ -40,6 +40,8 @@ async def create_company(
         db.collection("companies").document(company_id).set({
             "basicInfo": {
                 "name": company_data.name,
+                "description": company_data.description or "",
+                "logo": company_data.logo or "",
                 "industry": company_data.industry,
                 "employees": company_data.employees,
                 "revenue": company_data.revenue,
@@ -147,6 +149,10 @@ async def update_my_company(
 
         if company_data.name is not None:
             update_data["basicInfo.name"] = company_data.name
+        if company_data.description is not None:
+            update_data["basicInfo.description"] = company_data.description
+        if company_data.logo is not None:
+            update_data["basicInfo.logo"] = company_data.logo
         if company_data.industry is not None:
             update_data["basicInfo.industry"] = company_data.industry
         if company_data.employees is not None:
@@ -160,9 +166,14 @@ async def update_my_company(
         if company_data.locations is not None:
             update_data["locations"] = [loc.dict() for loc in company_data.locations]
 
-        db.collection("companies").document(company_id).update(update_data)
+        company_ref = db.collection("companies").document(company_id)
+        company_ref.update(update_data)
+        updated_doc = company_ref.get()
 
-        return {"message": "Company updated successfully."}
+        return {
+            "message": "Company updated successfully.",
+            "company": updated_doc.to_dict() if updated_doc.exists else None,
+        }
 
     except HTTPException:
         raise

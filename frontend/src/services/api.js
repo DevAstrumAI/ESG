@@ -1,5 +1,7 @@
 // src/services/api.js
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
+import { getApiBaseUrl } from '../utils/getApiBaseUrl';
+
+const API_URL = getApiBaseUrl('http://localhost:8001');
 
 // Helper to get token from localStorage or auth store
 const getToken = () => {
@@ -41,6 +43,11 @@ const request = async (endpoint, options = {}) => {
   }
   
   return data;
+};
+
+// api.js - add warmup function
+export const warmupBackend = () => {
+  fetch(`${API_URL}/health`, { method: "GET" }).catch(() => {});
 };
 
 // Auth API
@@ -93,7 +100,7 @@ export const companyAPI = {
     });
   },
   
-  // ─── NEW: Save SBTi Targets ─────────────────────────────────────────────
+ // Save targets
   saveTargets: async (token, targetsData) => {
     return request('/api/companies/targets', {
       method: 'PUT',
@@ -102,7 +109,7 @@ export const companyAPI = {
     });
   },
   
-  // Get targets (if separate endpoint exists)
+  // Get targets
   getTargets: async (token) => {
     return request('/api/companies/targets', { token });
   },
@@ -136,21 +143,55 @@ export const emissionsAPI = {
     return request(`/api/emissions/scope2${query}`, { token });
   },
 
-  deleteScope1Entry: async (token, data) => {
-    return request('/api/emissions/scope1', {
+ deleteScope1Entry: async (token, { year, month, category, entry, country, city }) => {
+    const response = await fetch(`${API_URL}/api/emissions/scope1`, {
       method: 'DELETE',
-      body: JSON.stringify(data),
-      token,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        year,
+        month,
+        category,
+        entry,
+        ...(country && city ? { country, city } : {}),
+      }),
     });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Delete failed');
+    }
+
+    return response.json();
   },
 
-  deleteScope2Entry: async (token, data) => {
-    return request('/api/emissions/scope2', {
+  // Similar for Scope 2 if needed
+  deleteScope2Entry: async (token, { year, month, category, entry, country, city }) => {
+    const response = await fetch(`${API_URL}/api/emissions/scope2`, {
       method: 'DELETE',
-      body: JSON.stringify(data),
-      token,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        year,
+        month,
+        category,
+        entry,
+        ...(country && city ? { country, city } : {}),
+      }),
     });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Delete failed');
+    }
+
+    return response.json();
   },
+
   
   getSummary: async (token, year) => {
     return request(`/api/emissions/summary?year=${year}`, { token });

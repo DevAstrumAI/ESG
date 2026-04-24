@@ -1,9 +1,16 @@
 // src/components/company/RevenueForm.jsx
 import { useState } from "react";
 import { FiDollarSign } from "react-icons/fi";
+import ThemedSelect from "../ui/ThemedSelect";
 
 export default function RevenueForm({ data, updateField }) {
   const [currency, setCurrency] = useState("USD");
+  const currencyOptions = [
+    { value: "USD", label: "USD ($)" },
+    { value: "EUR", label: "EUR (€)" },
+    { value: "GBP", label: "GBP (£)" },
+    { value: "AED", label: "AED (د.إ)" },
+  ];
 
   const formatRevenue = (value) => {
     if (!value) return "";
@@ -18,7 +25,7 @@ export default function RevenueForm({ data, updateField }) {
   return (
     <div className="form-step">
       <div className="step-header">
-        <span className="step-icon">💰</span>
+        <FiDollarSign className="step-icon" />
         <h3>Annual Revenue</h3>
       </div>
 
@@ -29,17 +36,13 @@ export default function RevenueForm({ data, updateField }) {
       <div className="revenue-input">
         <div className="field-group">
           <label className="field-label">Currency</label>
-          <select 
-            value={currency} 
-            onChange={(e) => setCurrency(e.target.value)}
+          <ThemedSelect
+            value={currency}
+            onChange={(nextCurrency) => setCurrency(nextCurrency || "USD")}
+            options={currencyOptions}
+            placeholder="Select currency"
             className="field-select"
-          >
-            <option value="USD">USD ($)</option>
-            <option value="EUR">EUR (€)</option>
-            <option value="GBP">GBP (£)</option>
-            <option value="AED">AED (د.إ)</option>
-            <option value="INR">INR (₹)</option>
-          </select>
+          />
         </div>
 
         <div className="field-group">
@@ -127,7 +130,8 @@ export default function RevenueForm({ data, updateField }) {
           border-radius: 8px;
           font-size: 14px;
           transition: all 0.2s ease;
-          background: white;
+          background: #FFFFFF;
+          color: #111827;
         }
 
         .field-input:focus, .field-select:focus {
@@ -137,6 +141,14 @@ export default function RevenueForm({ data, updateField }) {
 
         .field-select {
           cursor: pointer;
+          color-scheme: light;
+          -webkit-appearance: none;
+          appearance: none;
+        }
+
+        .field-select option {
+          background: #FFFFFF;
+          color: #111827;
         }
 
         .revenue-formatted {
@@ -148,6 +160,38 @@ export default function RevenueForm({ data, updateField }) {
           color: #2E7D64;
           border: 1px solid #E5E7EB;
           text-align: center;
+        }
+
+        @media (max-width: 768px) {
+          .step-header {
+            gap: 10px;
+            margin-bottom: 12px;
+          }
+          .step-icon {
+            font-size: 26px;
+          }
+          .step-header h3 {
+            font-size: 18px;
+          }
+          .step-description {
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+          }
+          .revenue-input {
+            max-width: 100%;
+            gap: 14px;
+          }
+          .field-input,
+          .field-select {
+            width: 100%;
+            font-size: 16px; /* prevent iOS zoom */
+            padding: 11px 12px;
+          }
+          .revenue-formatted {
+            font-size: 16px;
+            padding: 10px 12px;
+          }
         }
       `}</style>
     </div>

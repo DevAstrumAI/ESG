@@ -1,10 +1,11 @@
 // src/components/company/RegionSelector.jsx
 import { FiGlobe } from "react-icons/fi";
+import ThemedSelect from "../ui/ThemedSelect";
 
 export default function RegionSelector({ data, updateField }) {
   const regions = [
-    { label: "🌍 Middle East", value: "middle-east" },
-    { label: "🌏 Asia Pacific", value: "asia-pacific" },
+    { label: "Middle East", value: "middle-east" },
+    { label: "Asia Pacific", value: "asia-pacific" },
   ];
 
   const selectedRegion = regions.find(r => r.value === data.region);
@@ -12,7 +13,7 @@ export default function RegionSelector({ data, updateField }) {
   return (
     <div className="form-step">
       <div className="step-header">
-        <span className="step-icon">🌍</span>
+        <FiGlobe className="step-icon" />
         <h3>Select Region</h3>
       </div>
 
@@ -25,22 +26,17 @@ export default function RegionSelector({ data, updateField }) {
           <label className="field-label">
             Region <span className="required">*</span>
           </label>
-          <select
+          <ThemedSelect
             className="field-select"
             value={data.region}
-            onChange={(e) => {
-              updateField("region", e.target.value);
+            onChange={(nextRegion) => {
+              updateField("region", nextRegion);
               updateField("country", "");
               updateField("locations", []);
             }}
-          >
-            <option value="">Choose your primary operating region</option>
-            {regions.map((region) => (
-              <option key={region.value} value={region.value}>
-                {region.label}
-              </option>
-            ))}
-          </select>
+            options={regions}
+            placeholder="Choose your primary operating region"
+          />
         </div>
         
         {data.region && selectedRegion && (
@@ -112,13 +108,22 @@ export default function RegionSelector({ data, updateField }) {
           border-radius: 8px;
           font-size: 14px;
           transition: all 0.2s ease;
-          background: white;
+          background: #FFFFFF;
+          color: #111827;
           cursor: pointer;
+          color-scheme: light;
+          -webkit-appearance: none;
+          appearance: none;
         }
 
         .field-select:focus {
           outline: none;
           border-color: #2E7D64;
+        }
+
+        .field-select option {
+          background: #FFFFFF;
+          color: #111827;
         }
 
         .region-info {
@@ -132,6 +137,37 @@ export default function RegionSelector({ data, updateField }) {
           font-size: 14px;
           color: #2E7D64;
           border: 1px solid #E5E7EB;
+        }
+
+        @media (max-width: 768px) {
+          .step-header {
+            gap: 10px;
+            margin-bottom: 12px;
+          }
+          .step-icon {
+            font-size: 26px;
+          }
+          .step-header h3 {
+            font-size: 18px;
+          }
+          .step-description {
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+          }
+          .region-grid {
+            max-width: 100%;
+          }
+          .field-select {
+            width: 100%;
+            font-size: 16px; /* prevent iOS zoom */
+            padding: 11px 12px;
+          }
+          .region-info {
+            font-size: 13px;
+            padding: 10px 12px;
+            align-items: flex-start;
+          }
         }
       `}</style>
     </div>

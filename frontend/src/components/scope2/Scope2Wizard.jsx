@@ -1,6 +1,7 @@
 // src/components/scope2/Scope2Wizard.jsx
 import { useState, useEffect } from "react";
 import { useEmissionStore } from "../../store/emissionStore";
+import { normalizeScope2ElectricityEntry, normalizeScope2HeatingEntry, normalizeScope2RenewableEntry } from "../../utils/emissionHydration";
 import PrimaryButton from "../ui/PrimaryButton";
 import SecondaryButton from "../ui/SecondaryButton";
 import ElectricityForm from "./ElectricityForm";
@@ -53,15 +54,21 @@ export default function Scope2Wizard() {
           // Populate the store with existing data
           if (data.electricity && data.electricity.length > 0) {
             console.log(`📝 Adding ${data.electricity.length} electricity entries`);
-            data.electricity.forEach(entry => addScope2Electricity(entry));
+            data.electricity.forEach((entry, index) =>
+              addScope2Electricity(normalizeScope2ElectricityEntry(entry, `${Date.now()}-electricity-${index}`))
+            );
           }
           if (data.heating && data.heating.length > 0) {
             console.log(`📝 Adding ${data.heating.length} heating entries`);
-            data.heating.forEach(entry => addScope2Heating(entry));
+            data.heating.forEach((entry, index) =>
+              addScope2Heating(normalizeScope2HeatingEntry(entry, `${Date.now()}-heating-${index}`))
+            );
           }
           if (data.renewables && data.renewables.length > 0) {
             console.log(`📝 Adding ${data.renewables.length} renewable entries`);
-            data.renewables.forEach(entry => addScope2Renewable(entry));
+            data.renewables.forEach((entry, index) =>
+              addScope2Renewable(normalizeScope2RenewableEntry(entry, `${Date.now()}-renewable-${index}`))
+            );
           }
       } catch (error) {
         console.error('❌ Error loading existing scope 2 data:', error);
@@ -81,10 +88,8 @@ export default function Scope2Wizard() {
       const rows = currentStep === 1 ? electricity : currentStep === 2 ? heating : renewables;
       const rawMonth = rows[0]?.month ?? `${selectedYear}-01`;
       const monthString = typeof rawMonth === "string" ? rawMonth : String(rawMonth);
-      const [year, month] = monthString.includes("-")
-        ? monthString.split("-").map(Number)
-        : [selectedYear, 1];
-      const result = await submitScope2(token, year, month);
+      const correctedMonth = monthString.includes("-") ? monthString : `${selectedYear}-01`;
+      const result = await submitScope2(token, selectedYear, correctedMonth);
       if (!result.success) {
         console.error("Scope2 submit failed:", result.error);
         return false;
