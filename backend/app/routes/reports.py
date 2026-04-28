@@ -1474,7 +1474,7 @@ SYSTEM_PROMPT = (
 
 def call_openai(client: openai.OpenAI, user_prompt: str) -> dict:
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
