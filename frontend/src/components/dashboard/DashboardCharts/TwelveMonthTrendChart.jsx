@@ -187,10 +187,14 @@ export default function TwelveMonthTrendChart({ year, onDataLoad }) {
       const scope1Value = data.scope1 / 1000;
       const scope2Value = data.scope2 / 1000;
       const totalValue = (data.scope1 + data.scope2) / 1000;
+      const tooltipDate = data?.month ? new Date(`${data.month}-01T00:00:00`) : null;
+      const tooltipMonthYear = tooltipDate && !Number.isNaN(tooltipDate.getTime())
+        ? tooltipDate.toLocaleString("en-US", { month: "short", year: "numeric" })
+        : `${label} ${year}`;
       
       return (
         <div className="custom-tooltip">
-          <div className="tooltip-title">{label} {year}</div>
+          <div className="tooltip-title">{tooltipMonthYear}</div>
           {data.hasData ? (
             <>
               <div className="tooltip-item scope1">
@@ -297,7 +301,7 @@ export default function TwelveMonthTrendChart({ year, onDataLoad }) {
       <div className="chart-note">
         {!hasAnyData ? (
           <span className="no-data-note">
-            No emission data submitted for {year}. Submit data to see the chart.
+            No emission data submitted for FY {year}-{year + 1}. Submit data to see the chart.
           </span>
         ) : (
           <span className="missing-note">

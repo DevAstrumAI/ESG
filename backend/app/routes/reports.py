@@ -197,7 +197,17 @@ def aggregate_scope2(docs: list[dict]) -> dict:
 
 
 def _pick_quantity(entry: dict) -> float:
-    for key in ("consumption", "consumptionKWh", "litresConsumed", "distanceKm", "leakageKg", "emissionKg"):
+    for key in (
+        "consumption",
+        "consumptionKWh",
+        "consumptionKwh",
+        "generationKWh",
+        "generationKwh",
+        "litresConsumed",
+        "distanceKm",
+        "leakageKg",
+        "emissionKg",
+    ):
         try:
             value = float(entry.get(key, 0) or 0)
         except (TypeError, ValueError):

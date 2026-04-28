@@ -408,7 +408,7 @@ export default function DashboardPage() {
   const annualRemainingT = annualBudgetT > 0 ? (annualBudgetT - actualYtdT) : 0;
   const annualUsedPct = annualBudgetT > 0 ? Math.min((annualUsedT / annualBudgetT) * 100, 100) : 0;
   const hasPathwayData = trajectorySeries.length > 1 && pathwayMeta.baseYear && pathwayMeta.targetYear;
-  const annualActualMap = annualSeries.reduce((acc, row) => {
+  const annualActualMapRaw = annualSeries.reduce((acc, row) => {
     const year = Number(row?.year);
     if (Number.isFinite(year)) acc[year] = Number(row?.total_kg || 0) / 1000;
     return acc;
@@ -421,6 +421,18 @@ export default function DashboardPage() {
   const pathwayYears = hasPathwayData
     ? Array.from({ length: pathwayMeta.targetYear - pathwayMeta.baseYear + 1 }, (_, i) => pathwayMeta.baseYear + i)
     : [];
+  const annualActualMap = { ...annualActualMapRaw };
+  // Fallback: when backend annual series is sparse for the selected fiscal window,
+  // anchor current FY total to base year so the chart still renders actuals.
+  if (
+    hasPathwayData &&
+    Number.isFinite(pathwayMeta.baseYear) &&
+    annualActualMap[pathwayMeta.baseYear] == null &&
+    Number.isFinite(actualYtdT) &&
+    actualYtdT > 0
+  ) {
+    annualActualMap[pathwayMeta.baseYear] = actualYtdT;
+  }
   const latestActualYear = Object.keys(annualActualMap).map(Number).filter((y) => Number.isFinite(y)).sort((a, b) => b - a)[0];
   const latestActualValue = Number.isFinite(latestActualYear) ? annualActualMap[latestActualYear] : null;
   const targetYearRequired = Number.isFinite(pathwayMeta.targetYear) ? trajectoryMap[pathwayMeta.targetYear] : null;
@@ -503,6 +515,7 @@ export default function DashboardPage() {
       };
     })
     .filter(Boolean);
+  const actualDataPointsCount = pathwayChartData.filter((row) => row.actual != null).length;
   
   // Determine status based on budget used
   const getBudgetStatus = () => {
@@ -544,6 +557,7 @@ export default function DashboardPage() {
     const marketT = Number(monthRow?.electricityMarketKg || 0) / 1000;
     return {
       month: m.label,
+      monthYear: `${m.label} ${m.yearNum}`,
       locationT,
       marketT,
       benefitT: Math.max(locationT - marketT, 0),
@@ -1410,10 +1424,24 @@ export default function DashboardPage() {
                   />
                 ))}
                 <Line type="monotone" dataKey="required" name="Required Trajectory" stroke="#1B4D3E" strokeWidth={2.5} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="actual" name="Actual Emissions" stroke="#2563EB" strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} />
+                <Line
+                  type="monotone"
+                  dataKey="actual"
+                  name="Actual Emissions"
+                  stroke="#2563EB"
+                  strokeWidth={2.7}
+                  dot={{ r: 4, fill: "#2563EB" }}
+                  activeDot={{ r: 5 }}
+                  connectNulls={false}
+                />
                 <Line type="monotone" dataKey="projection" name="Projection to Target Year" stroke="#6B7280" strokeWidth={2} strokeDasharray="6 5" dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
+            {actualDataPointsCount < 2 && (
+              <div className="pathway-confidence-note">
+                Actual data currently covers {actualDataPointsCount} year(s). Gap shading appears after at least 2 consecutive years of actual data.
+              </div>
+            )}
             <div className="pathway-confidence-note">
               Projection confidence:{" "}
               <strong>
@@ -1594,7 +1622,7 @@ export default function DashboardPage() {
               <YAxis tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
               <Tooltip
                 formatter={(value) => `${Number(value || 0).toFixed(2)} tCO₂e`}
-                labelFormatter={(label) => `${label} ${selectedYear}`}
+                labelFormatter={(label, payload) => payload?.[0]?.payload?.monthYear || label}
               />
               {scope2SparklineGapAreas.map((area) => (
                 <ReferenceArea
