@@ -105,6 +105,7 @@ export const useCompanyStore = create((set, get) => ({
               logo: companyData.logo || "",
               industry: companyData.industry,
               employees: companyData.employees,
+              branchEmployees: companyData.branchEmployees || [],
               revenue: companyData.revenue,
               region: companyData.region,
               fiscalYear: companyData.fiscalYear,

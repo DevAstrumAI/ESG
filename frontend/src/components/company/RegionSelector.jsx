@@ -6,6 +6,7 @@ export default function RegionSelector({ data, updateField }) {
   const regions = [
     { label: "Middle East", value: "middle-east" },
     { label: "Asia Pacific", value: "asia-pacific" },
+    { label: "Multi Region", value: "multi-region" },
   ];
 
   const selectedRegion = regions.find(r => r.value === data.region);
@@ -32,7 +33,6 @@ export default function RegionSelector({ data, updateField }) {
             onChange={(nextRegion) => {
               updateField("region", nextRegion);
               updateField("country", "");
-              updateField("locations", []);
             }}
             options={regions}
             placeholder="Choose your primary operating region"

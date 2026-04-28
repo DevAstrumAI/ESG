@@ -29,7 +29,7 @@ export default function SeasonalPatternCard({ token, year, selectedFacility }) {
           years.map(async (y) => {
             let url = `${API_URL}/api/emissions/monthly-category-breakdown?year=${y}&scope=scope2`;
             if (selectedFacility?.country && selectedFacility?.city) {
-              url = appendLocationQuery(url, selectedFacility.country, selectedFacility.city);
+              url = appendLocationQuery(url, selectedFacility.country, selectedFacility.city, selectedFacility.branch, selectedFacility.region);
             }
             const res = await fetch(url, {
               headers: { Authorization: `Bearer ${token}` },

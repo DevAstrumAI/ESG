@@ -16,7 +16,8 @@ import {
   FiBarChart2,
   FiActivity,
   FiRefreshCw,
-  FiTrendingUp
+  FiTrendingUp,
+  FiUsers
 } from "react-icons/fi";
 import { BiLeaf, BiTrendingUp } from "react-icons/bi";
 import { useNavigate } from "react-router-dom";
@@ -262,7 +263,7 @@ export default function DashboardPage() {
       try {
         let url1 = `${API_URL}/api/emissions/monthly-category-breakdown?year=${selectedYear}&scope=scope1`;
         if (selectedFacility?.country && selectedFacility?.city) {
-          url1 = appendLocationQuery(url1, selectedFacility.country, selectedFacility.city);
+          url1 = appendLocationQuery(url1, selectedFacility.country, selectedFacility.city, selectedFacility.branch, selectedFacility.region);
         }
         const response = await fetch(url1, {
           headers: {
@@ -290,7 +291,7 @@ export default function DashboardPage() {
       try {
         let url2 = `${API_URL}/api/emissions/monthly-category-breakdown?year=${selectedYear}&scope=scope2`;
         if (selectedFacility?.country && selectedFacility?.city) {
-          url2 = appendLocationQuery(url2, selectedFacility.country, selectedFacility.city);
+          url2 = appendLocationQuery(url2, selectedFacility.country, selectedFacility.city, selectedFacility.branch, selectedFacility.region);
         }
         const response = await fetch(url2, {
           headers: {
@@ -601,6 +602,55 @@ export default function DashboardPage() {
   const scope12SelectedMonthKg = scope1SelectedMonthKg + scope2SelectedMonthKg;
   const selectedMonthLabel =
     fiscalMonths.find((m) => m.monthKey === scopeDetailMonthKey)?.label || "Selected month";
+  const branchEmployeeRows = company?.basicInfo?.branchEmployees || [];
+  const selectedBranchEmployees = (() => {
+    if (!selectedFacility) return null;
+    const hit = branchEmployeeRows.find((row) =>
+      String(row?.region || "").toLowerCase() === String(selectedFacility?.region || "").toLowerCase() &&
+      String(row?.country || "").toLowerCase() === String(selectedFacility?.country || "").toLowerCase() &&
+      String(row?.city || "").toLowerCase() === String(selectedFacility?.city || "").toLowerCase() &&
+      String(row?.branch || "").toLowerCase() === String(selectedFacility?.branch || "").toLowerCase()
+    );
+    const val = Number(hit?.employees);
+    return Number.isFinite(val) && val > 0 ? val : null;
+  })();
+  const companyEmployees = Number(company?.basicInfo?.employees || 0);
+  const effectiveEmployeeCount =
+    selectedBranchEmployees || (Number.isFinite(companyEmployees) && companyEmployees > 0 ? companyEmployees : 0);
+  const perEmployeeTotalTco2e = effectiveEmployeeCount > 0 ? totalTonnes / effectiveEmployeeCount : null;
+  const selectedMonthIndex = Math.max(0, fiscalMonths.findIndex((m) => m.monthKey === scopeDetailMonthKey));
+  const selectedMonthRef = fiscalMonths[selectedMonthIndex] || fiscalMonths[safeCurrentMonthIndex] || fiscalMonths[0];
+  const selectedScope1PerEmployeeMonth = scope1MonthlyBreakdown.find((row) => row?.month === selectedMonthRef?.monthKey) || {};
+  const selectedScope2PerEmployeeMonth = scope2MonthlyBreakdown.find((row) => row?.month === selectedMonthRef?.monthKey) || {};
+  const selectedPerEmployeeMonthKg =
+    Number(selectedScope1PerEmployeeMonth?.mobileKg || 0) +
+    Number(selectedScope1PerEmployeeMonth?.stationaryKg || 0) +
+    Number(selectedScope1PerEmployeeMonth?.refrigerantsKg || 0) +
+    Number(selectedScope1PerEmployeeMonth?.fugitiveKg || 0) +
+    Number(selectedScope2PerEmployeeMonth?.electricityLocationKg || 0) +
+    Number(selectedScope2PerEmployeeMonth?.heatingKg || 0);
+  const selectedPerEmployeeMonthTco2e =
+    effectiveEmployeeCount > 0 ? (selectedPerEmployeeMonthKg / 1000) / effectiveEmployeeCount : null;
+  const perEmployeeTrendData = Array.from({ length: 6 }, (_, i) => {
+    const trendIndex = Math.max(0, selectedMonthIndex - (5 - i));
+    const refMonth = fiscalMonths[trendIndex] || fiscalMonths[0];
+    const monthKey = refMonth.monthKey;
+    const s1 = scope1MonthlyBreakdown.find((r) => r?.month === monthKey) || {};
+    const s2 = scope2MonthlyBreakdown.find((r) => r?.month === monthKey) || {};
+    const monthKg =
+      Number(s1?.mobileKg || 0) +
+      Number(s1?.stationaryKg || 0) +
+      Number(s1?.refrigerantsKg || 0) +
+      Number(s1?.fugitiveKg || 0) +
+      Number(s2?.electricityLocationKg || 0) +
+      Number(s2?.heatingKg || 0);
+    const monthT = monthKg / 1000;
+    return {
+      month: refMonth.label,
+      monthYear: `${refMonth.label} ${refMonth.yearNum}`,
+      value: effectiveEmployeeCount > 0 ? monthT / effectiveEmployeeCount : 0,
+    };
+  });
 
   const scope1CategoryCards = [
     { label: "Mobile Combustion", kg: Number(selectedScope1Month?.mobileKg || 0), icon: <FiTruck /> },
@@ -933,26 +983,30 @@ export default function DashboardPage() {
           <p>Track your organization's carbon footprint in real-time</p>
         </div>
         <div className="header-actions">
-          <div className="year-selector">
-            <ThemedSelect
-              value={selectedYear}
-              onChange={(value) => setSelectedYear(Number(value))}
-              options={availableYears.map((year) => ({
-                value: year,
-                label: `${year}-${year + 1} Overview`,
-              }))}
-              placeholder="Reporting Year"
-              className="year-themed-select"
-              menuDirection="down"
-            />
+          <div className="header-actions-top">
+            <div className="year-selector">
+              <ThemedSelect
+                value={selectedYear}
+                onChange={(value) => setSelectedYear(Number(value))}
+                options={availableYears.map((year) => ({
+                  value: year,
+                  label: `${year}-${year + 1} Overview`,
+                }))}
+                placeholder="Reporting Year"
+                className="year-themed-select"
+                menuDirection="down"
+              />
+            </div>
+            <button onClick={handleRefresh} className="refresh-btn" disabled={refreshing}>
+              <FiRefreshCw className={refreshing ? "spin" : ""} />
+              <span>Refresh</span>
+            </button>
           </div>
           {company?.locations?.length > 0 && (
-            <FacilityCitySelect company={company} menuDirection="down" />
+            <div className="location-selector">
+              <FacilityCitySelect company={company} menuDirection="down" layout="dashboard" />
+            </div>
           )}
-          <button onClick={handleRefresh} className="refresh-btn" disabled={refreshing}>
-            <FiRefreshCw className={refreshing ? "spin" : ""} />
-            <span>Refresh</span>
-          </button>
         </div>
       </div>
       {missingMonthBanner.show && (
@@ -989,6 +1043,9 @@ export default function DashboardPage() {
         </button>
         <button className={`tab-btn ${activeView === "scope2" ? "active" : ""}`} onClick={() => setActiveView("scope2")}>
           Scope 2
+        </button>
+        <button className={`tab-btn ${activeView === "per-employee" ? "active" : ""}`} onClick={() => setActiveView("per-employee")}>
+          Per Employee
         </button>
         <button className={`tab-btn ${activeView === "activity" ? "active" : ""}`} onClick={() => setActiveView("activity")}>
           Recent Activity
@@ -1710,6 +1767,61 @@ export default function DashboardPage() {
       </Card>
       </>)}
 
+      {!DOC_ONLY_DASHBOARD && activeView === "per-employee" && (
+      <>
+      <div className="section-title">Per Employee Intensity</div>
+      <Card className="per-employee-card">
+        <div className="per-employee-header">
+          <div>
+            <h3>Monthly Per Employee Breakdown</h3>
+            <p>Pick a month to see per-employee intensity for that period.</p>
+          </div>
+          <div className="scope-month-picker">
+            <label>Month</label>
+            <ThemedSelect
+              value={scopeDetailMonthKey}
+              onChange={setScopeDetailMonthKey}
+              options={fiscalMonths.map((m) => ({ value: m.monthKey, label: `${m.label} ${m.yearNum}` }))}
+              menuDirection="down"
+            />
+          </div>
+        </div>
+        <div className="per-employee-kpi">
+          <div className="kpi-label"><FiUsers /> tCO₂e per employee</div>
+          <div className="kpi-value">{selectedPerEmployeeMonthTco2e == null ? "—" : selectedPerEmployeeMonthTco2e.toFixed(4)}</div>
+          <div className="kpi-sub">
+            {effectiveEmployeeCount > 0
+              ? `${selectedMonthRef?.label || selectedMonthLabel}: ${(selectedPerEmployeeMonthKg / 1000).toFixed(2)} tCO₂e / ${effectiveEmployeeCount.toLocaleString()} employee(s)`
+              : "No employee count configured. Add employee data in Company Setup."}
+          </div>
+        </div>
+        <div className="per-employee-trend">
+          <h3>Last 6 Months Trend</h3>
+          <p>Monthly Scope 1 + Scope 2 emissions intensity per employee.</p>
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={perEmployeeTrendData} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#6B7280" }} />
+              <YAxis tick={{ fontSize: 12, fill: "#6B7280" }} />
+              <Tooltip
+                formatter={(v) => `${Number(v || 0).toFixed(4)} tCO₂e/employee`}
+                labelFormatter={(label, payload) => payload?.[0]?.payload?.monthYear || label}
+              />
+              <Line
+                type="monotone"
+                dataKey="value"
+                name="tCO₂e/employee"
+                stroke="#2E7D64"
+                strokeWidth={2.8}
+                dot={{ r: 3 }}
+                activeDot={{ r: 5 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+      </>)}
+
       {!DOC_ONLY_DASHBOARD && activeView === "activity" && (
       <>
       <div className="section-title">Recent Activity</div>
@@ -1818,8 +1930,26 @@ export default function DashboardPage() {
 
         .header-actions {
           display: flex;
-          gap: 12px;
+          flex-direction: column;
+          gap: 10px;
+          align-items: stretch;
+          width: 100%;
+          max-width: 100%;
+          margin: 0 auto;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          background: #FFFFFF;
+          padding: 12px;
+        }
+        .header-actions-top {
+          display: flex;
           align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .location-selector {
+          min-width: 0;
+          width: 100%;
         }
         .missing-month-banner {
           margin: -8px 0 16px;
@@ -1868,7 +1998,8 @@ export default function DashboardPage() {
         .year-selector {
           display: flex;
           align-items: center;
-          min-width: 220px;
+          min-width: 230px;
+          max-width: 280px;
         }
 
         .year-themed-select {
@@ -2921,6 +3052,67 @@ export default function DashboardPage() {
           gap: 24px;
           margin-bottom: 24px;
         }
+        .per-employee-card {
+          padding: 20px;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          background: #FFFFFF;
+          margin-bottom: 24px;
+        }
+        .per-employee-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 14px;
+          margin-bottom: 12px;
+        }
+        .per-employee-header h3 {
+          margin: 0 0 4px;
+          color: #1B4D3E;
+          font-size: 18px;
+        }
+        .per-employee-header p {
+          margin: 0;
+          font-size: 12px;
+          color: #6B7280;
+        }
+        .per-employee-kpi {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          background: #F8FAF8;
+          padding: 14px;
+          margin-bottom: 16px;
+        }
+        .per-employee-kpi .kpi-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: #1B4D3E;
+          font-size: 13px;
+          font-weight: 700;
+        }
+        .per-employee-kpi .kpi-value {
+          margin-top: 4px;
+          font-size: 34px;
+          font-weight: 800;
+          color: #1B4D3E;
+          line-height: 1.1;
+        }
+        .per-employee-kpi .kpi-sub {
+          margin-top: 6px;
+          color: #6B7280;
+          font-size: 12px;
+        }
+        .per-employee-trend h3 {
+          margin: 0;
+          font-size: 17px;
+          color: #1B4D3E;
+        }
+        .per-employee-trend p {
+          margin: 4px 0 10px;
+          color: #6B7280;
+          font-size: 13px;
+        }
 
         .ghg-fixed-footer {
           position: fixed;
@@ -3074,6 +3266,17 @@ export default function DashboardPage() {
           .ghg-footer-inner {
             padding: 10px 16px;
           }
+          .header-actions {
+            width: 100%;
+            padding: 10px;
+          }
+          .header-actions-top {
+            justify-content: flex-start;
+            flex-wrap: wrap;
+          }
+          .location-selector {
+            min-width: 0;
+          }
           .quarter-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
@@ -3097,6 +3300,29 @@ export default function DashboardPage() {
           .dashboard-header {
             flex-direction: column;
             align-items: flex-start;
+          }
+          .header-actions {
+            width: 100%;
+          }
+          .header-actions-top {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .year-selector,
+          .location-selector {
+            min-width: 0;
+            width: 100%;
+          }
+          .year-selector {
+            max-width: none;
+          }
+          .refresh-btn {
+            width: 100%;
+            justify-content: center;
+          }
+          .per-employee-header {
+            flex-direction: column;
+            align-items: stretch;
           }
           .missing-month-banner {
             flex-direction: column;

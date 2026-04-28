@@ -9,24 +9,43 @@ const COUNTRY_LABEL = {
 };
 
 function labelForLocation(loc) {
+  const r = loc.region ? `${String(loc.region).replace("-", " ")} / ` : "";
   const c = COUNTRY_LABEL[loc.country] || loc.country;
-  return `${loc.city}, ${c}`;
+  const branch = (loc.branch || "").trim();
+  return `${r}${loc.city}, ${c}${branch ? ` - ${branch}` : ""}`;
 }
 
-export default function FacilityCitySelect({ company, disabled, menuDirection = "up" }) {
+export default function FacilityCitySelect({ company, disabled, menuDirection = "up", layout = "default" }) {
   const locationKeyVal = useSelectedLocationStore((s) => s.locationKey);
   const setLocationKey = useSelectedLocationStore((s) => s.setLocationKey);
   const locs = company?.locations || [];
 
   const selectedLocation = (() => {
-    const found = locs.find((l) => locationKey(l.country, l.city) === locationKeyVal);
+    const found = locs.find((l) => locationKey(l.region, l.country, l.city, l.branch) === locationKeyVal);
     return found || locs[0];
+  })();
+
+  const regionOptions = (() => {
+    const seen = new Set();
+    return locs
+      .filter((loc) => {
+        const key = String(loc.region || "").toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((loc) => ({
+        value: loc.region,
+        label: String(loc.region || "").replace("-", " "),
+      }));
   })();
 
   const countryOptions = (() => {
     const seen = new Set();
+    const region = selectedLocation?.region || regionOptions[0]?.value;
     return locs
       .filter((loc) => {
+        if (region && loc.region !== region) return false;
         const key = (loc.country || "").toLowerCase();
         if (!key || seen.has(key)) return false;
         seen.add(key);
@@ -39,33 +58,74 @@ export default function FacilityCitySelect({ company, disabled, menuDirection = 
   })();
 
   const cityOptions = (() => {
+    const region = selectedLocation?.region || regionOptions[0]?.value;
     const country = selectedLocation?.country || countryOptions[0]?.value;
     return locs
-      .filter((loc) => loc.country === country)
+      .filter((loc) => (!region || loc.region === region) && loc.country === country)
       .map((loc) => ({
         value: loc.city,
         label: loc.city,
       }));
   })();
 
+  const branchOptions = (() => {
+    const region = selectedLocation?.region || regionOptions[0]?.value;
+    const country = selectedLocation?.country || countryOptions[0]?.value;
+    const city = selectedLocation?.city || cityOptions[0]?.value;
+    return locs
+      .filter((loc) => (!region || loc.region === region) && loc.country === country && loc.city === city)
+      .map((loc) => ({
+        value: loc.branch || "",
+        label: loc.branch || "Main",
+      }));
+  })();
+
+  const handleRegionChange = (region) => {
+    if (!region) return;
+    const firstForRegion = locs.find((loc) => loc.region === region);
+    if (!firstForRegion) return;
+    setLocationKey(locationKey(firstForRegion.region, firstForRegion.country, firstForRegion.city, firstForRegion.branch));
+  };
+
   if (!locs.length) return null;
 
   const handleCountryChange = (country) => {
     if (!country) return;
-    const firstCityForCountry = locs.find((loc) => loc.country === country)?.city;
-    if (!firstCityForCountry) return;
-    setLocationKey(locationKey(country, firstCityForCountry));
+    const firstForCountry = locs.find((loc) => loc.country === country);
+    if (!firstForCountry) return;
+    setLocationKey(locationKey(firstForCountry.region, country, firstForCountry.city, firstForCountry.branch));
   };
 
   const handleCityChange = (city) => {
     if (!city) return;
     const country = selectedLocation?.country || countryOptions[0]?.value;
-    if (!country) return;
-    setLocationKey(locationKey(country, city));
+    const firstForCity = locs.find((loc) => loc.country === country && loc.city === city);
+    if (!country || !firstForCity) return;
+    setLocationKey(locationKey(firstForCity.region, country, city, firstForCity.branch));
+  };
+
+  const handleBranchChange = (branch) => {
+    const country = selectedLocation?.country || countryOptions[0]?.value;
+    const city = selectedLocation?.city || cityOptions[0]?.value;
+    if (!country || !city) return;
+    const region = selectedLocation?.region || regionOptions[0]?.value;
+    setLocationKey(locationKey(region, country, city, branch));
   };
 
   return (
-    <div className="facility-city-select">
+    <div className={`facility-city-select ${layout === "dashboard" ? "dashboard-layout" : ""}`}>
+      <div className="selector-block">
+        <label>Region</label>
+        <ThemedSelect
+          value={selectedLocation?.region || ""}
+          onChange={handleRegionChange}
+          options={regionOptions}
+          placeholder="Select Region"
+          disabled={disabled}
+          className="location-select"
+          menuDirection={menuDirection}
+        />
+      </div>
       <div className="selector-block">
         <label>Country</label>
         <ThemedSelect
@@ -90,12 +150,24 @@ export default function FacilityCitySelect({ company, disabled, menuDirection = 
           menuDirection={menuDirection}
         />
       </div>
+      <div className="selector-block">
+        <label>Branch</label>
+        <ThemedSelect
+          value={selectedLocation?.branch || ""}
+          onChange={handleBranchChange}
+          options={branchOptions}
+          placeholder="Select Branch"
+          disabled={disabled}
+          className="location-select"
+          menuDirection={menuDirection}
+        />
+      </div>
       <div className="selected-text" title={labelForLocation(selectedLocation || locs[0])}>
         {labelForLocation(selectedLocation || locs[0])}
       </div>
       <input
         type="hidden"
-        value={locationKeyVal || locationKey(locs[0].country, locs[0].city)}
+        value={locationKeyVal || locationKey(locs[0].region, locs[0].country, locs[0].city, locs[0].branch)}
         disabled={disabled}
         readOnly
       />
@@ -104,14 +176,15 @@ export default function FacilityCitySelect({ company, disabled, menuDirection = 
           display: flex;
           align-items: center;
           gap: 12px;
-          flex-wrap: nowrap;
+          flex-wrap: wrap;
           min-width: 0;
+          width: 100%;
         }
         .selector-block {
           display: flex;
           align-items: center;
           gap: 8px;
-          flex: 0 0 auto;
+          flex: 1 1 210px;
           min-width: 0;
         }
         label {
@@ -121,37 +194,66 @@ export default function FacilityCitySelect({ company, disabled, menuDirection = 
           white-space: nowrap;
         }
         .location-select {
-          width: 200px;
-          min-width: 180px;
-          max-width: 240px;
+          width: 100%;
+          min-width: 140px;
+          max-width: none;
         }
         .selected-text {
-          flex: 0 1 auto;
-          min-width: 0;
+          flex: 1 1 100%;
+          min-width: 220px;
           font-size: 12px;
           color: #6b7280;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          white-space: normal;
+          overflow: visible;
+          text-overflow: clip;
           text-align: left;
         }
         @media (max-width: 960px) {
           .facility-city-select {
-            overflow-x: auto;
+            overflow: visible;
             padding-bottom: 2px;
           }
-          .selected-text {
-            display: none;
-          }
-          .location-select {
-            width: 180px;
-            min-width: 170px;
-          }
+          .selector-block { flex: 1 1 100%; }
+          .selected-text { min-width: 100%; }
         }
         @media (max-width: 640px) {
-          .location-select {
-            width: 170px;
-            min-width: 160px;
+          .selector-block { flex: 1 1 100%; }
+        }
+        .facility-city-select.dashboard-layout {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(170px, 1fr));
+          gap: 10px 12px;
+          align-items: end;
+          width: 100%;
+        }
+        .facility-city-select.dashboard-layout .selector-block {
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 4px;
+          min-width: 0;
+        }
+        .facility-city-select.dashboard-layout label {
+          font-size: 11px;
+          font-weight: 700;
+          color: #6B7280;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .facility-city-select.dashboard-layout .selected-text {
+          grid-column: 1 / -1;
+          margin-top: -2px;
+          font-size: 12px;
+          color: #6B7280;
+        }
+        @media (max-width: 1100px) {
+          .facility-city-select.dashboard-layout {
+            grid-template-columns: repeat(2, minmax(170px, 1fr));
+          }
+        }
+        @media (max-width: 700px) {
+          .facility-city-select.dashboard-layout {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>

@@ -108,8 +108,8 @@ export default function WhatIfScenarioBuilder({
         let s1Url = `${API_URL}/api/emissions/scope1?year=${year}`;
         let s2Url = `${API_URL}/api/emissions/scope2?year=${year}`;
         if (selectedFacility?.country && selectedFacility?.city) {
-          s1Url = appendLocationQuery(s1Url, selectedFacility.country, selectedFacility.city);
-          s2Url = appendLocationQuery(s2Url, selectedFacility.country, selectedFacility.city);
+          s1Url = appendLocationQuery(s1Url, selectedFacility.country, selectedFacility.city, selectedFacility.branch, selectedFacility.region);
+          s2Url = appendLocationQuery(s2Url, selectedFacility.country, selectedFacility.city, selectedFacility.branch, selectedFacility.region);
         }
 
         const [s1Res, s2Res] = await Promise.all([

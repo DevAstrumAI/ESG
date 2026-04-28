@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export function locationKey(country, city) {
+export function locationKey(region, country, city, branch = "") {
+  const r = (region || "").trim().toLowerCase().replace(/\s+/g, "-");
   const c = (country || "").trim().toLowerCase().replace(/\s+/g, "-");
   const t = (city || "").trim().toLowerCase();
-  return `${c}|${t}`;
+  const b = (branch || "").trim().toLowerCase();
+  return `${r}|${c}|${t}|${b}`;
 }
 
 export const useSelectedLocationStore = create(
@@ -22,21 +24,21 @@ export const useSelectedLocationStore = create(
         }
         if (get().companyId !== id) {
           const first = locs[0];
-          set({ companyId: id, locationKey: locationKey(first.country, first.city) });
+          set({ companyId: id, locationKey: locationKey(first.region, first.country, first.city, first.branch) });
           return;
         }
         const k = get().locationKey;
-        const valid = locs.some((l) => locationKey(l.country, l.city) === k);
+        const valid = locs.some((l) => locationKey(l.region, l.country, l.city, l.branch) === k);
         if (!k || !valid) {
           const first = locs[0];
-          set({ locationKey: locationKey(first.country, first.city) });
+          set({ locationKey: locationKey(first.region, first.country, first.city, first.branch) });
         }
       },
       getSelectedLocation: (company) => {
         const locs = company?.locations || [];
         if (!locs.length) return null;
         const k = get().locationKey;
-        const found = locs.find((l) => locationKey(l.country, l.city) === k);
+        const found = locs.find((l) => locationKey(l.region, l.country, l.city, l.branch) === k);
         return found || locs[0];
       },
     }),

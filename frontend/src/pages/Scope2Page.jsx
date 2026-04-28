@@ -4,9 +4,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { useEmissionStore } from "../store/emissionStore";
 import { useCompanyStore } from "../store/companyStore";
-import { useSelectedLocationStore } from "../store/selectedLocationStore";
+import { useSelectedLocationStore, locationKey as buildLocationKey } from "../store/selectedLocationStore";
 import { appendLocationQuery } from "../utils/locationQuery";
 import FacilityCitySelect from "../components/location/FacilityCitySelect";
+import AddOtherLocationDialog from "../components/location/AddOtherLocationDialog";
 import { normalizeScope2ElectricityEntry, normalizeScope2HeatingEntry, normalizeScope2RenewableEntry } from "../utils/emissionHydration";
 import ElectricityForm from "../components/scope2/ElectricityForm";
 import HeatingForm from "../components/scope2/HeatingForm";
@@ -23,6 +24,7 @@ export default function Scope2Page() {
   const { company, fetchCompany, loading: companyLoading, isInitialized: companyInitialized } = useCompanyStore();
   const locationKey = useSelectedLocationStore((s) => s.locationKey);
   const syncFromCompany = useSelectedLocationStore((s) => s.syncFromCompany);
+  const setLocationKey = useSelectedLocationStore((s) => s.setLocationKey);
   
   const urlMonth = searchParams.get("month");
   const defaultMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
@@ -35,6 +37,7 @@ export default function Scope2Page() {
   const [submitError, setSubmitError] = useState(null);
   const [loadingData, setLoadingData] = useState(true);
   const [showSummary, setShowSummary] = useState(false);
+  const [showOtherLocationDialog, setShowOtherLocationDialog] = useState(false);
   
   // ✅ Ref to track if data is already loaded for current month
   const dataLoadedForMonth = useRef(null);
@@ -117,7 +120,7 @@ export default function Scope2Page() {
         let url = `${API_URL}/api/emissions/scope2?year=${year}&month=${encodeURIComponent(selectedMonth)}`;
         const loc = useSelectedLocationStore.getState().getSelectedLocation(company);
         if (loc?.country && loc?.city) {
-          url = appendLocationQuery(url, loc.country, loc.city);
+          url = appendLocationQuery(url, loc.country, loc.city, loc.branch, loc.region);
         }
         const response = await fetch(url, {
           cache: "no-store",
@@ -229,6 +232,7 @@ export default function Scope2Page() {
     setShowSummary(false);
     setSubmitSuccess(false);
     setSubmitError(null);
+    setCurrentStep(0);
   };
   
   const handleCalculateAll = async () => {
@@ -360,6 +364,9 @@ export default function Scope2Page() {
         <Scope2Summary />
         
         <div className="summary-actions">
+          <button onClick={() => setShowOtherLocationDialog(true)} className="secondary-btn">
+            Add other locations
+          </button>
           <button onClick={handleBackToSteps} className="secondary-btn">
             Edit Data
           </button>
@@ -367,6 +374,17 @@ export default function Scope2Page() {
             Go to Dashboard
           </button>
         </div>
+        <AddOtherLocationDialog
+          isOpen={showOtherLocationDialog}
+          onClose={() => setShowOtherLocationDialog(false)}
+          company={company}
+          onSubmit={(loc) => {
+            setLocationKey(buildLocationKey(loc.region, loc.country, loc.city, loc.branch));
+            setShowSummary(false);
+            setCurrentStep(0);
+            navigate(`/scope2?month=${encodeURIComponent(selectedMonth)}`);
+          }}
+        />
         <style jsx>{`
           .scope2-page { padding: 24px; max-width: 1400px; margin: 0 auto; }
           .page-header { margin-bottom: 24px; }
@@ -396,26 +414,30 @@ export default function Scope2Page() {
       
       <Card className="scope2-card">
         <div className="month-selector-section">
-          <div className="selector-row">
-            <div className="month-selector">
-              <FiCalendar className="selector-icon" />
-              <label>Reporting Period:</label>
-              <div className="month-dropdown-wrap">
-                <ThemedSelect
-                  value={selectedMonth}
-                  onChange={handleMonthChange}
-                  options={monthOptions}
-                  placeholder="Reporting Period"
-                  menuDirection="down"
-                />
+          <div className="reporting-context-title">Reporting Context</div>
+          <div className="selector-grid">
+            <div className="selector-top-row">
+              <div className="selector-block reporting-period">
+              <label><FiCalendar className="selector-icon" /> Reporting period</label>
+                <div className="reporting-period-select">
+                  <ThemedSelect
+                    value={selectedMonth}
+                    onChange={handleMonthChange}
+                    options={monthOptions}
+                    placeholder="Reporting Period"
+                    menuDirection="down"
+                  />
+                </div>
+              </div>
+              <div className="context-chip">
+                Data will be saved for {new Date(selectedMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}
               </div>
             </div>
-            <div className="location-selector-wrap">
-              <FacilityCitySelect company={company} menuDirection="down" />
+            <div className="selector-block full-width">
+              <div className="location-selector-wrap">
+                <FacilityCitySelect company={company} menuDirection="down" />
+              </div>
             </div>
-          </div>
-          <div className="month-hint">
-            Data will be saved for {new Date(selectedMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}
           </div>
         </div>
         
@@ -466,21 +488,63 @@ export default function Scope2Page() {
         .back-btn:hover { color: #2E7D64; }
         .page-header h1 { font-size: 28px; font-weight: 700; color: #1B4D3E; margin: 0 0 8px; }
         .page-header p { color: #6B7280; margin: 0; }
-        .scope2-card { background: white; border-radius: 12px; border: 1px solid #E5E7EB; overflow: hidden; }
-        .month-selector-section { padding: 24px 24px 0 24px; border-bottom: 1px solid #F3F4F6; }
-        .selector-row {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          flex-wrap: nowrap;
-          overflow-x: auto;
-          margin-bottom: 12px;
+        .scope2-card { background: white; border-radius: 12px; border: 1px solid #E5E7EB; overflow: visible; }
+        .month-selector-section { padding: 20px 24px 14px 24px; border-bottom: 1px solid #F3F4F6; }
+        .reporting-context-title {
+          font-size: 13px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: #6B7280;
+          margin-bottom: 10px;
         }
-        .month-selector { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
-        .month-selector label { font-weight: 500; color: #374151; }
-        .month-dropdown-wrap { width: 260px; max-width: 260px; flex: 0 0 auto; }
-        .location-selector-wrap { flex: 0 0 auto; }
-        .month-hint { color: #6B7280; font-size: 14px; margin-bottom: 24px; }
+        .selector-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+        .selector-top-row {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 14px;
+          flex-wrap: wrap;
+        }
+        .selector-block {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .reporting-period {
+          flex: 0 0 auto;
+        }
+        .reporting-period-select {
+          min-width: 180px;
+          width: 190px;
+        }
+        .selector-block label {
+          font-weight: 600;
+          color: #374151;
+          font-size: 13px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .location-selector-wrap { width: 100%; min-width: 0; }
+        .context-chip {
+          margin-top: 0;
+          margin-bottom: 0;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 7px 12px;
+          border-radius: 999px;
+          background: #F3F4F6;
+          color: #374151;
+          font-size: 12px;
+          font-weight: 500;
+          margin-left: auto;
+        }
         .step-navigation { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; background: linear-gradient(180deg, #FBFCFD 0%, #F8FAFB 100%); border-bottom: 1px solid #E5E7EB; }
         .nav-btn {
           min-width: 126px;

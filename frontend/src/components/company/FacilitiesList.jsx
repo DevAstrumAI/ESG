@@ -29,10 +29,10 @@ export default function FacilitiesList({ locations }) {
       <Card className="facilities-list-card">
         <div className="list-header">
           <div>
-            <h4>Your Cities</h4>
-            <p className="list-subtitle">Summary of all registered locations</p>
+            <h4>Your Branch Locations</h4>
+            <p className="list-subtitle">Summary of all registered country-city-branch entries</p>
           </div>
-          <span className="facility-count">{locations.length} {locations.length === 1 ? 'city' : 'cities'}</span>
+          <span className="facility-count">{locations.length} {locations.length === 1 ? 'branch' : 'branches'}</span>
         </div>
 
         {locations.length === 0 ? (
@@ -44,6 +44,7 @@ export default function FacilitiesList({ locations }) {
                 <tr>
                   <th>City</th>
                   <th>Country</th>
+                  <th>Branch</th>
                   </tr>
                 </thead>
               <tbody>
@@ -57,6 +58,9 @@ export default function FacilitiesList({ locations }) {
                     </td>
                     <td data-label="Country">
                       <span className="country-badge">{getCountryLabel(loc.country)}</span>
+                    </td>
+                    <td data-label="Branch">
+                      <span className="country-badge">{loc.branch || "Main"}</span>
                     </td>
                   </tr>
                 ))}
@@ -150,9 +154,7 @@ export default function FacilitiesList({ locations }) {
           table-layout: fixed;
         }
         .facilities-table th:first-child,
-        .facilities-table td:first-child { width: 55%; }
-        .facilities-table th:last-child,
-        .facilities-table td:last-child { width: 45%; }
+        .facilities-table td:first-child { width: 40%; }
 
         .facilities-table th {
           text-align: left;

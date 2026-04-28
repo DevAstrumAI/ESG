@@ -57,6 +57,8 @@ export default function SetupSummary({
   });
   const [selectedCountry, setSelectedCountry] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState("");
+  const [selectedRegion, setSelectedRegion] = useState(data.region || "");
   const [cities, setCities] = useState([]);
   const [showRegionChangeConfirm, setShowRegionChangeConfirm] = useState(false);
   const [pendingRegion, setPendingRegion] = useState("");
@@ -120,6 +122,7 @@ export default function SetupSummary({
       });
       setSelectedCountry("");
       setSelectedCity("");
+      setSelectedRegion(data.region || "");
       setCities([]);
     }
     
@@ -127,6 +130,17 @@ export default function SetupSummary({
   };
 
   const handleSave = () => {
+    if (
+      editingSection === "industry" &&
+      editData.industry !== data.industry &&
+      Array.isArray(data.locations) &&
+      data.locations.length > 1
+    ) {
+      const ok = window.confirm(
+        "Industry is company-wide and applies to all branches. Changing it will update all branches. Continue?"
+      );
+      if (!ok) return;
+    }
     Object.keys(editData).forEach(key => {
       if (editData[key] !== data[key]) {
         updateField(key, editData[key]);
@@ -185,11 +199,12 @@ export default function SetupSummary({
     const cleaned = facilitiesEditData.locations
       .map((loc) => ({
         ...loc,
+        region: String(loc?.region || data.region || "").trim().toLowerCase(),
         country: normalizeCountry(loc?.country),
       }))
-      .filter((loc) => loc?.country && validCountries.has(loc.country) && (loc?.city || loc?.name));
+      .filter((loc) => loc?.region && loc?.country && validCountries.has(loc.country) && (loc?.city || loc?.name) && loc?.branch);
     if (cleaned.length === 0) {
-      setLocationsInlineError("Add at least one country-city entry in your region.");
+      setLocationsInlineError("Add at least one country-city-branch entry in your region.");
       return;
     }
     setLocationsInlineError("");
@@ -207,25 +222,32 @@ export default function SetupSummary({
     setSelectedCountry(country);
     setCities(citiesByCountry[country] || []);
     setSelectedCity("");
+    setSelectedBranch("");
   };
 
   const handleAddLocationPair = () => {
-    if (!selectedCountry || !selectedCity) {
-      setLocationsInlineError("Please select both country and city before adding.");
+    if (!selectedRegion || !selectedCountry || !selectedCity || !String(selectedBranch || "").trim()) {
+      setLocationsInlineError("Please select region, country, city, and enter branch before adding.");
       return;
     }
     const cityExists = facilitiesEditData.locations.some(
-      (loc) => loc.country === selectedCountry && loc.city === selectedCity
+      (loc) =>
+        loc.region === selectedRegion &&
+        loc.country === selectedCountry &&
+        loc.city === selectedCity &&
+        String(loc.branch || "").trim().toLowerCase() === String(selectedBranch || "").trim().toLowerCase()
     );
     if (cityExists) {
-      setLocationsInlineError("This country-city pair is already added.");
+      setLocationsInlineError("This city-branch combination is already added.");
       return;
     }
     
     const newLocation = {
       id: Date.now(),
+      region: selectedRegion,
       country: selectedCountry,
       city: selectedCity,
+      branch: String(selectedBranch || "").trim(),
     };
     
     setFacilitiesEditData(prev => ({
@@ -235,6 +257,8 @@ export default function SetupSummary({
     setLocationsInlineError("");
     setSelectedCountry("");
     setSelectedCity("");
+    setSelectedBranch("");
+    setSelectedRegion(data.region || "");
     setCities([]);
   };
 
@@ -291,7 +315,9 @@ export default function SetupSummary({
 
   const getLocationDisplay = (loc) => {
     const countryName = getCountryLabel(loc.country);
-    return countryName ? `${loc.city}, ${countryName}` : loc.city;
+    const regionName = String(loc.region || "").replace("-", " ");
+    const base = countryName ? `${regionName} / ${loc.city}, ${countryName}` : `${regionName} / ${loc.city}`;
+    return `${base} - ${loc.branch || "Main"}`;
   };
 
   return (
@@ -469,17 +495,37 @@ export default function SetupSummary({
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row" key="employees-value">
-                <span className="row-label">Employees:</span>
-                <div className="row-value">
-                  {data.employees ? (
-                    <>
-                      {Number(data.employees).toLocaleString()}
-                      <span className="size-badge">{getEmployeeSize(data.employees)}</span>
-                    </>
-                  ) : "—"}
+              {Array.isArray(data.branchEmployees) && data.branchEmployees.length > 0 ? (
+                <>
+                  <div className="summary-row" key="employees-value">
+                    <span className="row-label">Branch-wise Employees:</span>
+                    <span className="row-value">Configured</span>
+                  </div>
+                  <div className="locations-list">
+                    {(data.branchEmployees || []).map((row, idx) => (
+                      <div key={`branch-emp-${idx}`} className="location-item">
+                        <FiMapPin className="location-icon" />
+                        <span>
+                          {`${row.city || "City"}, ${getCountryLabel(row.country || "")} - ${row.branch || "Main"}`}
+                        </span>
+                        <span className="country-badge">{Number(row.employees || 0).toLocaleString()} employees</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="summary-row" key="employees-value">
+                  <span className="row-label">Employees:</span>
+                  <div className="row-value">
+                    {data.employees ? (
+                      <>
+                        {Number(data.employees).toLocaleString()}
+                        <span className="size-badge">{getEmployeeSize(data.employees)}</span>
+                      </>
+                    ) : "—"}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -543,13 +589,32 @@ export default function SetupSummary({
             <div className="edit-mode" key="facilities-edit">
               <div className="pair-grid">
                 <div className="field-group">
+                  <label className="field-label">Region</label>
+                  <ThemedSelect
+                    className="field-select"
+                    value={selectedRegion}
+                    onChange={(nextRegion) => {
+                      setSelectedRegion(nextRegion);
+                      setSelectedCountry("");
+                      setSelectedCity("");
+                      setSelectedBranch("");
+                      setCities([]);
+                    }}
+                    options={[
+                      { value: "middle-east", label: "Middle East" },
+                      { value: "asia-pacific", label: "Asia Pacific" },
+                    ]}
+                    placeholder="Select Region"
+                  />
+                </div>
+                <div className="field-group">
                   <label className="field-label">Country</label>
                   <ThemedSelect
                     className="field-select"
                     value={selectedCountry}
                     onChange={(nextCountry) => handleCountryChange(nextCountry)}
-                    disabled={!data.region}
-                    options={countriesByRegion[data.region] || []}
+                    disabled={!selectedRegion}
+                    options={countriesByRegion[selectedRegion] || []}
                     placeholder="Select Country"
                   />
                 </div>
@@ -564,13 +629,22 @@ export default function SetupSummary({
                     placeholder="Select City"
                   />
                 </div>
+                <div className="field-group">
+                  <label className="field-label">Branch</label>
+                  <input
+                    className="field-input"
+                    value={selectedBranch}
+                    onChange={(e) => setSelectedBranch(e.target.value)}
+                    placeholder="Enter branch name"
+                  />
+                </div>
                 <div className="field-group add-inline-group">
                   <label className="field-label"> </label>
                   <button
                     type="button"
                     onClick={handleAddLocationPair}
                     className="add-city-btn"
-                    disabled={!selectedCountry || !selectedCity}
+                    disabled={!selectedCountry || !selectedCity || !String(selectedBranch || "").trim()}
                   >
                     <FiPlus /> Add more 
                   </button>
@@ -579,7 +653,7 @@ export default function SetupSummary({
 
               {facilitiesEditData.locations.length > 0 && (
                 <div className="locations-list">
-                  <label className="field-label">Added Country-City Pairs</label>
+                  <label className="field-label">Added Country-City-Branch Entries</label>
                   {facilitiesEditData.locations.map((loc) => (
                     <div key={loc.id} className="location-item">
                       <FiMapPin className="location-icon" />
@@ -599,7 +673,7 @@ export default function SetupSummary({
 
               {facilitiesEditData.locations.length === 0 && (
                 <div className="empty-locations">
-                  <p>No entries added yet. Select country and city, then click Add more .</p>
+                  <p>No entries added yet. Select country and city, add branch, then click Add more.</p>
                 </div>
               )}
 
