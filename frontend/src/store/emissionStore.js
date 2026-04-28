@@ -647,6 +647,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
           const useDistance = DISTANCE_BASED_TYPES.has(fuelType);
           return {
             fuelType,
+            vehicleCount: Number(v.vehicleCount || 0),
             ...(useDistance
               ? { distanceKm:     Number(v.km     || 0) }
               : { litresConsumed: Number(v.litres || 0) }

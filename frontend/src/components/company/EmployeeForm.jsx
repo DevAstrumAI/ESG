@@ -13,7 +13,7 @@ export default function EmployeeForm({ data, updateField }) {
   const [entryCount, setEntryCount] = useState("");
 
   const keyFor = (loc) =>
-    `${String(loc.country || "").toLowerCase()}|${String(loc.city || "").toLowerCase()}|${String(loc.branch || "").toLowerCase()}`;
+    `${String(loc.region || "").toLowerCase()}|${String(loc.country || "").toLowerCase()}|${String(loc.city || "").toLowerCase()}|${String(loc.branch || "").toLowerCase()}`;
 
   const employeesFor = (loc) => {
     const k = keyFor(loc);
@@ -28,7 +28,7 @@ export default function EmployeeForm({ data, updateField }) {
     const next = [...branchEmployees];
     const idx = next.findIndex((b) => keyFor(b) === k);
     const row = {
-      region: data.region || "",
+      region: loc.region || data.region || "",
       country: loc.country,
       city: loc.city,
       branch: loc.branch || "",

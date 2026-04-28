@@ -1028,6 +1028,9 @@ async def get_monthly_category_breakdown(
             monthly_data[month]["stationaryKg"] = monthly_data[month].get("stationaryKg", 0) + results.get("stationary", {}).get("totalKgCO2e", 0)
             monthly_data[month]["refrigerantsKg"] = monthly_data[month].get("refrigerantsKg", 0) + results.get("refrigerants", {}).get("totalKgCO2e", 0)
             monthly_data[month]["fugitiveKg"] = monthly_data[month].get("fugitiveKg", 0) + results.get("fugitive", {}).get("totalKgCO2e", 0)
+            mobile_entries = ((doc.get("rawData") or {}).get("mobile") or [])
+            month_vehicle_count = sum(float(e.get("vehicleCount") or 0) for e in mobile_entries if isinstance(e, dict))
+            monthly_data[month]["mobileVehicleCount"] = monthly_data[month].get("mobileVehicleCount", 0) + month_vehicle_count
         else:
             monthly_data[month]["electricityLocationKg"] = monthly_data[month].get("electricityLocationKg", 0) + results.get("electricity", {}).get("locationBasedKgCO2e", 0)
             monthly_data[month]["electricityMarketKg"] = monthly_data[month].get("electricityMarketKg", 0) + results.get("electricity", {}).get("marketBasedKgCO2e", 0)

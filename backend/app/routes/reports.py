@@ -1826,6 +1826,48 @@ async def generate_report(
                 f"{enforced_prefix} {yoy_section.get('ai_variance_explanation') or ''}"
             ).strip()
 
+        current_total_t = report_total_kg / 1000.0
+        prior_total_t = (prior_scope1_report_kg + float(prior_s2["total_location"] or 0)) / 1000.0
+        basic_info = company_data.get("basicInfo") or {}
+        raw_vehicle_count = (
+            basic_info.get("vehicleCount")
+            or basic_info.get("vehicles")
+            or basic_info.get("fleetSize")
+            or basic_info.get("numberOfVehicles")
+            or basic_info.get("totalVehicles")
+            or 0
+        )
+        try:
+            vehicle_count = max(int(float(raw_vehicle_count)), 0)
+        except Exception:
+            vehicle_count = 0
+        per_employee_current = round(current_total_t / employees, 4) if employees > 0 else None
+        per_employee_prior = round(prior_total_t / employees, 4) if employees > 0 else None
+        per_vehicle_current = round(current_total_t / vehicle_count, 4) if vehicle_count > 0 else None
+        per_vehicle_prior = round(prior_total_t / vehicle_count, 4) if vehicle_count > 0 else None
+        intensity_section = {
+            "tco2e_per_employee": {
+                "current": per_employee_current,
+                "prior": per_employee_prior,
+                "delta_pct": pct(per_employee_current, per_employee_prior)
+                if per_employee_current is not None and per_employee_prior is not None
+                else None,
+                "employees_used": employees,
+            },
+            "tco2e_per_vehicle": {
+                "current": per_vehicle_current,
+                "prior": per_vehicle_prior,
+                "delta_pct": pct(per_vehicle_current, per_vehicle_prior)
+                if per_vehicle_current is not None and per_vehicle_prior is not None
+                else None,
+                "vehicles_used": vehicle_count,
+            },
+            "notes": {
+                "employee_formula": "Total Scope 1 + Scope 2 (tCO2e) / employee count",
+                "vehicle_formula": "Total Scope 1 + Scope 2 (tCO2e) / vehicle count",
+            },
+        }
+
         # Section 3.1 cover/metadata (fiscal-year aligned period labels)
         fiscal_months = [
             f"{year}-06", f"{year}-07", f"{year}-08",
@@ -2073,6 +2115,7 @@ async def generate_report(
                 "section_3_3_scope1_detail": scope1_section,
                 "section_3_4_scope2_detail": build_scope2_section(s2, scope2_docs, enriched_recs),
                 "section_3_5_yoy_comparison": yoy_section,
+                "section_3_6_intensity_metrics": intensity_section,
                 "section_6_methodology_disclosure": build_methodology_section(
                     db,
                     methodology_countries,
