@@ -2212,8 +2212,8 @@ export default function DashboardPage() {
           flex-wrap: wrap;
         }
         .location-selector {
-          min-width: 420px;
-          flex: 1 1 620px;
+          min-width: 280px;
+          flex: 1 1 520px;
         }
         .missing-month-banner {
           margin: -8px 0 16px;
@@ -3816,6 +3816,17 @@ export default function DashboardPage() {
 
           .total-value {
             font-size: 32px;
+          }
+        }
+
+        @media (max-width: 1366px) {
+          .year-selector {
+            min-width: 190px;
+            max-width: 230px;
+          }
+          .location-selector {
+            min-width: 240px;
+            flex: 1 1 420px;
           }
         }
       `}</style>
