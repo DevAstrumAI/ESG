@@ -20,7 +20,7 @@ import { appendLocationQuery } from "../../../utils/locationQuery";
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 const KG_TO_TONNES = 1000;
 
-export default function StackedCategoryChart({ year, country, city }) {
+export default function StackedCategoryChart({ year, country, city, branch, region }) {
   const token = useAuthStore((s) => s.token);
   const [scope, setScope] = useState("scope1"); // 'scope1' or 'scope2'
   const [chartData, setChartData] = useState([]);
@@ -28,7 +28,13 @@ export default function StackedCategoryChart({ year, country, city }) {
   const [error, setError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
 
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const fiscalMonths = Array.from({ length: 12 }, (_, idx) => {
+    const monthNum = ((5 + idx) % 12) + 1; // Jun..May
+    const yearNum = monthNum >= 6 ? year : year + 1;
+    const monthKey = `${yearNum}-${String(monthNum).padStart(2, "0")}`;
+    const label = new Date(yearNum, monthNum - 1, 1).toLocaleString("en-US", { month: "short" });
+    return { label, monthKey, yearNum, monthNum };
+  });
 
   // Scope 1 categories
   const scope1Categories = [
@@ -58,7 +64,7 @@ export default function StackedCategoryChart({ year, country, city }) {
     try {
       let url = `${API_URL}/api/emissions/monthly-category-breakdown?year=${year}&scope=${scope}`;
       if (country && city) {
-        url = appendLocationQuery(url, country, city);
+        url = appendLocationQuery(url, country, city, branch, region);
       }
       const response = await fetch(url, {
         headers: {
@@ -102,17 +108,23 @@ const fetchFallbackData = async () => {
       return;
     }
     
-    // Get the current month index
-    const currentMonthIndex = new Date().getMonth();
+    // Get current fiscal month index for selected fiscal year
+    const now = new Date();
+    const nowMonthNum = now.getMonth() + 1;
+    const nowFiscalStartYear = nowMonthNum >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+    const currentMonthIndex =
+      year === nowFiscalStartYear
+        ? fiscalMonths.findIndex((m) => m.monthKey === `${now.getFullYear()}-${String(nowMonthNum).padStart(2, "0")}`)
+        : -1;
     
-    const transformedData = months.map((month, index) => {
-      const monthStr = `${year}-${String(index + 1).padStart(2, '0')}`;
+    const transformedData = fiscalMonths.map((m, index) => {
       const isCurrentMonth = index === currentMonthIndex;
       
       if (scope === "scope1") {
         return {
-          name: month,
-          month: monthStr,
+          name: m.label,
+          month: m.monthKey,
+          monthYear: `${m.label} ${m.yearNum}`,
           mobile: isCurrentMonth ? (scope1Results?.mobile?.kgCO2e || 0) / KG_TO_TONNES : 0,
           stationary: isCurrentMonth ? (scope1Results?.stationary?.kgCO2e || 0) / KG_TO_TONNES : 0,
           refrigerants: isCurrentMonth ? (scope1Results?.refrigerants?.kgCO2e || 0) / KG_TO_TONNES : 0,
@@ -121,8 +133,9 @@ const fetchFallbackData = async () => {
         };
       } else {
         return {
-          name: month,
-          month: monthStr,
+          name: m.label,
+          month: m.monthKey,
+          monthYear: `${m.label} ${m.yearNum}`,
           electricityLocation: isCurrentMonth ? (scope2Results?.electricity?.locationBasedKgCO2e || 0) / KG_TO_TONNES : 0,
           electricityMarket: isCurrentMonth ? (scope2Results?.electricity?.marketBasedKgCO2e || 0) / KG_TO_TONNES : 0,
           heating: isCurrentMonth ? (scope2Results?.heating?.kgCO2e || 0) / KG_TO_TONNES : 0,
@@ -140,8 +153,8 @@ const fetchFallbackData = async () => {
 };
 
 const createEmptyChartData = () => {
-  const emptyData = months.map((month, index) => {
-    const baseData = { name: month, month: `${year}-${String(index + 1).padStart(2, '0')}`, hasData: false };
+  const emptyData = fiscalMonths.map((m) => {
+    const baseData = { name: m.label, month: m.monthKey, monthYear: `${m.label} ${m.yearNum}`, hasData: false };
     if (scope === "scope1") {
       baseData.mobile = 0;
       baseData.stationary = 0;
@@ -158,14 +171,13 @@ const createEmptyChartData = () => {
 };
 
   const transformChartData = (data) => {
-    const transformed = months.map((month, index) => {
-      const monthNum = index + 1;
-      const monthStr = `${year}-${String(monthNum).padStart(2, '0')}`;
-      const monthData = data.find(d => d.month === monthStr) || {};
+    const transformed = fiscalMonths.map((m) => {
+      const monthData = data.find(d => d.month === m.monthKey) || {};
       
       const result = {
-        name: month,
-        month: monthStr,
+        name: m.label,
+        month: m.monthKey,
+        monthYear: `${m.label} ${m.yearNum}`,
         hasData: monthData.hasData || false,
       };
       
@@ -203,7 +215,7 @@ const createEmptyChartData = () => {
 
   useEffect(() => {
     fetchMonthlyBreakdown();
-  }, [token, year, scope, retryCount, country, city]);
+  }, [token, year, scope, retryCount, country, city, branch, region]);
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
@@ -215,7 +227,7 @@ const createEmptyChartData = () => {
       
       return (
         <div className="custom-tooltip">
-          <div className="tooltip-title">{label} {year}</div>
+          <div className="tooltip-title">{data.monthYear || label}</div>
           {data.hasData ? (
             <>
               {scope === "scope1" ? (
@@ -355,10 +367,10 @@ const createEmptyChartData = () => {
       </div>
 
       {/* Chart */}
-      <ResponsiveContainer width="100%" height={350}>
+      <ResponsiveContainer width="100%" height={390}>
         <BarChart
           data={chartData}
-          margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+          margin={{ top: 20, right: 30, left: 20, bottom: 28 }}
           barGap={0}
           barCategoryGap="20%"
         >
@@ -381,6 +393,8 @@ const createEmptyChartData = () => {
           <Tooltip content={<CustomTooltip />} />
           <Legend 
             wrapperStyle={{ fontSize: 12, paddingTop: 16 }}
+            verticalAlign="bottom"
+            align="center"
             formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
           />
           <Bar dataKey="missingPlaceholder" stackId="placeholder" fill="#E5E7EB" legendType="none">
@@ -398,7 +412,7 @@ const createEmptyChartData = () => {
       <div className="chart-note">
         {!totalHasData ? (
           <span className="no-data-note">
-            No emission data submitted for {year}. Submit data to see the chart.
+            No emission data submitted for FY {year}-{year + 1}. Submit data to see the chart.
           </span>
         ) : (
           <span className="missing-note">
@@ -411,7 +425,8 @@ const createEmptyChartData = () => {
       <style jsx>{`
         .stacked-chart-container {
           width: 100%;
-          min-height: 420px;
+          min-height: 470px;
+          padding-bottom: 8px;
         }
         
         .chart-toggle {

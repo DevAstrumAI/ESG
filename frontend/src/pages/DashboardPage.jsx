@@ -969,6 +969,12 @@ export default function DashboardPage() {
             source_share_pct: topSourcePct,
             source_tco2e: topSource.value / 1000,
             month_label: monthLabel,
+            month_key: fiscalMonths[safeCurrentMonthIndex]?.monthKey || "",
+            year: selectedYear,
+            region: selectedFacility?.region || "",
+            country: selectedFacility?.country || "",
+            city: selectedFacility?.city || "",
+            branch: selectedFacility?.branch || "",
           }),
         });
         const payload = await response.json();
@@ -1082,30 +1088,27 @@ export default function DashboardPage() {
           <p>Track your organization's carbon footprint in real-time</p>
         </div>
         <div className="header-actions">
-          <div className="header-actions-top">
-            <div className="year-selector">
-              <ThemedSelect
-                value={selectedYear}
-                onChange={(value) => setSelectedYear(Number(value))}
-                options={availableYears.map((year) => ({
-                  value: year,
-                  label: `${year}-${year + 1} Overview`,
-                }))}
-                placeholder="Reporting Year"
-                className="year-themed-select"
-                menuDirection="down"
-              />
-            </div>
-            <button onClick={handleRefresh} className="refresh-btn" disabled={refreshing}>
-              <FiRefreshCw className={refreshing ? "spin" : ""} />
-              <span>Refresh</span>
-            </button>
+          <div className="year-selector">
+            <ThemedSelect
+              value={selectedYear}
+              onChange={(value) => setSelectedYear(Number(value))}
+              options={availableYears.map((year) => ({
+                value: year,
+                label: `${year}-${year + 1} Overview`,
+              }))}
+              placeholder="Reporting Year"
+              className="year-themed-select"
+              menuDirection="down"
+            />
           </div>
           {company?.locations?.length > 0 && (
             <div className="location-selector">
               <FacilityCitySelect company={company} menuDirection="down" layout="dashboard" />
             </div>
           )}
+          <button onClick={handleRefresh} className="refresh-btn icon-only" disabled={refreshing} title="Refresh">
+            <FiRefreshCw className={refreshing ? "spin" : ""} />
+          </button>
         </div>
       </div>
       {missingMonthBanner.show && (
@@ -1137,6 +1140,9 @@ export default function DashboardPage() {
         <button className={`tab-btn ${activeView === "targets" ? "active" : ""}`} onClick={() => setActiveView("targets")}>
           Targets
         </button>
+        <button className={`tab-btn ${activeView === "analysis" ? "active" : ""}`} onClick={() => setActiveView("analysis")}>
+          Analysis
+        </button>
         <button className={`tab-btn ${activeView === "scope1" ? "active" : ""}`} onClick={() => setActiveView("scope1")}>
           Scope 1
         </button>
@@ -1154,6 +1160,9 @@ export default function DashboardPage() {
         </button>
         <button className={`tab-btn ${activeView === "activity" ? "active" : ""}`} onClick={() => setActiveView("activity")}>
           Recent Activity
+        </button>
+        <button className={`tab-btn ${activeView === "trends" ? "active" : ""}`} onClick={() => setActiveView("trends")}>
+          Trends
         </button>
       </div>}
 
@@ -1301,46 +1310,21 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-      <div className="section-title">Performance</div>
-      <Card className="top-source-card">
-        <div className="collapsible-header">
-          <div className="top-source-header">
-            <h3>Top Emission Source Insight</h3>
-            <p>Largest source for {monthNames[safeCurrentMonthIndex]} {fiscalMonths[safeCurrentMonthIndex]?.yearNum || selectedYear}</p>
-          </div>
-          <button className="collapse-btn" onClick={() => toggleSection("sourceInsight")}>
-            {expandedSections.sourceInsight ? "Hide trend" : "Show 6-month trend"}
-          </button>
-        </div>
-        {topSource && topSource.value > 0 ? (
-          <>
-            <div className="top-source-main">
-              <div className="top-source-name">{topSource.name}</div>
-              <div className="top-source-share">{topSourcePct.toFixed(1)}% of total monthly emissions</div>
-            </div>
-            <div className="top-source-reco">
-              {aiRecommendationLoading
-                ? "Generating AI recommendation..."
-                : (aiTopSourceRecommendation || fallbackTopSourceRecommendation)}
-            </div>
-            {expandedSections.sourceInsight && (
-              <div className="top-source-trend">
-                <ResponsiveContainer width="100%" height={170}>
-                  <LineChart data={sourceTrendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid stroke="#EEF2F7" strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
-                    <Tooltip formatter={(value) => `${Number(value || 0).toFixed(2)} tCO₂e`} />
-                    <Line type="monotone" dataKey="tco2e" stroke="#1B4D3E" strokeWidth={2.5} dot={{ r: 2 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </>
+      <div className="anomaly-pill-strip">
+        {anomalyAlerts.length === 0 ? (
+          <span className="anomaly-pill neutral">No anomalies</span>
         ) : (
-          <div className="collapsed-summary">No monthly category data available yet for this period.</div>
+          anomalyAlerts.map((alert, idx) => {
+            const monthMatch = String(alert.text || "").match(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/);
+            const monthLabel = monthMatch ? monthMatch[0] : "Month";
+            return (
+              <span key={`${alert.type}-${idx}`} className={`anomaly-pill ${alert.severity}`}>
+                {alert.type.replace("-", " ")} · {monthLabel}
+              </span>
+            );
+          })
         )}
-      </Card>
+      </div>
       <div className="section-title">Monthly trend</div>
       {/* Data Completeness Calendar */}
       <div className="calendar-section">
@@ -1358,16 +1342,6 @@ export default function DashboardPage() {
           </div>
           <div className="chart-wrapper">
             <TwelveMonthTrendChart year={selectedYear} />
-          </div>
-        </Card>
-      </div>
-      <div className={`charts-grid ${DOC_ONLY_DASHBOARD ? "doc-only" : ""}`}>
-        <Card className="chart-card large">
-          <div className="chart-header">
-            <h3>Category Sparklines (Last 6 Months)</h3>
-          </div>
-          <div className="chart-wrapper sparkline-wrapper">
-            <EmissionsTrendLine year={selectedYear} />
           </div>
         </Card>
       </div>
@@ -1621,6 +1595,77 @@ export default function DashboardPage() {
         ) : <div className="collapsed-summary">Pathway chart is hidden. Expand to view trajectory and gap shading.</div>}
       </Card>
 
+      </>
+      )}
+
+      {!DOC_ONLY_DASHBOARD && activeView === "analysis" && (
+      <>
+      <div className="section-title">Analysis</div>
+      <Card className="top-source-card">
+        <div className="collapsible-header">
+          <div className="top-source-header">
+            <h3>Top Emission Source Insight</h3>
+            <p>Largest source for {monthNames[safeCurrentMonthIndex]} {fiscalMonths[safeCurrentMonthIndex]?.yearNum || selectedYear}</p>
+          </div>
+          <button className="collapse-btn" onClick={() => toggleSection("sourceInsight")}>
+            {expandedSections.sourceInsight ? "Hide trend" : "Show 6-month trend"}
+          </button>
+        </div>
+        {topSource && topSource.value > 0 ? (
+          <>
+            <div className="top-source-main">
+              <div className="top-source-name">{topSource.name}</div>
+              <div className="top-source-share">{topSourcePct.toFixed(1)}% of total monthly emissions</div>
+            </div>
+            <div className="top-source-reco">
+              {aiRecommendationLoading
+                ? "Generating AI recommendation..."
+                : (aiTopSourceRecommendation || fallbackTopSourceRecommendation)}
+            </div>
+            {expandedSections.sourceInsight && (
+              <div className="top-source-trend">
+                <ResponsiveContainer width="100%" height={170}>
+                  <LineChart data={sourceTrendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="#EEF2F7" strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(value) => `${Number(value || 0).toFixed(2)} tCO₂e`} />
+                    <Line type="monotone" dataKey="tco2e" stroke="#1B4D3E" strokeWidth={2.5} dot={{ r: 2 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="collapsed-summary">No monthly category data available yet for this period.</div>
+        )}
+      </Card>
+      <div className={`charts-grid ${DOC_ONLY_DASHBOARD ? "doc-only" : ""}`}>
+        <Card className="chart-card large">
+          <div className="chart-header">
+            <h3>Stacked Category Breakdown</h3>
+          </div>
+          <div className="chart-wrapper">
+            <StackedCategoryChart
+              year={selectedYear}
+              country={selectedFacility?.country}
+              city={selectedFacility?.city}
+              branch={selectedFacility?.branch}
+              region={selectedFacility?.region}
+            />
+          </div>
+        </Card>
+      </div>
+      <div className={`charts-grid ${DOC_ONLY_DASHBOARD ? "doc-only" : ""}`}>
+        <Card className="chart-card large">
+          <div className="chart-header">
+            <h3>Category Sparklines (Last 6 Months)</h3>
+          </div>
+          <div className="chart-wrapper sparkline-wrapper">
+            <EmissionsTrendLine year={selectedYear} />
+          </div>
+        </Card>
+      </div>
       <WhatIfScenarioBuilder
         token={token}
         year={selectedYear}
@@ -1636,26 +1681,6 @@ export default function DashboardPage() {
         year={selectedYear}
         selectedFacility={selectedFacility}
       />
-      <Card className="anomaly-alert-card">
-        <div className="collapsible-header">
-          <div>
-            <h3>Anomaly Detection Alerts</h3>
-            <p>Automated checks for spikes, outliers, zero-after-data, and missing month gaps</p>
-          </div>
-        </div>
-        {anomalyAlerts.length === 0 ? (
-          <div className="collapsed-summary">No anomalies detected for current monthly data.</div>
-        ) : (
-          <div className="anomaly-list">
-            {anomalyAlerts.map((alert, idx) => (
-              <div key={`${alert.type}-${idx}`} className={`anomaly-item ${alert.severity}`}>
-                <span className="anomaly-chip">{alert.type.replace("-", " ")}</span>
-                <span>{alert.text}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
       </>
       )}
 
@@ -2133,12 +2158,20 @@ export default function DashboardPage() {
       </>
       )}
 
+      {!DOC_ONLY_DASHBOARD && activeView === "trends" && (
+      <>
+      <div className="section-title">Trends</div>
+      {renderTargetEmptyState(
+        "Multi-year trends locked",
+        "Multi-year trend analysis is available after 2 full fiscal years of data. Keep submitting monthly data to unlock this view."
+      )}
+      </>
+      )}
+
       {/* GHG Protocol Compliance Footer (all tabs) */}
       <div className="ghg-fixed-footer">
         <div className="ghg-footer-inner">
-          <span className="ghg-footer-title"><FiAward /> GHG Protocol Compliance</span>
-          <span>Location-based Scope 2 is primary; market-based is reported separately.</span>
-          <span>Renewables are tracked separately and biogenic emissions are excluded from Scope 1 totals.</span>
+          <span>GHG Protocol Compliant · Location-based Scope 2 primary · Renewables and biogenic emissions tracked separately per GHG Protocol</span>
         </div>
       </div>
 
@@ -2173,26 +2206,14 @@ export default function DashboardPage() {
 
         .header-actions {
           display: flex;
-          flex-direction: column;
+          flex-direction: row;
           gap: 10px;
-          align-items: stretch;
-          width: 100%;
-          max-width: 100%;
-          margin: 0 auto;
-          border: 1px solid #E5E7EB;
-          border-radius: 12px;
-          background: #FFFFFF;
-          padding: 12px;
-        }
-        .header-actions-top {
-          display: flex;
           align-items: center;
-          justify-content: space-between;
-          gap: 10px;
+          flex-wrap: wrap;
         }
         .location-selector {
-          min-width: 0;
-          width: 100%;
+          min-width: 420px;
+          flex: 1 1 620px;
         }
         .missing-month-banner {
           margin: -8px 0 16px;
@@ -2268,6 +2289,12 @@ export default function DashboardPage() {
         .refresh-btn:hover {
           border-color: #2E7D64;
           background: #F8FAF8;
+        }
+        .refresh-btn.icon-only {
+          width: 38px;
+          min-width: 38px;
+          padding: 0;
+          justify-content: center;
         }
 
         @keyframes spin {
@@ -2906,6 +2933,39 @@ export default function DashboardPage() {
           border-radius: 12px;
           padding: 20px;
           margin-bottom: 24px;
+        }
+        .anomaly-pill-strip {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+        .anomaly-pill {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 600;
+          border: 1px solid #E5E7EB;
+          background: #F9FAFB;
+          color: #374151;
+        }
+        .anomaly-pill.high {
+          border-color: #FECACA;
+          background: #FEF2F2;
+          color: #991B1B;
+        }
+        .anomaly-pill.medium {
+          border-color: #FDE68A;
+          background: #FFFBEB;
+          color: #92400E;
+        }
+        .anomaly-pill.low,
+        .anomaly-pill.neutral {
+          border-color: #D1D5DB;
+          background: #F3F4F6;
+          color: #4B5563;
         }
         .anomaly-list {
           display: grid;
@@ -3651,14 +3711,10 @@ export default function DashboardPage() {
           }
           .header-actions {
             width: 100%;
-            padding: 10px;
-          }
-          .header-actions-top {
-            justify-content: flex-start;
-            flex-wrap: wrap;
           }
           .location-selector {
-            min-width: 0;
+            min-width: 280px;
+            flex: 1 1 100%;
           }
           .quarter-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3686,9 +3742,6 @@ export default function DashboardPage() {
           }
           .header-actions {
             width: 100%;
-          }
-          .header-actions-top {
-            flex-direction: column;
             align-items: stretch;
           }
           .year-selector,
@@ -3699,7 +3752,7 @@ export default function DashboardPage() {
           .year-selector {
             max-width: none;
           }
-          .refresh-btn {
+          .refresh-btn:not(.icon-only) {
             width: 100%;
             justify-content: center;
           }

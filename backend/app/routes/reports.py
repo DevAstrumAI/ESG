@@ -2203,10 +2203,16 @@ async def generate_source_recommendation(
     """
     uid = current_user.get("uid")
     company_id, company_data = get_company_id(uid)
-    _ = company_id
+    db = get_db()
 
     source_name = str(body.get("source_name", "")).strip()
     month_label = str(body.get("month_label", "")).strip()
+    month_key = str(body.get("month_key", "")).strip() or month_label
+    year = int(body.get("year") or 0)
+    region = str(body.get("region", "")).strip().lower()
+    country = str(body.get("country", "")).strip().lower()
+    city_filter = str(body.get("city", "")).strip().lower()
+    branch = str(body.get("branch", "")).strip().lower()
     source_share_pct = float(body.get("source_share_pct", 0) or 0)
     source_tco2e = float(body.get("source_tco2e", 0) or 0)
 
@@ -2219,7 +2225,39 @@ async def generate_source_recommendation(
     industry = basic.get("industry") or "General Industry"
     locations = company_data.get("locations", [])
     primary = next((l for l in locations if l.get("isPrimary")), locations[0] if locations else {})
-    city = (primary.get("city") or "global").lower()
+    city = city_filter or (primary.get("city") or "global").lower()
+
+    def _slug(v: str) -> str:
+        return "".join(ch if ch.isalnum() else "-" for ch in str(v or "").strip().lower()).strip("-")
+
+    cache_doc_id = "__".join(
+        [
+            f"y{year}" if year else "y0",
+            f"m{_slug(month_key)}",
+            f"r{_slug(region) or 'all'}",
+            f"c{_slug(country) or 'all'}",
+            f"ct{_slug(city) or 'all'}",
+            f"b{_slug(branch) or 'all'}",
+            f"s{_slug(source_name)}",
+        ]
+    )[:480]
+    cache_ref = (
+        db.collection("aiCache")
+        .document(company_id)
+        .collection("sourceRecommendations")
+        .document(cache_doc_id)
+    )
+
+    cached_doc = cache_ref.get()
+    if cached_doc.exists:
+        cached = cached_doc.to_dict() or {}
+        recommendation = str(cached.get("recommendation") or "").strip()
+        if recommendation:
+            if response is not None:
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+            return {"recommendation": recommendation, "cached": True}
 
     try:
         client = get_openai_client()
@@ -2232,11 +2270,30 @@ async def generate_source_recommendation(
             industry=industry,
             city=city,
         )
+        cache_ref.set(
+            {
+                "recommendation": recommendation,
+                "companyId": company_id,
+                "year": year or None,
+                "monthKey": month_key,
+                "monthLabel": month_label,
+                "sourceName": source_name,
+                "sourceSharePct": source_share_pct,
+                "sourceTco2e": source_tco2e,
+                "location": {
+                    "region": region or None,
+                    "country": country or None,
+                    "city": city_filter or city,
+                    "branch": branch or None,
+                },
+                "createdAt": datetime.utcnow().isoformat(),
+            }
+        )
         if response is not None:
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
-        return {"recommendation": recommendation}
+        return {"recommendation": recommendation, "cached": False}
     except HTTPException:
         raise
     except Exception as e:

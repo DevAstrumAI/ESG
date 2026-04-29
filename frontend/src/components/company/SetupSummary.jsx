@@ -41,6 +41,7 @@ export default function SetupSummary({
   onClearValidationFeedback,
 }) {
   const [editingSection, setEditingSection] = useState(null);
+  const [editBranchEmployees, setEditBranchEmployees] = useState([]);
   const [editData, setEditData] = useState({
     name: data.name,
     description: data.description,
@@ -125,11 +126,60 @@ export default function SetupSummary({
       setSelectedRegion(data.region || "");
       setCities([]);
     }
+    if (section === "employees") {
+      const keyFor = (loc) =>
+        `${String(loc?.region || "").trim().toLowerCase()}|${String(loc?.country || "").trim().toLowerCase()}|${String(loc?.city || "").trim().toLowerCase()}|${String(loc?.branch || "").trim().toLowerCase()}`;
+      const existingRows = Array.isArray(data.branchEmployees) ? data.branchEmployees : [];
+      const locationRows = (data.locations || []).map((loc) => {
+        const match = existingRows.find((row) => keyFor(row) === keyFor(loc));
+        return {
+          region: loc.region || data.region || "",
+          country: loc.country || "",
+          city: loc.city || "",
+          branch: loc.branch || "",
+          employees: Number(match?.employees || 0),
+        };
+      });
+      const mergedRows = locationRows.length > 0 ? locationRows : existingRows.map((row) => ({
+        region: row.region || data.region || "",
+        country: row.country || "",
+        city: row.city || "",
+        branch: row.branch || "",
+        employees: Number(row.employees || 0),
+      }));
+      const legacyFallbackRows =
+        mergedRows.length > 0
+          ? mergedRows
+          : [
+              {
+                region: data.region || "",
+                country: data.country || "",
+                city: data.city || "",
+                branch: data.branch || "Main",
+                employees: Number(data.employees || 0),
+              },
+            ];
+      setEditBranchEmployees(legacyFallbackRows);
+    }
     
     setEditingSection(section);
   };
 
   const handleSave = () => {
+    if (editingSection === "employees") {
+      const normalizedRows = (editBranchEmployees || []).map((row) => ({
+        region: String(row.region || data.region || "").trim().toLowerCase(),
+        country: String(row.country || "").trim().toLowerCase(),
+        city: String(row.city || "").trim(),
+        branch: String(row.branch || "").trim(),
+        employees: Math.max(0, Number(row.employees || 0)),
+      }));
+      const totalEmployees = normalizedRows.reduce((sum, row) => sum + (Number(row.employees) || 0), 0);
+      updateField("branchEmployees", normalizedRows);
+      updateField("employees", totalEmployees);
+      setEditingSection(null);
+      return;
+    }
     if (
       editingSection === "industry" &&
       editData.industry !== data.industry &&
@@ -481,13 +531,46 @@ export default function SetupSummary({
 
           {editingSection === 'employees' ? (
             <div className="edit-mode" key="employees-edit">
-              <InputField
-                label="Number of Employees"
-                type="number"
-                value={editData.employees}
-                onChange={(e) => setEditData({...editData, employees: e.target.value})}
-                placeholder="e.g., 250"
-              />
+              {editBranchEmployees.length > 0 ? (
+                <>
+                  <div className="field-label">Edit Branch-wise Employees</div>
+                  <div className="locations-list">
+                    {editBranchEmployees.map((row, idx) => (
+                      <div key={`edit-branch-emp-${idx}`} className="location-item">
+                        <FiMapPin className="location-icon" />
+                        <span>
+                          {`${row.city || "City"}, ${getCountryLabel(row.country || "")} - ${row.branch || "Main"}`}
+                        </span>
+                        <input
+                          type="number"
+                          className="field-input"
+                          min="0"
+                          value={row.employees}
+                          onChange={(e) => {
+                            const next = [...editBranchEmployees];
+                            next[idx] = { ...next[idx], employees: e.target.value };
+                            setEditBranchEmployees(next);
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="summary-row">
+                    <span className="row-label">Total Employees:</span>
+                    <span className="row-value">
+                      {editBranchEmployees.reduce((sum, row) => sum + (Number(row.employees) || 0), 0).toLocaleString()}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <InputField
+                  label="Number of Employees"
+                  type="number"
+                  value={editData.employees}
+                  onChange={(e) => setEditData({...editData, employees: e.target.value})}
+                  placeholder="e.g., 250"
+                />
+              )}
               <div className="edit-actions">
                 <PrimaryButton onClick={handleSave} className="save-btn"><FiSave /> Save</PrimaryButton>
                 <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>

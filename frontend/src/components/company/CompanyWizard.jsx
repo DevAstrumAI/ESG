@@ -236,33 +236,51 @@ export default function CompanyWizard() {
       // If company exists, use company data
       if (latestCompany && latestCompany.basicInfo?.name && !hasHydrated.current) {
         hasHydrated.current = true;
-        const region = latestCompany.basicInfo?.region || "";
-        const locations = filterLocationsForRegion(region, latestCompany.locations || []).map((loc) => ({
+        const basicInfo = latestCompany.basicInfo || {};
+        const region = basicInfo?.region || latestCompany.region || "";
+        const rawLocations = latestCompany.locations || basicInfo.locations || [];
+        const legacyBranchEmployees = latestCompany.branchEmployees || [];
+        const branchEmployees =
+          (Array.isArray(basicInfo.branchEmployees) && basicInfo.branchEmployees.length > 0)
+            ? basicInfo.branchEmployees
+            : legacyBranchEmployees;
+        const locations = filterLocationsForRegion(region, rawLocations).map((loc) => ({
           ...loc,
           region: loc.region || region,
         }));
+        // Legacy records can lack branch-level rows. Seed one per known location so edit UI is always available.
+        const hydratedBranchEmployees =
+          Array.isArray(branchEmployees) && branchEmployees.length > 0
+            ? branchEmployees
+            : locations.map((loc, index) => ({
+                region: String(loc.region || region || "").trim().toLowerCase(),
+                country: String(loc.country || "").trim().toLowerCase(),
+                city: String(loc.city || "").trim(),
+                branch: String(loc.branch || "").trim(),
+                employees: index === 0 ? Number(basicInfo?.employees || 0) : 0,
+              }));
         const validFirstCountry = locations[0]?.country || "";
         setCompanyData({
-          name: latestCompany.basicInfo?.name || "",
-          description: latestCompany.basicInfo?.description || "",
-          logo: latestCompany.basicInfo?.logo || latestCompany.basicInfo?.logoUrl || "",
+          name: basicInfo?.name || "",
+          description: basicInfo?.description || "",
+          logo: basicInfo?.logo || basicInfo?.logoUrl || "",
           region,
           country: validFirstCountry,
-          industry: latestCompany.basicInfo?.industry || "",
-          employees: latestCompany.basicInfo?.employees || "",
-          branchEmployees: latestCompany.basicInfo?.branchEmployees || [],
-          revenue: latestCompany.basicInfo?.revenue || "",
+          industry: basicInfo?.industry || "",
+          employees: basicInfo?.employees || "",
+          branchEmployees: hydratedBranchEmployees,
+          revenue: basicInfo?.revenue || "",
           locations,
         });
         setSavedSnapshot(buildSnapshot({
-          name: latestCompany.basicInfo?.name || "",
-          description: latestCompany.basicInfo?.description || "",
-          logo: latestCompany.basicInfo?.logo || latestCompany.basicInfo?.logoUrl || "",
+          name: basicInfo?.name || "",
+          description: basicInfo?.description || "",
+          logo: basicInfo?.logo || basicInfo?.logoUrl || "",
           region,
-          industry: latestCompany.basicInfo?.industry || "",
-          employees: latestCompany.basicInfo?.employees || "",
-          branchEmployees: latestCompany.basicInfo?.branchEmployees || [],
-          revenue: latestCompany.basicInfo?.revenue || "",
+          industry: basicInfo?.industry || "",
+          employees: basicInfo?.employees || "",
+          branchEmployees: hydratedBranchEmployees,
+          revenue: basicInfo?.revenue || "",
           locations,
         }));
         // Clear localStorage draft since company exists

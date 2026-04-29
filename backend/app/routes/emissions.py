@@ -1029,7 +1029,19 @@ async def get_monthly_category_breakdown(
             monthly_data[month]["refrigerantsKg"] = monthly_data[month].get("refrigerantsKg", 0) + results.get("refrigerants", {}).get("totalKgCO2e", 0)
             monthly_data[month]["fugitiveKg"] = monthly_data[month].get("fugitiveKg", 0) + results.get("fugitive", {}).get("totalKgCO2e", 0)
             mobile_entries = ((doc.get("rawData") or {}).get("mobile") or [])
-            month_vehicle_count = sum(float(e.get("vehicleCount") or 0) for e in mobile_entries if isinstance(e, dict))
+            month_vehicle_count = 0.0
+            for e in mobile_entries:
+                if not isinstance(e, dict):
+                    continue
+                explicit_count = float(e.get("vehicleCount") or 0)
+                if explicit_count > 0:
+                    month_vehicle_count += explicit_count
+                    continue
+                # Backward-compatible fallback for older records that didn't save vehicleCount:
+                # if a valid mobile activity entry exists, count at least one vehicle row.
+                activity = float(e.get("litresConsumed") or e.get("distanceKm") or 0)
+                if activity > 0:
+                    month_vehicle_count += 1.0
             monthly_data[month]["mobileVehicleCount"] = monthly_data[month].get("mobileVehicleCount", 0) + month_vehicle_count
         else:
             monthly_data[month]["electricityLocationKg"] = monthly_data[month].get("electricityLocationKg", 0) + results.get("electricity", {}).get("locationBasedKgCO2e", 0)
