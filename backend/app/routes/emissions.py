@@ -8,22 +8,6 @@ from app.utils.location_resolver import resolve_location, get_available_location
 from datetime import datetime
 import json
 
-# Debug-mode instrumentation: write NDJSON lines to the session log file.
-LOG_PATH = r"C:\Users\Home\OneDrive\Desktop\ESG\debug-841ec6.log"
-
-def _append_agent_log(hypothesisId: str, location: str, message: str, data: dict, runId: str = "pre-fix"):
-    payload = {
-        "sessionId": "841ec6",
-        "runId": runId,
-        "hypothesisId": hypothesisId,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": int(datetime.utcnow().timestamp() * 1000),
-    }
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-
 router = APIRouter(tags=["Emissions"])
 FISCAL_YEAR_START_MONTH = 6  # June
 
@@ -380,6 +364,7 @@ async def get_scope1_data(
                 "fuelType": entry.get("fuelType", ""),
                 "distanceKm": entry.get("distanceKm"),
                 "litresConsumed": entry.get("litresConsumed"),
+                "vehicleCount": entry.get("vehicleCount", entry.get("count", 0)),
                 "month": month or data.get("month", ""),
                 "kgCO2e": entry.get("kgCO2e", 0)
             })
@@ -586,25 +571,6 @@ async def save_scope1(
         # Calculate emissions
         results = calculate_scope1(body, resolved_region, normalized_country, normalized_city)
 
-        # #region agent log H14
-        _append_agent_log(
-            hypothesisId="H14",
-            location="backend/app/routes/emissions.py:save_scope1",
-            message="Calculated Scope1 stored results (mobile totals + factorUsed)",
-            data={
-                "year": year,
-                "month": month,
-                "location": {"region": resolved_region, "country": normalized_country, "city": normalized_city},
-                "inputMobileCount": len(body.get("mobile", []) or []),
-                "firstInputMobile": (body.get("mobile", []) or [None])[0],
-                "calculatedMobileTotalKgCO2e": (results.get("mobile") or {}).get("totalKgCO2e"),
-                "firstCalculatedMobileEntry": (results.get("mobile", {}).get("entries", []) or [None])[0],
-                "grandTotalKgCO2e": results.get("totalKgCO2e"),
-            },
-            runId="pre-fix",
-        )
-        # #endregion
-
         # Save to Firestore (per normalized city so multiple facilities can use the same month)
         doc_id = _scope_storage_doc_id(month, year, normalized_city, branch)
         doc_ref = db.collection("emissionData").document(company_id).collection("scope1").document(doc_id)
@@ -690,22 +656,6 @@ async def save_scope2(
 
         # Calculate emissions
         results = calculate_scope2(body, resolved_region, normalized_country, normalized_city)
-
-        # #region agent log H3
-        _append_agent_log(
-            hypothesisId="H3",
-            location="backend/app/routes/emissions.py:save_scope2",
-            message="Calculated Scope 2 results (shape + totals)",
-            data={
-                "resultsKeys": list(results.keys()),
-                "locationBasedKgCO2e": results.get("locationBasedKgCO2e"),
-                "marketBasedKgCO2e": results.get("marketBasedKgCO2e"),
-                "electricityKeys": list((results.get("electricity") or {}).keys()),
-                "electricityTotalKgCO2e": (results.get("electricity") or {}).get("totalKgCO2e"),
-            },
-            runId="pre-fix",
-        )
-        # #endregion
 
         # Save to Firestore (per normalized city so multiple facilities can use the same month)
         doc_id = _scope_storage_doc_id(month, year, normalized_city, branch)
@@ -1226,7 +1176,6 @@ async def get_summary(
 
         # Aggregate Scope 1
         scope1_docs = db.collection("emissionData").document(company_id).collection("scope1").stream()
-        scope1_doc_logged = False
         for doc in scope1_docs:
             data = doc.to_dict()
             if region or country or city or branch:
@@ -1239,44 +1188,8 @@ async def get_summary(
                     cat_total = results.get(category, {}).get("totalKgCO2e", 0)
                     scope1_breakdown[category] = scope1_breakdown.get(category, 0) + cat_total
 
-                # #region agent log H13
-                if not scope1_doc_logged:
-                    scope1_doc_logged = True
-                    _append_agent_log(
-                        hypothesisId="H13",
-                        location="backend/app/routes/emissions.py:get_summary",
-                        message="First matching Scope1 doc used for summary aggregation",
-                        data={
-                            "requestedYear": year,
-                            "docId": doc.id,
-                            "docYear": data.get("year"),
-                            "resultsKeys": list((results or {}).keys()),
-                            "resultsTotalKgCO2e": results.get("totalKgCO2e"),
-                            "resultsMobileTotalKgCO2e": (results.get("mobile") or {}).get("totalKgCO2e"),
-                            "resultsMobileEntriesCount": len((results.get("mobile") or {}).get("entries", []) or []),
-                            "resultsMobileFirstEntry": ((results.get("mobile") or {}).get("entries", []) or [None])[0],
-                            "scope1_breakdown_soFar": scope1_breakdown,
-                        },
-                        runId="pre-fix",
-                    )
-                # #endregion
-
-        # #region agent log H11
-        _append_agent_log(
-            hypothesisId="H11",
-            location="backend/app/routes/emissions.py:get_summary",
-            message="Scope1 aggregation final totals (post scope1 loop)",
-            data={
-                "scope1_total_used_totalKgCO2e": scope1_total,
-                "scope1_breakdown": scope1_breakdown,
-            },
-            runId="pre-fix",
-        )
-        # #endregion
-
         # Aggregate Scope 2
         scope2_docs = db.collection("emissionData").document(company_id).collection("scope2").stream()
-        scope2_doc_logged = False
         for doc in scope2_docs:
             data = doc.to_dict()
             if region or country or city or branch:
@@ -1298,43 +1211,7 @@ async def get_summary(
                 scope2_breakdown["heating"] = scope2_breakdown.get("heating", 0) + heating_total
                 scope2_breakdown["renewables"] = scope2_breakdown.get("renewables", 0) + renewables_total
 
-                # #region agent log H1
-                if not scope2_doc_logged:
-                    scope2_doc_logged = True
-                    _append_agent_log(
-                        hypothesisId="H1",
-                        location="backend/app/routes/emissions.py:get_summary",
-                        message="Scope 2 aggregation uses missing fields?",
-                        data={
-                            "documentId": doc.id,
-                            "resultsKeys": list(results.keys()),
-                            "usedLocationBasedKgCO2e": used_location_totalKgCO2e,
-                            "usedMarketBasedKgCO2e": used_market_totalKgCO2e,
-                            "locationBasedKgCO2e": results.get("locationBasedKgCO2e"),
-                            "marketBasedKgCO2e": results.get("marketBasedKgCO2e"),
-                            "electricityKeys": list((results.get("electricity") or {}).keys()),
-                            "electricityLocationBasedKgCO2e": (results.get("electricity") or {}).get("locationBasedKgCO2e"),
-                            "breakdownElectricity_soFar": scope2_breakdown.get("electricity"),
-                        },
-                        runId="pre-fix",
-                    )
-                # #endregion
-
         grand_total_kg = scope1_total + scope2_location_total
-
-        # #region agent log H1
-        _append_agent_log(
-            hypothesisId="H1",
-            location="backend/app/routes/emissions.py:get_summary",
-            message="Scope 2 aggregation final totals (post-loop)",
-            data={
-                "scope2_location_total_used_locationBasedKgCO2e": scope2_location_total,
-                "scope2_market_total_used_marketBasedKgCO2e": scope2_market_total,
-                "scope2_breakdown": scope2_breakdown,
-            },
-            runId="pre-fix",
-        )
-        # #endregion
 
         if response is not None:
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"

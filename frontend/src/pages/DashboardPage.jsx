@@ -2025,16 +2025,16 @@ export default function DashboardPage() {
             <div className="regional-value">{(consolidatedRegionalKg / 1000).toFixed(2)} tCO₂e</div>
             <div className="regional-sub">Sum of all configured regions for FY {selectedYear}-{selectedYear + 1}</div>
           </div>
-          <div className="regional-drill">
-            <label>Region Drill-down</label>
-            <ThemedSelect
-              value={selectedRegionDrill}
-              onChange={setSelectedRegionDrill}
-              options={regionalBreakdown.map((r) => ({ value: r.region, label: String(r.region || "").replace("-", " ") }))}
-              placeholder="Select region"
-              menuDirection="down"
-            />
-          </div>
+        </div>
+        <div className="regional-drill">
+          <label>Region Drill-down</label>
+          <ThemedSelect
+            value={selectedRegionDrill}
+            onChange={setSelectedRegionDrill}
+            options={regionalBreakdown.map((r) => ({ value: r.region, label: String(r.region || "").replace("-", " ") }))}
+            placeholder="Select region"
+            menuDirection="down"
+          />
         </div>
 
         <div className="regional-breakdown">
@@ -3433,9 +3433,7 @@ export default function DashboardPage() {
           margin-bottom: 24px;
         }
         .regional-summary {
-          display: grid;
-          grid-template-columns: 2fr 1fr;
-          gap: 12px;
+          display: block;
           margin-bottom: 14px;
         }
         .regional-total {
@@ -3466,6 +3464,7 @@ export default function DashboardPage() {
           border-radius: 10px;
           padding: 12px;
           background: #fff;
+          margin-bottom: 12px;
         }
         .regional-drill label {
           display: block;
