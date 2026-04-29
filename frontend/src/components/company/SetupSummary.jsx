@@ -951,6 +951,56 @@ export default function SetupSummary({
           margin-bottom: 2px;
         }
         .field-select { width: 100%; }
+        .field-input {
+          width: 100%;
+          min-height: 42px;
+          padding: 10px 12px;
+          border: 1px solid #D1D5DB;
+          border-radius: 10px;
+          background: #FFFFFF;
+          color: #111827;
+          font-size: 14px;
+          font-weight: 500;
+          line-height: 1.2;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.18s ease;
+          box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+          appearance: none;
+          -webkit-appearance: none;
+          -moz-appearance: textfield;
+        }
+        .field-input::placeholder {
+          color: #9CA3AF;
+          font-weight: 400;
+        }
+        .field-input:hover:not(:disabled) {
+          border-color: #9CA3AF;
+          background: #FCFDFD;
+        }
+        .field-input:focus {
+          outline: none;
+          border-color: #2E7D64;
+          box-shadow: 0 0 0 3px rgba(46, 125, 100, 0.14);
+          background: #FFFFFF;
+        }
+        .field-input:disabled {
+          background: #F3F4F6;
+          color: #9CA3AF;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+        .field-input[type=number]::-webkit-inner-spin-button,
+        .field-input[type=number]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .location-item .field-input {
+          width: 130px;
+          min-height: 38px;
+          padding: 8px 10px;
+          font-size: 13px;
+          text-align: right;
+          font-variant-numeric: tabular-nums;
+        }
         .pair-grid {
           display: grid;
           grid-template-columns: 1fr 1fr auto;
