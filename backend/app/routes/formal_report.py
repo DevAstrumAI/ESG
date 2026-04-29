@@ -239,7 +239,7 @@ async def generate_formal_report(
         prompt = build_formal_prompt(company_data, s1, s2, region_ctx, year)
 
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",

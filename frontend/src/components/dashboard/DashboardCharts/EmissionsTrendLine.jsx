@@ -36,15 +36,33 @@ export default function EmissionsTrendLine({ year }) {
   }, [token, year]);
 
   const getLast6Months = () => {
+    const selectedFiscalStartYear = Number(year);
+    const now = new Date();
+    const nowMonth = now.getMonth() + 1;
+    const currentFiscalStartYear = nowMonth >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+
     const fyMonths = Array.from({ length: 12 }, (_, idx) => {
       const monthNum = ((5 + idx) % 12) + 1; // Jun..May
-      const yearNum = monthNum >= 6 ? Number(year) : Number(year) + 1;
+      const yearNum = monthNum >= 6 ? selectedFiscalStartYear : selectedFiscalStartYear + 1;
       return {
         name: new Date(yearNum, monthNum - 1, 1).toLocaleString("default", { month: "short" }),
         fullDate: `${yearNum}-${String(monthNum).padStart(2, "0")}`,
       };
     });
-    return fyMonths.slice(6); // latest 6 months in fiscal sequence (Dec..May)
+
+    // Use a dynamic trailing window:
+    // - past FY: end at May
+    // - current FY: end at current month (no future months)
+    // - future FY: end at first fiscal month
+    const endIndex = (() => {
+      if (selectedFiscalStartYear < currentFiscalStartYear) return 11;
+      if (selectedFiscalStartYear > currentFiscalStartYear) return 0;
+      const currentFiscalIndex = nowMonth >= 6 ? nowMonth - 6 : nowMonth + 6;
+      return Math.min(Math.max(currentFiscalIndex, 0), 11);
+    })();
+
+    const startIndex = Math.max(0, endIndex - 5);
+    return fyMonths.slice(startIndex, endIndex + 1);
   };
 
   const calculatePercentageChange = (data) => {

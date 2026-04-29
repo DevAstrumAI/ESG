@@ -1,7 +1,83 @@
 // src/components/company/EmployeeForm.jsx
+import { useMemo, useState } from "react";
 import { FiUsers } from "react-icons/fi";
+import ThemedSelect from "../ui/ThemedSelect";
 
 export default function EmployeeForm({ data, updateField }) {
+  const locations = data.locations || [];
+  const branchEmployees = data.branchEmployees || [];
+
+  const [selectedCountry, setSelectedCountry] = useState("");
+  const [selectedCity, setSelectedCity] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState("");
+  const [entryCount, setEntryCount] = useState("");
+
+  const keyFor = (loc) =>
+    `${String(loc.region || "").toLowerCase()}|${String(loc.country || "").toLowerCase()}|${String(loc.city || "").toLowerCase()}|${String(loc.branch || "").toLowerCase()}`;
+
+  const employeesFor = (loc) => {
+    const k = keyFor(loc);
+    const found = branchEmployees.find((b) => keyFor(b) === k);
+    return found?.employees ?? "";
+  };
+
+  const updateBranchEmployees = (loc, value) => {
+    const parsed = Number(value);
+    const sanitized = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    const k = keyFor(loc);
+    const next = [...branchEmployees];
+    const idx = next.findIndex((b) => keyFor(b) === k);
+    const row = {
+      region: loc.region || data.region || "",
+      country: loc.country,
+      city: loc.city,
+      branch: loc.branch || "",
+      employees: sanitized,
+    };
+    if (idx >= 0) next[idx] = row;
+    else next.push(row);
+    updateField("branchEmployees", next);
+    const total = next.reduce((sum, b) => sum + (Number(b.employees) || 0), 0);
+    updateField("employees", total);
+  };
+
+  const countries = useMemo(() => {
+    const seen = new Set();
+    return locations
+      .filter((loc) => {
+        const key = String(loc.country || "").toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((loc) => ({ value: loc.country, label: String(loc.country || "").toUpperCase() }));
+  }, [locations]);
+
+  const cities = useMemo(() => {
+    if (!selectedCountry) return [];
+    const seen = new Set();
+    return locations
+      .filter((loc) => loc.country === selectedCountry)
+      .filter((loc) => {
+        const key = String(loc.city || "").toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((loc) => ({ value: loc.city, label: loc.city }));
+  }, [locations, selectedCountry]);
+
+  const branches = useMemo(() => {
+    if (!selectedCountry || !selectedCity) return [];
+    return locations
+      .filter((loc) => loc.country === selectedCountry && loc.city === selectedCity)
+      .map((loc) => ({ value: loc.branch || "", label: loc.branch || "Main" }));
+  }, [locations, selectedCountry, selectedCity]);
+
+  const selectedLoc = locations.find(
+    (loc) => loc.country === selectedCountry && loc.city === selectedCity && (loc.branch || "") === selectedBranch
+  );
+
   return (
     <div className="form-step">
       <div className="step-header">
@@ -10,21 +86,113 @@ export default function EmployeeForm({ data, updateField }) {
       </div>
 
       <p className="step-description">
-        Company size helps us calculate emissions intensity and benchmarks.
+        Enter employee count for each branch. Total employees are calculated automatically.
       </p>
 
       <div className="employee-input">
-        <div className="field-group">
+        {locations.length === 0 ? (
+          <div className="employee-size-badge">Add locations first to map branch-level employees.</div>
+        ) : (
+          <>
+            <div className="selector-grid">
+              <div className="field-group">
+                <label className="field-label">Region</label>
+                <input className="field-input" value={data.region || ""} readOnly />
+              </div>
+              <div className="field-group">
+                <label className="field-label">Country</label>
+                <ThemedSelect
+                  value={selectedCountry}
+                  onChange={(v) => {
+                    setSelectedCountry(v);
+                    setSelectedCity("");
+                    setSelectedBranch("");
+                  }}
+                  options={countries}
+                  placeholder="Select country"
+                />
+              </div>
+              <div className="field-group">
+                <label className="field-label">City</label>
+                <ThemedSelect
+                  value={selectedCity}
+                  onChange={(v) => {
+                    setSelectedCity(v);
+                    setSelectedBranch("");
+                  }}
+                  options={cities}
+                  placeholder="Select city"
+                  disabled={!selectedCountry}
+                />
+              </div>
+              <div className="field-group">
+                <label className="field-label">Branch</label>
+                <ThemedSelect
+                  value={selectedBranch}
+                  onChange={setSelectedBranch}
+                  options={branches}
+                  placeholder="Select branch"
+                  disabled={!selectedCountry || !selectedCity}
+                />
+              </div>
+              <div className="field-group">
+                <label className="field-label">Employees</label>
+                <input
+                  type="number"
+                  className="field-input"
+                  min="0"
+                  value={entryCount}
+                  onChange={(e) => setEntryCount(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="field-group">
+                <label className="field-label"> </label>
+                <button
+                  type="button"
+                  className="apply-btn"
+                  onClick={() => {
+                    if (!selectedLoc) return;
+                    updateBranchEmployees(selectedLoc, entryCount);
+                    setEntryCount("");
+                  }}
+                  disabled={!selectedLoc || entryCount === ""}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+            <div className="branch-grid">
+            {locations.map((loc) => (
+              <div key={keyFor(loc)} className="branch-row">
+                <div className="branch-label">
+                  {loc.country?.toUpperCase()} / {loc.city} / {loc.branch || "Main"}
+                </div>
+                <input
+                  type="number"
+                  className="field-input"
+                  value={employeesFor(loc)}
+                  placeholder="0"
+                  min="0"
+                  onChange={(e) => updateBranchEmployees(loc, e.target.value)}
+                />
+              </div>
+            ))}
+            </div>
+          </>
+        )}
+
+        <div className="field-group total-group">
           <label className="field-label">
-            Number of Employees <span className="required">*</span>
+            Total Employees <span className="required">*</span>
           </label>
           <input
             type="number"
             className="field-input"
             value={data.employees}
-            placeholder="e.g., 250"
-            onChange={(e) => updateField("employees", e.target.value)}
-            min="1"
+            placeholder="0"
+            min="0"
+            readOnly
           />
         </div>
 
@@ -76,6 +244,45 @@ export default function EmployeeForm({ data, updateField }) {
         }
 
         .employee-input {
+          max-width: 100%;
+        }
+        .branch-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 10px;
+          margin-bottom: 16px;
+        }
+        .branch-row {
+          display: grid;
+          grid-template-columns: minmax(240px, 1fr) 180px;
+          gap: 12px;
+          align-items: center;
+        }
+        .selector-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 18px;
+        }
+        .apply-btn {
+          border: none;
+          border-radius: 8px;
+          background: #2E7D64;
+          color: white;
+          padding: 10px 12px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .apply-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .branch-label {
+          font-size: 13px;
+          color: #374151;
+          font-weight: 600;
+        }
+        .total-group {
           max-width: 300px;
         }
 
@@ -123,6 +330,12 @@ export default function EmployeeForm({ data, updateField }) {
         }
 
         @media (max-width: 768px) {
+          .branch-row {
+            grid-template-columns: 1fr;
+          }
+          .selector-grid {
+            grid-template-columns: 1fr;
+          }
           .step-header {
             gap: 10px;
             margin-bottom: 12px;

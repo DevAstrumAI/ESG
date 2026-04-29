@@ -24,10 +24,19 @@ export default function App() {
   const token = useAuthStore((s) => s.token);
   const loggedIn = useAuthStore((s) => s.loggedIn);
   const refreshToken = useAuthStore((s) => s.refreshToken);
+  const startAuthSync = useAuthStore((s) => s.startAuthSync);
+  const stopAuthSync = useAuthStore((s) => s.stopAuthSync);
   const refreshingRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
 
-  fetch(`${API}/health`, { method: "GET" }).catch(() => {});
+  useEffect(() => {
+    fetch(`${API}/health`, { method: "GET" }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    startAuthSync();
+    return () => stopAuthSync();
+  }, [startAuthSync, stopAuthSync]);
 
   useEffect(() => {
     if (!loggedIn || !token) return undefined;

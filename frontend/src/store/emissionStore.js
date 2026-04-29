@@ -513,7 +513,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
       const { useCompanyStore } = require('./companyStore');
       const loc = useSelectedLocationStore.getState().getSelectedLocation(useCompanyStore.getState().company);
       if (loc?.country && loc?.city) {
-        url = appendLocationQuery(url, loc.country, loc.city);
+        url = appendLocationQuery(url, loc.country, loc.city, loc.branch, loc.region);
       }
       
       const response = await fetch(url, {
@@ -568,7 +568,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
       const { useCompanyStore } = require('./companyStore');
       const loc = useSelectedLocationStore.getState().getSelectedLocation(useCompanyStore.getState().company);
       if (loc?.country && loc?.city) {
-        url = appendLocationQuery(url, loc.country, loc.city);
+        url = appendLocationQuery(url, loc.country, loc.city, loc.branch, loc.region);
       }
       
       const response = await fetch(url, {
@@ -631,8 +631,9 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
 
       const country = normalizeLocationValue(selectedLoc?.country || 'uae');
       const city = normalizeLocationValue(selectedLoc?.city || 'dubai');
+      const branch = String(selectedLoc?.branch || "").trim();
       const region =
-        companyStore.company?.basicInfo?.region || getRegionFromCountry(country);
+        selectedLoc?.region || companyStore.company?.basicInfo?.region || getRegionFromCountry(country);
 
       const payload = {
         year,
@@ -640,11 +641,13 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
         region,
         country,
         city,
+        branch,
         mobile: state.scope1Vehicles.map((v) => {
           const fuelType   = mapVehicleFuelType(v.vehicleType, v.fuelType);
           const useDistance = DISTANCE_BASED_TYPES.has(fuelType);
           return {
             fuelType,
+            vehicleCount: Number(v.vehicleCount || 0),
             ...(useDistance
               ? { distanceKm:     Number(v.km     || 0) }
               : { litresConsumed: Number(v.litres || 0) }
@@ -727,8 +730,9 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
 
       const country = normalizeLocationValue(selectedLoc?.country || 'uae');
       const city = normalizeLocationValue(selectedLoc?.city || 'dubai');
+      const branch = String(selectedLoc?.branch || "").trim();
       const region =
-        companyStore.company?.basicInfo?.region || getRegionFromCountry(country);
+        selectedLoc?.region || companyStore.company?.basicInfo?.region || getRegionFromCountry(country);
 
       const payload = {
         year,
@@ -736,6 +740,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
         region,
         country,
         city,
+        branch,
         electricity: state.scope2Electricity.map((e) => ({
           facilityName:    e.facilityName || 'Main City',
           consumptionKwh:  Number(e.consumption || e.kwh || 0),
@@ -823,7 +828,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
 
       let summaryUrl = `${API_URL}/api/emissions/summary?year=${resolvedYear}`;
       if (loc?.country && loc?.city) {
-        summaryUrl = appendLocationQuery(summaryUrl, loc.country, loc.city);
+        summaryUrl = appendLocationQuery(summaryUrl, loc.country, loc.city, loc.branch, loc.region);
       }
 
       const response = await fetch(summaryUrl, {
@@ -852,7 +857,7 @@ deleteScope1FugitiveWithSync: async (entry, token, year, month) => {
       try {
         let monthStatusUrl = `${API_URL}/api/emissions/month-status?year=${resolvedYear}`;
         if (loc?.country && loc?.city) {
-          monthStatusUrl = appendLocationQuery(monthStatusUrl, loc.country, loc.city);
+          monthStatusUrl = appendLocationQuery(monthStatusUrl, loc.country, loc.city, loc.branch, loc.region);
         }
         const monthStatusResponse = await fetch(monthStatusUrl, {
           headers: { Authorization: `Bearer ${token}` },

@@ -108,6 +108,7 @@ export const normalizeScope1MobileEntry = (entry, fallbackId) => {
     fuelType: FUEL_LABEL_BY_CODE[fuelCode] || (String(fuelCode).includes("diesel") ? "Diesel" : "Petrol"),
     litres: entry?.litresConsumed ?? entry?.litres ?? 0,
     km: entry?.distanceKm ?? entry?.km ?? 0,
+    vehicleCount: entry?.vehicleCount ?? entry?.count ?? 0,
     month: entry?.month ? String(entry.month) : "",
   };
 };

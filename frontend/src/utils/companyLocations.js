@@ -9,6 +9,11 @@ export const countriesByRegion = {
     { label: "Saudi Arabia", value: "saudi-arabia" },
   ],
   "asia-pacific": [{ label: "Singapore", value: "singapore" }],
+  "multi-region": [
+    { label: "United Arab Emirates", value: "uae" },
+    { label: "Saudi Arabia", value: "saudi-arabia" },
+    { label: "Singapore", value: "singapore" },
+  ],
 };
 
 export const citiesByCountry = {
@@ -19,6 +24,15 @@ export const citiesByCountry = {
 };
 
 export function getValidCountryValuesForRegion(region) {
+  if (!region || region === "multi-region") {
+    return Array.from(
+      new Set(
+        Object.values(countriesByRegion)
+          .flat()
+          .map((c) => c.value)
+      )
+    );
+  }
   return (countriesByRegion[region] || []).map((c) => c.value);
 }
 
@@ -31,11 +45,13 @@ function normalizeCountryValue(value) {
 
 export function filterLocationsForRegion(region, locations = []) {
   const valid = new Set(getValidCountryValuesForRegion(region));
-  return (locations || []).filter((loc) => {
+  const all = (locations || []).filter((loc) => {
     const country = normalizeCountryValue(loc?.country);
     return country && valid.has(country);
   }).map((loc) => ({
     ...loc,
     country: normalizeCountryValue(loc?.country),
   }));
+  if (!region || region === "multi-region") return all;
+  return all.filter((loc) => !loc?.region || loc.region === region);
 }

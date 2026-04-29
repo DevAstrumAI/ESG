@@ -27,8 +27,9 @@ export default function AppLayout({ children, pageTitle }) {
   return (
     <div style={{ 
       display: "flex", 
-      width: "100vw",
+      width: "100%",
       height: "100vh",
+      minWidth: 0,
       margin: 0,
       padding: 0,
       backgroundColor: "#f9fafb",
@@ -56,6 +57,7 @@ export default function AppLayout({ children, pageTitle }) {
       {/* Main Content */}
       <div style={{
         flex: 1,
+        minWidth: 0,
         height: "100vh",
         display: "flex",
         flexDirection: "column",
@@ -72,16 +74,19 @@ export default function AppLayout({ children, pageTitle }) {
 
         <main style={{
           flex: 1,
+          minWidth: 0,
           overflowY: "auto",
-          overflowX: "auto",
+          overflowX: "hidden",
           backgroundColor: "#f9fafb",
           padding: windowWidth < 768 ? "16px" : "24px",
         }}>
           <div style={{
+            width: "100%",
             maxWidth: "1400px",
             margin: "0 auto",
             height: "100%",
             backgroundColor: "#f9fafb",
+            minWidth: 0,
           }}>
             {children}
           </div>

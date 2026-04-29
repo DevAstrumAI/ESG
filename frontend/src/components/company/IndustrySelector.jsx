@@ -21,6 +21,18 @@ export default function IndustrySelector({ data, updateField }) {
   ];
 
   const selectedIndustry = industries.find(i => i.value === data.industry);
+  const hasMultipleBranches = Array.isArray(data.locations) && data.locations.length > 1;
+
+  const handleIndustryChange = (nextIndustry) => {
+    if (!nextIndustry || nextIndustry === data.industry) return;
+    if (hasMultipleBranches) {
+      const ok = window.confirm(
+        "Industry is company-wide and applies to all branches. Changing it here will update industry for all branches. Continue?"
+      );
+      if (!ok) return;
+    }
+    updateField("industry", nextIndustry);
+  };
 
   return (
     <div className="form-step">
@@ -41,11 +53,16 @@ export default function IndustrySelector({ data, updateField }) {
           <ThemedSelect
             className="field-select"
             value={data.industry}
-            onChange={(nextIndustry) => updateField("industry", nextIndustry)}
+            onChange={handleIndustryChange}
             options={industries}
             placeholder="Choose your primary industry"
           />
         </div>
+        {hasMultipleBranches && (
+          <p className="industry-global-note">
+            Industry is set at company level and is shared by all branches.
+          </p>
+        )}
         
         {data.industry && selectedIndustry && (
           <div className="industry-badge">
@@ -145,6 +162,11 @@ export default function IndustrySelector({ data, updateField }) {
           font-size: 14px;
           color: #2E7D64;
           border: 1px solid #E5E7EB;
+        }
+        .industry-global-note {
+          margin: 10px 0 0;
+          font-size: 12px;
+          color: #6B7280;
         }
 
         @media (max-width: 768px) {

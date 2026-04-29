@@ -3,7 +3,7 @@ import React from "react";
 import './index.css';
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import AppRoutes from "./app/routes";
+import App from "./App";
 import { warmupBackend } from "./services/api";
 
 // ─── Clear stale auth data on app startup ───────────────────────────────────
@@ -53,6 +53,6 @@ const root = ReactDOM.createRoot(document.getElementById("root"));
 
 root.render(
   <BrowserRouter>
-    <AppRoutes />
+    <App />
   </BrowserRouter>
 );

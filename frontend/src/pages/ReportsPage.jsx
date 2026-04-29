@@ -362,6 +362,7 @@ export default function ReportsPage() {
                     <div className="breakdown-item"><span className="breakdown-name">Section 2</span><span className="breakdown-value">Scope 1 Emissions Detail</span></div>
                     <div className="breakdown-item"><span className="breakdown-name">Section 3</span><span className="breakdown-value">Scope 2 Emissions Detail</span></div>
                     <div className="breakdown-item"><span className="breakdown-name">Section 4</span><span className="breakdown-value">Year-on-Year Comparison</span></div>
+                    <div className="breakdown-item"><span className="breakdown-name">Section 5</span><span className="breakdown-value">Emissions Intensity Metrics</span></div>
                     <div className="breakdown-item"><span className="breakdown-name">Section 6</span><span className="breakdown-value">Methodology & Emission Factor Disclosure</span></div>
                     <div className="breakdown-item"><span className="breakdown-name">Section 7</span><span className="breakdown-value">Category-Level Recommendations</span></div>
                   </div>
@@ -561,6 +562,66 @@ export default function ReportsPage() {
                     </div>
                   )}
                   <p className="section-summary">{aiReport.report_standard.section_3_5_yoy_comparison?.ai_variance_explanation || ""}</p>
+                </div>
+
+                <div className="report-section report-page">
+                  <h4>Section 5 — Emissions Intensity Metrics</h4>
+                  <div className="breakdown-list">
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">tCO₂e per Employee (Current)</span>
+                      <span className="breakdown-value">
+                        {aiReport.report_standard.section_3_6_intensity_metrics?.tco2e_per_employee?.current != null
+                          ? Number(aiReport.report_standard.section_3_6_intensity_metrics.tco2e_per_employee.current).toFixed(4)
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">tCO₂e per Employee (Previous)</span>
+                      <span className="breakdown-value">
+                        {aiReport.report_standard.section_3_6_intensity_metrics?.tco2e_per_employee?.prior != null
+                          ? Number(aiReport.report_standard.section_3_6_intensity_metrics.tco2e_per_employee.prior).toFixed(4)
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">Employee Delta</span>
+                      <span className="breakdown-value">
+                        {aiReport.report_standard.section_3_6_intensity_metrics?.tco2e_per_employee?.delta_pct != null
+                          ? `${Number(aiReport.report_standard.section_3_6_intensity_metrics.tco2e_per_employee.delta_pct).toFixed(2)}%`
+                          : "N/A"}
+                      </span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">tCO₂e per Vehicle (Current)</span>
+                      <span className="breakdown-value">
+                        {aiReport.report_standard.section_3_6_intensity_metrics?.tco2e_per_vehicle?.current != null
+                          ? Number(aiReport.report_standard.section_3_6_intensity_metrics.tco2e_per_vehicle.current).toFixed(4)
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">tCO₂e per Vehicle (Previous)</span>
+                      <span className="breakdown-value">
+                        {aiReport.report_standard.section_3_6_intensity_metrics?.tco2e_per_vehicle?.prior != null
+                          ? Number(aiReport.report_standard.section_3_6_intensity_metrics.tco2e_per_vehicle.prior).toFixed(4)
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-name">Vehicle Delta</span>
+                      <span className="breakdown-value">
+                        {aiReport.report_standard.section_3_6_intensity_metrics?.tco2e_per_vehicle?.delta_pct != null
+                          ? `${Number(aiReport.report_standard.section_3_6_intensity_metrics.tco2e_per_vehicle.delta_pct).toFixed(2)}%`
+                          : "N/A"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="methodology-notes">
+                    <span><strong>Employee Count Used:</strong> {aiReport.report_standard.section_3_6_intensity_metrics?.tco2e_per_employee?.employees_used ?? "—"}</span>
+                    <span><strong>Vehicle Count Used:</strong> {aiReport.report_standard.section_3_6_intensity_metrics?.tco2e_per_vehicle?.vehicles_used ?? "—"}</span>
+                    <span><strong>Formula:</strong> {aiReport.report_standard.section_3_6_intensity_metrics?.notes?.employee_formula || "Total Scope 1 + Scope 2 (tCO2e) / employee count"}</span>
+                    <span><strong>Formula:</strong> {aiReport.report_standard.section_3_6_intensity_metrics?.notes?.vehicle_formula || "Total Scope 1 + Scope 2 (tCO2e) / vehicle count"}</span>
+                  </div>
                 </div>
 
                 <div className="report-section report-page">

@@ -16,7 +16,8 @@ import {
   FiBarChart2,
   FiActivity,
   FiRefreshCw,
-  FiTrendingUp
+  FiTrendingUp,
+  FiUsers
 } from "react-icons/fi";
 import { BiLeaf, BiTrendingUp } from "react-icons/bi";
 import { useNavigate } from "react-router-dom";
@@ -148,6 +149,9 @@ export default function DashboardPage() {
   const [aiTopSourceRecommendation, setAiTopSourceRecommendation] = useState("");
   const [aiRecommendationLoading, setAiRecommendationLoading] = useState(false);
   const [predictionLoading, setPredictionLoading] = useState(false);
+  const [regionalBreakdown, setRegionalBreakdown] = useState([]);
+  const [regionalLoading, setRegionalLoading] = useState(false);
+  const [selectedRegionDrill, setSelectedRegionDrill] = useState("");
   const toggleSection = (key) => {
     setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -262,7 +266,7 @@ export default function DashboardPage() {
       try {
         let url1 = `${API_URL}/api/emissions/monthly-category-breakdown?year=${selectedYear}&scope=scope1`;
         if (selectedFacility?.country && selectedFacility?.city) {
-          url1 = appendLocationQuery(url1, selectedFacility.country, selectedFacility.city);
+          url1 = appendLocationQuery(url1, selectedFacility.country, selectedFacility.city, selectedFacility.branch, selectedFacility.region);
         }
         const response = await fetch(url1, {
           headers: {
@@ -290,7 +294,7 @@ export default function DashboardPage() {
       try {
         let url2 = `${API_URL}/api/emissions/monthly-category-breakdown?year=${selectedYear}&scope=scope2`;
         if (selectedFacility?.country && selectedFacility?.city) {
-          url2 = appendLocationQuery(url2, selectedFacility.country, selectedFacility.city);
+          url2 = appendLocationQuery(url2, selectedFacility.country, selectedFacility.city, selectedFacility.branch, selectedFacility.region);
         }
         const response = await fetch(url2, {
           headers: {
@@ -312,11 +316,65 @@ export default function DashboardPage() {
     loadScope2MonthlyBreakdown();
   }, [token, selectedYear, API_URL, selectedFacility]);
 
+  useEffect(() => {
+    const loadRegionalBreakdown = async () => {
+      if (!token) return;
+      const regions = Array.from(
+        new Set((company?.locations || []).map((l) => String(l?.region || "").trim()).filter(Boolean))
+      );
+      if (!regions.length) {
+        setRegionalBreakdown([]);
+        setSelectedRegionDrill("");
+        return;
+      }
+      setRegionalLoading(true);
+      try {
+        const rows = await Promise.all(
+          regions.map(async (region) => {
+            const summaryUrl = `${API_URL}/api/emissions/summary?year=${selectedYear}&region=${encodeURIComponent(region)}`;
+            const response = await fetch(summaryUrl, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            });
+            if (!response.ok) {
+              return { region, scope1Kg: 0, scope2Kg: 0, totalKg: 0 };
+            }
+            const payload = await response.json();
+            const scope1Kg = Number(payload?.scope1?.totalKgCO2e || 0);
+            const s2Electricity = Number(payload?.scope2?.breakdown?.electricity || payload?.scope2?.breakdown?.electricityLocation || 0);
+            const s2Heating = Number(payload?.scope2?.breakdown?.heating || 0);
+            const scope2Kg = s2Electricity + s2Heating;
+            return { region, scope1Kg, scope2Kg, totalKg: scope1Kg + scope2Kg };
+          })
+        );
+        const sorted = rows.sort((a, b) => b.totalKg - a.totalKg);
+        setRegionalBreakdown(sorted);
+        setSelectedRegionDrill((prev) => (prev && sorted.some((r) => r.region === prev) ? prev : sorted[0]?.region || ""));
+      } catch (error) {
+        console.error("Regional breakdown load failed:", error);
+        setRegionalBreakdown([]);
+      } finally {
+        setRegionalLoading(false);
+      }
+    };
+    loadRegionalBreakdown();
+  }, [token, selectedYear, API_URL, company]);
+
   // CORRECTED DATA MAPPING
   const scope1Kg = scope1Results?.total?.kgCO2e || 0;
   const scope2Kg = scope2Results?.locationBasedKgCO2e || 0;
   const totalKg = scope1Kg + scope2Kg;
   const totalTonnes = totalKg / 1000;
+  const consolidatedRegionalKg = regionalBreakdown.reduce((sum, row) => sum + Number(row.totalKg || 0), 0);
+  const selectedRegionRow = regionalBreakdown.find((r) => r.region === selectedRegionDrill) || null;
+  const regionalContextMap = {
+    "middle-east": "Regulatory context: UAE Green Agenda, KSA Vision 2030, GCC decarbonisation policies.",
+    "asia-pacific": "Regulatory context: Singapore Green Plan 2030, regional carbon disclosures, grid transition targets.",
+    europe: "Regulatory context: CSRD and EU climate reporting expectations.",
+    "north-america": "Regulatory context: SEC/state-level disclosures and market-based procurement standards.",
+  };
   
   // Target logic: use explicit annual target first, otherwise derive from configured reduction target.
   const configuredTargets = directTargets || targets || company?.targets || null;
@@ -408,7 +466,7 @@ export default function DashboardPage() {
   const annualRemainingT = annualBudgetT > 0 ? (annualBudgetT - actualYtdT) : 0;
   const annualUsedPct = annualBudgetT > 0 ? Math.min((annualUsedT / annualBudgetT) * 100, 100) : 0;
   const hasPathwayData = trajectorySeries.length > 1 && pathwayMeta.baseYear && pathwayMeta.targetYear;
-  const annualActualMap = annualSeries.reduce((acc, row) => {
+  const annualActualMapRaw = annualSeries.reduce((acc, row) => {
     const year = Number(row?.year);
     if (Number.isFinite(year)) acc[year] = Number(row?.total_kg || 0) / 1000;
     return acc;
@@ -421,6 +479,18 @@ export default function DashboardPage() {
   const pathwayYears = hasPathwayData
     ? Array.from({ length: pathwayMeta.targetYear - pathwayMeta.baseYear + 1 }, (_, i) => pathwayMeta.baseYear + i)
     : [];
+  const annualActualMap = { ...annualActualMapRaw };
+  // Fallback: when backend annual series is sparse for the selected fiscal window,
+  // anchor current FY total to base year so the chart still renders actuals.
+  if (
+    hasPathwayData &&
+    Number.isFinite(pathwayMeta.baseYear) &&
+    annualActualMap[pathwayMeta.baseYear] == null &&
+    Number.isFinite(actualYtdT) &&
+    actualYtdT > 0
+  ) {
+    annualActualMap[pathwayMeta.baseYear] = actualYtdT;
+  }
   const latestActualYear = Object.keys(annualActualMap).map(Number).filter((y) => Number.isFinite(y)).sort((a, b) => b - a)[0];
   const latestActualValue = Number.isFinite(latestActualYear) ? annualActualMap[latestActualYear] : null;
   const targetYearRequired = Number.isFinite(pathwayMeta.targetYear) ? trajectoryMap[pathwayMeta.targetYear] : null;
@@ -503,6 +573,7 @@ export default function DashboardPage() {
       };
     })
     .filter(Boolean);
+  const actualDataPointsCount = pathwayChartData.filter((row) => row.actual != null).length;
   
   // Determine status based on budget used
   const getBudgetStatus = () => {
@@ -544,6 +615,7 @@ export default function DashboardPage() {
     const marketT = Number(monthRow?.electricityMarketKg || 0) / 1000;
     return {
       month: m.label,
+      monthYear: `${m.label} ${m.yearNum}`,
       locationT,
       marketT,
       benefitT: Math.max(locationT - marketT, 0),
@@ -587,6 +659,97 @@ export default function DashboardPage() {
   const scope12SelectedMonthKg = scope1SelectedMonthKg + scope2SelectedMonthKg;
   const selectedMonthLabel =
     fiscalMonths.find((m) => m.monthKey === scopeDetailMonthKey)?.label || "Selected month";
+  const branchEmployeeRows = company?.basicInfo?.branchEmployees || [];
+  const normLoc = (v) =>
+    String(v || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-");
+  const selectedBranchEmployees = (() => {
+    if (!selectedFacility) return null;
+    const facilityRegion = normLoc(selectedFacility?.region);
+    const facilityCountry = normLoc(selectedFacility?.country);
+    const facilityCity = normLoc(selectedFacility?.city);
+    const facilityBranch = normLoc(selectedFacility?.branch);
+    const hit =
+      branchEmployeeRows.find((row) =>
+        normLoc(row?.region) === facilityRegion &&
+        normLoc(row?.country) === facilityCountry &&
+        normLoc(row?.city) === facilityCity &&
+        normLoc(row?.branch) === facilityBranch
+      ) ||
+      branchEmployeeRows.find((row) =>
+        normLoc(row?.country) === facilityCountry &&
+        normLoc(row?.city) === facilityCity &&
+        normLoc(row?.branch) === facilityBranch
+      );
+    const val = Number(hit?.employees ?? hit?.employeeCount ?? hit?.count);
+    return Number.isFinite(val) && val > 0 ? val : null;
+  })();
+  const effectiveEmployeeCount = selectedBranchEmployees || 0;
+  const selectedMonthIndex = Math.max(0, fiscalMonths.findIndex((m) => m.monthKey === scopeDetailMonthKey));
+  const selectedMonthRef = fiscalMonths[selectedMonthIndex] || fiscalMonths[safeCurrentMonthIndex] || fiscalMonths[0];
+  const selectedScope1PerEmployeeMonth = scope1MonthlyBreakdown.find((row) => row?.month === selectedMonthRef?.monthKey) || {};
+  const selectedScope2PerEmployeeMonth = scope2MonthlyBreakdown.find((row) => row?.month === selectedMonthRef?.monthKey) || {};
+  const selectedPerEmployeeMonthKg =
+    Number(selectedScope1PerEmployeeMonth?.mobileKg || 0) +
+    Number(selectedScope1PerEmployeeMonth?.stationaryKg || 0) +
+    Number(selectedScope1PerEmployeeMonth?.refrigerantsKg || 0) +
+    Number(selectedScope1PerEmployeeMonth?.fugitiveKg || 0) +
+    Number(selectedScope2PerEmployeeMonth?.electricityLocationKg || 0) +
+    Number(selectedScope2PerEmployeeMonth?.heatingKg || 0);
+  const selectedPerEmployeeMonthTco2e =
+    effectiveEmployeeCount > 0 ? (selectedPerEmployeeMonthKg / 1000) / effectiveEmployeeCount : null;
+  const selectedMonthVehicleCount = Number(selectedScope1PerEmployeeMonth?.mobileVehicleCount || 0);
+  const effectiveSelectedVehicleCount = selectedMonthVehicleCount > 0 ? selectedMonthVehicleCount : 0;
+  const selectedPerVehicleMonthTco2e =
+    effectiveSelectedVehicleCount > 0
+      ? (selectedPerEmployeeMonthKg / 1000) / effectiveSelectedVehicleCount
+      : null;
+  const perEmployeeTrendData = Array.from({ length: 6 }, (_, i) => {
+    const trendIndex = Math.max(0, selectedMonthIndex - (5 - i));
+    const refMonth = fiscalMonths[trendIndex] || fiscalMonths[0];
+    const monthKey = refMonth.monthKey;
+    const s1 = scope1MonthlyBreakdown.find((r) => r?.month === monthKey) || {};
+    const s2 = scope2MonthlyBreakdown.find((r) => r?.month === monthKey) || {};
+    const monthKg =
+      Number(s1?.mobileKg || 0) +
+      Number(s1?.stationaryKg || 0) +
+      Number(s1?.refrigerantsKg || 0) +
+      Number(s1?.fugitiveKg || 0) +
+      Number(s2?.electricityLocationKg || 0) +
+      Number(s2?.heatingKg || 0);
+    const monthT = monthKg / 1000;
+    return {
+      month: refMonth.label,
+      monthYear: `${refMonth.label} ${refMonth.yearNum}`,
+      value: effectiveEmployeeCount > 0 ? monthT / effectiveEmployeeCount : 0,
+    };
+  });
+  const perVehicleTrendData = Array.from({ length: 6 }, (_, i) => {
+    const trendIndex = Math.max(0, selectedMonthIndex - (5 - i));
+    const refMonth = fiscalMonths[trendIndex] || fiscalMonths[0];
+    const monthKey = refMonth.monthKey;
+    const s1 = scope1MonthlyBreakdown.find((r) => r?.month === monthKey) || {};
+    const s2 = scope2MonthlyBreakdown.find((r) => r?.month === monthKey) || {};
+    const monthKg =
+      Number(s1?.mobileKg || 0) +
+      Number(s1?.stationaryKg || 0) +
+      Number(s1?.refrigerantsKg || 0) +
+      Number(s1?.fugitiveKg || 0) +
+      Number(s2?.electricityLocationKg || 0) +
+      Number(s2?.heatingKg || 0);
+    const monthT = monthKg / 1000;
+    return {
+      month: refMonth.label,
+      monthYear: `${refMonth.label} ${refMonth.yearNum}`,
+      value: (() => {
+        const monthVehicleCount = Number(s1?.mobileVehicleCount || 0);
+        const denominator = monthVehicleCount > 0 ? monthVehicleCount : 0;
+        return denominator > 0 ? monthT / denominator : 0;
+      })(),
+    };
+  });
 
   const scope1CategoryCards = [
     { label: "Mobile Combustion", kg: Number(selectedScope1Month?.mobileKg || 0), icon: <FiTruck /> },
@@ -806,6 +969,12 @@ export default function DashboardPage() {
             source_share_pct: topSourcePct,
             source_tco2e: topSource.value / 1000,
             month_label: monthLabel,
+            month_key: fiscalMonths[safeCurrentMonthIndex]?.monthKey || "",
+            year: selectedYear,
+            region: selectedFacility?.region || "",
+            country: selectedFacility?.country || "",
+            city: selectedFacility?.city || "",
+            branch: selectedFacility?.branch || "",
           }),
         });
         const payload = await response.json();
@@ -933,11 +1102,12 @@ export default function DashboardPage() {
             />
           </div>
           {company?.locations?.length > 0 && (
-            <FacilityCitySelect company={company} menuDirection="down" />
+            <div className="location-selector">
+              <FacilityCitySelect company={company} menuDirection="down" layout="dashboard" />
+            </div>
           )}
-          <button onClick={handleRefresh} className="refresh-btn" disabled={refreshing}>
+          <button onClick={handleRefresh} className="refresh-btn icon-only" disabled={refreshing} title="Refresh">
             <FiRefreshCw className={refreshing ? "spin" : ""} />
-            <span>Refresh</span>
           </button>
         </div>
       </div>
@@ -970,14 +1140,29 @@ export default function DashboardPage() {
         <button className={`tab-btn ${activeView === "targets" ? "active" : ""}`} onClick={() => setActiveView("targets")}>
           Targets
         </button>
+        <button className={`tab-btn ${activeView === "analysis" ? "active" : ""}`} onClick={() => setActiveView("analysis")}>
+          Analysis
+        </button>
         <button className={`tab-btn ${activeView === "scope1" ? "active" : ""}`} onClick={() => setActiveView("scope1")}>
           Scope 1
         </button>
         <button className={`tab-btn ${activeView === "scope2" ? "active" : ""}`} onClick={() => setActiveView("scope2")}>
           Scope 2
         </button>
+        <button className={`tab-btn ${activeView === "per-employee" ? "active" : ""}`} onClick={() => setActiveView("per-employee")}>
+          Per Employee
+        </button>
+        <button className={`tab-btn ${activeView === "per-vehicle" ? "active" : ""}`} onClick={() => setActiveView("per-vehicle")}>
+          Per Vehicle
+        </button>
+        <button className={`tab-btn ${activeView === "regions" ? "active" : ""}`} onClick={() => setActiveView("regions")}>
+          Regions
+        </button>
         <button className={`tab-btn ${activeView === "activity" ? "active" : ""}`} onClick={() => setActiveView("activity")}>
           Recent Activity
+        </button>
+        <button className={`tab-btn ${activeView === "trends" ? "active" : ""}`} onClick={() => setActiveView("trends")}>
+          Trends
         </button>
       </div>}
 
@@ -1125,46 +1310,21 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-      <div className="section-title">Performance</div>
-      <Card className="top-source-card">
-        <div className="collapsible-header">
-          <div className="top-source-header">
-            <h3>Top Emission Source Insight</h3>
-            <p>Largest source for {monthNames[safeCurrentMonthIndex]} {fiscalMonths[safeCurrentMonthIndex]?.yearNum || selectedYear}</p>
-          </div>
-          <button className="collapse-btn" onClick={() => toggleSection("sourceInsight")}>
-            {expandedSections.sourceInsight ? "Hide trend" : "Show 6-month trend"}
-          </button>
-        </div>
-        {topSource && topSource.value > 0 ? (
-          <>
-            <div className="top-source-main">
-              <div className="top-source-name">{topSource.name}</div>
-              <div className="top-source-share">{topSourcePct.toFixed(1)}% of total monthly emissions</div>
-            </div>
-            <div className="top-source-reco">
-              {aiRecommendationLoading
-                ? "Generating AI recommendation..."
-                : (aiTopSourceRecommendation || fallbackTopSourceRecommendation)}
-            </div>
-            {expandedSections.sourceInsight && (
-              <div className="top-source-trend">
-                <ResponsiveContainer width="100%" height={170}>
-                  <LineChart data={sourceTrendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid stroke="#EEF2F7" strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
-                    <Tooltip formatter={(value) => `${Number(value || 0).toFixed(2)} tCO₂e`} />
-                    <Line type="monotone" dataKey="tco2e" stroke="#1B4D3E" strokeWidth={2.5} dot={{ r: 2 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </>
+      <div className="anomaly-pill-strip">
+        {anomalyAlerts.length === 0 ? (
+          <span className="anomaly-pill neutral">No anomalies</span>
         ) : (
-          <div className="collapsed-summary">No monthly category data available yet for this period.</div>
+          anomalyAlerts.map((alert, idx) => {
+            const monthMatch = String(alert.text || "").match(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/);
+            const monthLabel = monthMatch ? monthMatch[0] : "Month";
+            return (
+              <span key={`${alert.type}-${idx}`} className={`anomaly-pill ${alert.severity}`}>
+                {alert.type.replace("-", " ")} · {monthLabel}
+              </span>
+            );
+          })
         )}
-      </Card>
+      </div>
       <div className="section-title">Monthly trend</div>
       {/* Data Completeness Calendar */}
       <div className="calendar-section">
@@ -1182,16 +1342,6 @@ export default function DashboardPage() {
           </div>
           <div className="chart-wrapper">
             <TwelveMonthTrendChart year={selectedYear} />
-          </div>
-        </Card>
-      </div>
-      <div className={`charts-grid ${DOC_ONLY_DASHBOARD ? "doc-only" : ""}`}>
-        <Card className="chart-card large">
-          <div className="chart-header">
-            <h3>Category Sparklines (Last 6 Months)</h3>
-          </div>
-          <div className="chart-wrapper sparkline-wrapper">
-            <EmissionsTrendLine year={selectedYear} />
           </div>
         </Card>
       </div>
@@ -1410,10 +1560,24 @@ export default function DashboardPage() {
                   />
                 ))}
                 <Line type="monotone" dataKey="required" name="Required Trajectory" stroke="#1B4D3E" strokeWidth={2.5} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="actual" name="Actual Emissions" stroke="#2563EB" strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} />
+                <Line
+                  type="monotone"
+                  dataKey="actual"
+                  name="Actual Emissions"
+                  stroke="#2563EB"
+                  strokeWidth={2.7}
+                  dot={{ r: 4, fill: "#2563EB" }}
+                  activeDot={{ r: 5 }}
+                  connectNulls={false}
+                />
                 <Line type="monotone" dataKey="projection" name="Projection to Target Year" stroke="#6B7280" strokeWidth={2} strokeDasharray="6 5" dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
+            {actualDataPointsCount < 2 && (
+              <div className="pathway-confidence-note">
+                Actual data currently covers {actualDataPointsCount} year(s). Gap shading appears after at least 2 consecutive years of actual data.
+              </div>
+            )}
             <div className="pathway-confidence-note">
               Projection confidence:{" "}
               <strong>
@@ -1431,6 +1595,77 @@ export default function DashboardPage() {
         ) : <div className="collapsed-summary">Pathway chart is hidden. Expand to view trajectory and gap shading.</div>}
       </Card>
 
+      </>
+      )}
+
+      {!DOC_ONLY_DASHBOARD && activeView === "analysis" && (
+      <>
+      <div className="section-title">Analysis</div>
+      <Card className="top-source-card">
+        <div className="collapsible-header">
+          <div className="top-source-header">
+            <h3>Top Emission Source Insight</h3>
+            <p>Largest source for {monthNames[safeCurrentMonthIndex]} {fiscalMonths[safeCurrentMonthIndex]?.yearNum || selectedYear}</p>
+          </div>
+          <button className="collapse-btn" onClick={() => toggleSection("sourceInsight")}>
+            {expandedSections.sourceInsight ? "Hide trend" : "Show 6-month trend"}
+          </button>
+        </div>
+        {topSource && topSource.value > 0 ? (
+          <>
+            <div className="top-source-main">
+              <div className="top-source-name">{topSource.name}</div>
+              <div className="top-source-share">{topSourcePct.toFixed(1)}% of total monthly emissions</div>
+            </div>
+            <div className="top-source-reco">
+              {aiRecommendationLoading
+                ? "Generating AI recommendation..."
+                : (aiTopSourceRecommendation || fallbackTopSourceRecommendation)}
+            </div>
+            {expandedSections.sourceInsight && (
+              <div className="top-source-trend">
+                <ResponsiveContainer width="100%" height={170}>
+                  <LineChart data={sourceTrendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="#EEF2F7" strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(value) => `${Number(value || 0).toFixed(2)} tCO₂e`} />
+                    <Line type="monotone" dataKey="tco2e" stroke="#1B4D3E" strokeWidth={2.5} dot={{ r: 2 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="collapsed-summary">No monthly category data available yet for this period.</div>
+        )}
+      </Card>
+      <div className={`charts-grid ${DOC_ONLY_DASHBOARD ? "doc-only" : ""}`}>
+        <Card className="chart-card large">
+          <div className="chart-header">
+            <h3>Stacked Category Breakdown</h3>
+          </div>
+          <div className="chart-wrapper">
+            <StackedCategoryChart
+              year={selectedYear}
+              country={selectedFacility?.country}
+              city={selectedFacility?.city}
+              branch={selectedFacility?.branch}
+              region={selectedFacility?.region}
+            />
+          </div>
+        </Card>
+      </div>
+      <div className={`charts-grid ${DOC_ONLY_DASHBOARD ? "doc-only" : ""}`}>
+        <Card className="chart-card large">
+          <div className="chart-header">
+            <h3>Category Sparklines (Last 6 Months)</h3>
+          </div>
+          <div className="chart-wrapper sparkline-wrapper">
+            <EmissionsTrendLine year={selectedYear} />
+          </div>
+        </Card>
+      </div>
       <WhatIfScenarioBuilder
         token={token}
         year={selectedYear}
@@ -1446,26 +1681,6 @@ export default function DashboardPage() {
         year={selectedYear}
         selectedFacility={selectedFacility}
       />
-      <Card className="anomaly-alert-card">
-        <div className="collapsible-header">
-          <div>
-            <h3>Anomaly Detection Alerts</h3>
-            <p>Automated checks for spikes, outliers, zero-after-data, and missing month gaps</p>
-          </div>
-        </div>
-        {anomalyAlerts.length === 0 ? (
-          <div className="collapsed-summary">No anomalies detected for current monthly data.</div>
-        ) : (
-          <div className="anomaly-list">
-            {anomalyAlerts.map((alert, idx) => (
-              <div key={`${alert.type}-${idx}`} className={`anomaly-item ${alert.severity}`}>
-                <span className="anomaly-chip">{alert.type.replace("-", " ")}</span>
-                <span>{alert.text}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
       </>
       )}
 
@@ -1594,7 +1809,7 @@ export default function DashboardPage() {
               <YAxis tick={{ fontSize: 11, fill: "#6B7280" }} tickLine={false} axisLine={false} />
               <Tooltip
                 formatter={(value) => `${Number(value || 0).toFixed(2)} tCO₂e`}
-                labelFormatter={(label) => `${label} ${selectedYear}`}
+                labelFormatter={(label, payload) => payload?.[0]?.payload?.monthYear || label}
               />
               {scope2SparklineGapAreas.map((area) => (
                 <ReferenceArea
@@ -1682,6 +1897,199 @@ export default function DashboardPage() {
       </Card>
       </>)}
 
+      {!DOC_ONLY_DASHBOARD && activeView === "per-employee" && (
+      <>
+      <div className="section-title">Per Employee Intensity</div>
+      <Card className="per-employee-card">
+        <div className="per-employee-header">
+          <div>
+            <h3>Monthly Per Employee Breakdown</h3>
+            <p>Pick a month to see per-employee intensity for that period.</p>
+          </div>
+          <div className="scope-month-picker">
+            <label>Month</label>
+            <ThemedSelect
+              value={scopeDetailMonthKey}
+              onChange={setScopeDetailMonthKey}
+              options={fiscalMonths.map((m) => ({ value: m.monthKey, label: `${m.label} ${m.yearNum}` }))}
+              menuDirection="down"
+            />
+          </div>
+        </div>
+        <div className="intensity-kpi-grid">
+          <div className="per-employee-kpi">
+            <div className="kpi-label"><FiUsers /> tCO₂e per employee</div>
+            <div className="kpi-value">{selectedPerEmployeeMonthTco2e == null ? "—" : selectedPerEmployeeMonthTco2e.toFixed(4)}</div>
+            <div className="kpi-sub">
+              {effectiveEmployeeCount > 0
+                ? `${selectedMonthRef?.label || selectedMonthLabel}: ${(selectedPerEmployeeMonthKg / 1000).toFixed(2)} tCO₂e / ${effectiveEmployeeCount.toLocaleString()} employee(s)`
+                : "No branch-level employee count configured for selected location."}
+            </div>
+          </div>
+        </div>
+        <div className="intensity-trend-grid">
+          <div className="per-employee-trend">
+            <h3>Per Employee — Last 6 Months</h3>
+            <p>Monthly Scope 1 + Scope 2 emissions intensity per employee.</p>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={perEmployeeTrendData} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#6B7280" }} />
+                <YAxis tick={{ fontSize: 12, fill: "#6B7280" }} />
+                <Tooltip
+                  formatter={(v) => `${Number(v || 0).toFixed(4)} tCO₂e/employee`}
+                  labelFormatter={(label, payload) => payload?.[0]?.payload?.monthYear || label}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  name="tCO₂e/employee"
+                  stroke="#2E7D64"
+                  strokeWidth={2.8}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </Card>
+      </>)}
+
+      {!DOC_ONLY_DASHBOARD && activeView === "per-vehicle" && (
+      <>
+      <div className="section-title">Per Vehicle Intensity</div>
+      <Card className="per-employee-card">
+        <div className="per-employee-header">
+          <div>
+            <h3>Monthly Per Vehicle Breakdown</h3>
+            <p>Branch-level intensity using vehicles submitted in mobile combustion rows.</p>
+          </div>
+          <div className="scope-month-picker">
+            <label>Month</label>
+            <ThemedSelect
+              value={scopeDetailMonthKey}
+              onChange={setScopeDetailMonthKey}
+              options={fiscalMonths.map((m) => ({ value: m.monthKey, label: `${m.label} ${m.yearNum}` }))}
+              menuDirection="down"
+            />
+          </div>
+        </div>
+        <div className="intensity-kpi-grid">
+          <div className="per-employee-kpi">
+            <div className="kpi-label"><FiTruck /> tCO₂e per vehicle</div>
+            <div className="kpi-value">{selectedPerVehicleMonthTco2e == null ? "—" : selectedPerVehicleMonthTco2e.toFixed(4)}</div>
+            <div className="kpi-sub">
+              {effectiveSelectedVehicleCount > 0
+                ? `${selectedMonthRef?.label || selectedMonthLabel}: ${(selectedPerEmployeeMonthKg / 1000).toFixed(2)} tCO₂e / ${Number(effectiveSelectedVehicleCount).toLocaleString()} vehicle(s)`
+                : "No branch vehicle count found for selected month. Add vehicle count in mobile combustion rows."}
+            </div>
+          </div>
+        </div>
+        <div className="intensity-trend-grid">
+          <div className="per-employee-trend">
+            <h3>Per Vehicle — Last 6 Months</h3>
+            <p>Monthly Scope 1 + Scope 2 emissions intensity per vehicle (branch-level).</p>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={perVehicleTrendData} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#6B7280" }} />
+                <YAxis tick={{ fontSize: 12, fill: "#6B7280" }} />
+                <Tooltip
+                  formatter={(v) => `${Number(v || 0).toFixed(4)} tCO₂e/vehicle`}
+                  labelFormatter={(label, payload) => payload?.[0]?.payload?.monthYear || label}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  name="tCO₂e/vehicle"
+                  stroke="#1D4ED8"
+                  strokeWidth={2.8}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </Card>
+      </>)}
+
+      {!DOC_ONLY_DASHBOARD && activeView === "regions" && (
+      <>
+      <div className="section-title">Regional Analytics</div>
+      <Card className="regional-card">
+        <div className="regional-summary">
+          <div className="regional-total">
+            <div className="regional-label">Global Consolidated Total</div>
+            <div className="regional-value">{(consolidatedRegionalKg / 1000).toFixed(2)} tCO₂e</div>
+            <div className="regional-sub">Sum of all configured regions for FY {selectedYear}-{selectedYear + 1}</div>
+          </div>
+          <div className="regional-drill">
+            <label>Region Drill-down</label>
+            <ThemedSelect
+              value={selectedRegionDrill}
+              onChange={setSelectedRegionDrill}
+              options={regionalBreakdown.map((r) => ({ value: r.region, label: String(r.region || "").replace("-", " ") }))}
+              placeholder="Select region"
+              menuDirection="down"
+            />
+          </div>
+        </div>
+
+        <div className="regional-breakdown">
+          <h3>Regional Percentage Breakdown</h3>
+          {regionalLoading ? (
+            <p>Loading regional breakdown...</p>
+          ) : (
+            <>
+              {regionalBreakdown.map((row) => {
+                const pct = consolidatedRegionalKg > 0 ? (Number(row.totalKg || 0) / consolidatedRegionalKg) * 100 : 0;
+                return (
+                  <div key={row.region} className="regional-row">
+                    <div className="regional-row-head">
+                      <span>{String(row.region || "").replace("-", " ")}</span>
+                      <span>{(row.totalKg / 1000).toFixed(2)} tCO₂e ({pct.toFixed(1)}%)</span>
+                    </div>
+                    <div className="regional-bar">
+                      <div className="regional-fill" style={{ width: `${Math.min(pct, 100)}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+
+        <div className="regional-insight">
+          <h3>Selected Region Detail</h3>
+          {selectedRegionRow ? (
+            <>
+              <div className="regional-detail-grid">
+                <div className="regional-detail-item">
+                  <span>Scope 1</span>
+                  <strong>{(Number(selectedRegionRow.scope1Kg || 0) / 1000).toFixed(2)} tCO₂e</strong>
+                </div>
+                <div className="regional-detail-item">
+                  <span>Scope 2</span>
+                  <strong>{(Number(selectedRegionRow.scope2Kg || 0) / 1000).toFixed(2)} tCO₂e</strong>
+                </div>
+                <div className="regional-detail-item">
+                  <span>Total</span>
+                  <strong>{(Number(selectedRegionRow.totalKg || 0) / 1000).toFixed(2)} tCO₂e</strong>
+                </div>
+              </div>
+              <p className="regional-context">
+                {regionalContextMap[String(selectedRegionRow.region || "").toLowerCase()] || "Regulatory context: region-specific compliance mapping can be configured for this geography."}
+              </p>
+            </>
+          ) : (
+            <p>No region data available for selected fiscal year.</p>
+          )}
+        </div>
+      </Card>
+      </>)}
+
       {!DOC_ONLY_DASHBOARD && activeView === "activity" && (
       <>
       <div className="section-title">Recent Activity</div>
@@ -1750,12 +2158,20 @@ export default function DashboardPage() {
       </>
       )}
 
+      {!DOC_ONLY_DASHBOARD && activeView === "trends" && (
+      <>
+      <div className="section-title">Trends</div>
+      {renderTargetEmptyState(
+        "Multi-year trends locked",
+        "Multi-year trend analysis is available after 2 full fiscal years of data. Keep submitting monthly data to unlock this view."
+      )}
+      </>
+      )}
+
       {/* GHG Protocol Compliance Footer (all tabs) */}
       <div className="ghg-fixed-footer">
         <div className="ghg-footer-inner">
-          <span className="ghg-footer-title"><FiAward /> GHG Protocol Compliance</span>
-          <span>Location-based Scope 2 is primary; market-based is reported separately.</span>
-          <span>Renewables are tracked separately and biogenic emissions are excluded from Scope 1 totals.</span>
+          <span>GHG Protocol Compliant · Location-based Scope 2 primary · Renewables and biogenic emissions tracked separately per GHG Protocol</span>
         </div>
       </div>
 
@@ -1790,8 +2206,14 @@ export default function DashboardPage() {
 
         .header-actions {
           display: flex;
-          gap: 12px;
+          flex-direction: row;
+          gap: 10px;
           align-items: center;
+          flex-wrap: wrap;
+        }
+        .location-selector {
+          min-width: 280px;
+          flex: 1 1 520px;
         }
         .missing-month-banner {
           margin: -8px 0 16px;
@@ -1840,7 +2262,8 @@ export default function DashboardPage() {
         .year-selector {
           display: flex;
           align-items: center;
-          min-width: 220px;
+          min-width: 230px;
+          max-width: 280px;
         }
 
         .year-themed-select {
@@ -1866,6 +2289,12 @@ export default function DashboardPage() {
         .refresh-btn:hover {
           border-color: #2E7D64;
           background: #F8FAF8;
+        }
+        .refresh-btn.icon-only {
+          width: 38px;
+          min-width: 38px;
+          padding: 0;
+          justify-content: center;
         }
 
         @keyframes spin {
@@ -2505,6 +2934,39 @@ export default function DashboardPage() {
           padding: 20px;
           margin-bottom: 24px;
         }
+        .anomaly-pill-strip {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+        .anomaly-pill {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 600;
+          border: 1px solid #E5E7EB;
+          background: #F9FAFB;
+          color: #374151;
+        }
+        .anomaly-pill.high {
+          border-color: #FECACA;
+          background: #FEF2F2;
+          color: #991B1B;
+        }
+        .anomaly-pill.medium {
+          border-color: #FDE68A;
+          background: #FFFBEB;
+          color: #92400E;
+        }
+        .anomaly-pill.low,
+        .anomaly-pill.neutral {
+          border-color: #D1D5DB;
+          background: #F3F4F6;
+          color: #4B5563;
+        }
         .anomaly-list {
           display: grid;
           gap: 10px;
@@ -2893,6 +3355,207 @@ export default function DashboardPage() {
           gap: 24px;
           margin-bottom: 24px;
         }
+        .per-employee-card {
+          padding: 20px;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          background: #FFFFFF;
+          margin-bottom: 24px;
+        }
+        .per-employee-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 14px;
+          margin-bottom: 12px;
+        }
+        .per-employee-header h3 {
+          margin: 0 0 4px;
+          color: #1B4D3E;
+          font-size: 18px;
+        }
+        .per-employee-header p {
+          margin: 0;
+          font-size: 12px;
+          color: #6B7280;
+        }
+        .per-employee-kpi {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          background: #F8FAF8;
+          padding: 14px;
+          margin-bottom: 16px;
+        }
+        .intensity-kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+        .intensity-kpi-grid .per-employee-kpi {
+          margin-bottom: 0;
+        }
+        .per-employee-kpi .kpi-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: #1B4D3E;
+          font-size: 13px;
+          font-weight: 700;
+        }
+        .per-employee-kpi .kpi-value {
+          margin-top: 4px;
+          font-size: 34px;
+          font-weight: 800;
+          color: #1B4D3E;
+          line-height: 1.1;
+        }
+        .per-employee-kpi .kpi-sub {
+          margin-top: 6px;
+          color: #6B7280;
+          font-size: 12px;
+        }
+        .per-employee-trend h3 {
+          margin: 0;
+          font-size: 17px;
+          color: #1B4D3E;
+        }
+        .per-employee-trend p {
+          margin: 4px 0 10px;
+          color: #6B7280;
+          font-size: 13px;
+        }
+        .regional-card {
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          background: #fff;
+          padding: 18px;
+          margin-bottom: 24px;
+        }
+        .regional-summary {
+          display: grid;
+          grid-template-columns: 2fr 1fr;
+          gap: 12px;
+          margin-bottom: 14px;
+        }
+        .regional-total {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          background: #F8FAF8;
+          padding: 12px;
+        }
+        .regional-label {
+          font-size: 12px;
+          color: #6B7280;
+          font-weight: 700;
+        }
+        .regional-value {
+          margin-top: 4px;
+          font-size: 32px;
+          font-weight: 800;
+          color: #1B4D3E;
+          line-height: 1.1;
+        }
+        .regional-sub {
+          margin-top: 6px;
+          font-size: 12px;
+          color: #6B7280;
+        }
+        .regional-drill {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 12px;
+          background: #fff;
+        }
+        .regional-drill label {
+          display: block;
+          font-size: 11px;
+          font-weight: 700;
+          color: #6B7280;
+          text-transform: uppercase;
+          margin-bottom: 6px;
+          letter-spacing: 0.04em;
+        }
+        .regional-breakdown h3,
+        .regional-insight h3 {
+          margin: 0 0 8px;
+          font-size: 16px;
+          color: #1B4D3E;
+        }
+        .regional-breakdown {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 12px;
+          background: #fff;
+          margin-bottom: 12px;
+        }
+        .regional-row {
+          margin-bottom: 10px;
+        }
+        .regional-row:last-child {
+          margin-bottom: 0;
+        }
+        .regional-row-head {
+          display: flex;
+          justify-content: space-between;
+          font-size: 13px;
+          color: #374151;
+          margin-bottom: 4px;
+        }
+        .regional-bar {
+          height: 8px;
+          border-radius: 999px;
+          background: #E5E7EB;
+          overflow: hidden;
+        }
+        .regional-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #1B4D3E, #2E7D64);
+        }
+        .regional-insight {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 12px;
+          background: #fff;
+        }
+        .regional-detail-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+        .regional-detail-item {
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          padding: 10px;
+          background: #F9FAFB;
+        }
+        .regional-detail-item span {
+          display: block;
+          font-size: 12px;
+          color: #6B7280;
+          margin-bottom: 4px;
+        }
+        .regional-detail-item strong {
+          font-size: 18px;
+          color: #1B4D3E;
+        }
+        .regional-context {
+          margin: 0;
+          font-size: 13px;
+          color: #4B5563;
+        }
+        .intensity-trend-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+        .intensity-trend-grid .per-employee-trend {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 12px;
+          background: #fff;
+        }
 
         .ghg-fixed-footer {
           position: fixed;
@@ -3046,6 +3709,13 @@ export default function DashboardPage() {
           .ghg-footer-inner {
             padding: 10px 16px;
           }
+          .header-actions {
+            width: 100%;
+          }
+          .location-selector {
+            min-width: 280px;
+            flex: 1 1 100%;
+          }
           .quarter-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
@@ -3069,6 +3739,34 @@ export default function DashboardPage() {
           .dashboard-header {
             flex-direction: column;
             align-items: flex-start;
+          }
+          .header-actions {
+            width: 100%;
+            align-items: stretch;
+          }
+          .year-selector,
+          .location-selector {
+            min-width: 0;
+            width: 100%;
+          }
+          .year-selector {
+            max-width: none;
+          }
+          .refresh-btn:not(.icon-only) {
+            width: 100%;
+            justify-content: center;
+          }
+          .per-employee-header {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .intensity-kpi-grid,
+          .intensity-trend-grid {
+            grid-template-columns: 1fr;
+          }
+          .regional-summary,
+          .regional-detail-grid {
+            grid-template-columns: 1fr;
           }
           .missing-month-banner {
             flex-direction: column;
@@ -3118,6 +3816,17 @@ export default function DashboardPage() {
 
           .total-value {
             font-size: 32px;
+          }
+        }
+
+        @media (max-width: 1366px) {
+          .year-selector {
+            min-width: 190px;
+            max-width: 230px;
+          }
+          .location-selector {
+            min-width: 240px;
+            flex: 1 1 420px;
           }
         }
       `}</style>

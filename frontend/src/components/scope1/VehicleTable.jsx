@@ -64,6 +64,7 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
     vehicleType: "",
     fuelType: "",
     quantity: "",
+    vehicleCount: "",
     month: "",
   });
   const handleDeleteVehicle = async (id, month) => {
@@ -106,6 +107,7 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
   const [vehicleType, setVehicleType] = useState("");
   const [fuelType, setFuelType]       = useState("");
   const [quantity, setQuantity]       = useState("");
+  const [vehicleCount, setVehicleCount] = useState("");
   const [month, setMonth]             = useState(reportingMonth || currentMonth());
   const [addRowError, setAddRowError] = useState("");
 
@@ -129,13 +131,14 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
       vehicleType: entry.vehicleType,
       fuelType: existingFuel,
       quantity: rowUsesDistance ? Number(entry.km || 0) : Number(entry.litres || 0),
+      vehicleCount: Number(entry.vehicleCount || 0),
       month: entry.month || currentMonth(),
     });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditValues({ vehicleType: "", fuelType: "", quantity: "", month: "" });
+    setEditValues({ vehicleType: "", fuelType: "", quantity: "", vehicleCount: "", month: "" });
   };
 
   const saveEdit = () => {
@@ -148,6 +151,7 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
       fuelType: editValues.fuelType,
       km: rowUsesDistance ? Number(editValues.quantity) : 0,
       litres: rowUsesDistance ? 0 : Number(editValues.quantity),
+      vehicleCount: Number(editValues.vehicleCount || 0),
       month: editValues.month,
     });
     cancelEdit();
@@ -166,17 +170,23 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
       setAddRowError("Please enter a valid quantity.");
       return;
     }
+    if (vehicleCount === "" || Number(vehicleCount) <= 0) {
+      setAddRowError("Please enter number of vehicles.");
+      return;
+    }
     addVehicle({
       id: Date.now(),
       vehicleType,
       fuelType,
       km:     useDistance ? Number(quantity) : 0,
       litres: useDistance ? 0 : Number(quantity),
+      vehicleCount: Number(vehicleCount),
       month,
     });
     setVehicleType("");
     setFuelType("");
     setQuantity("");
+    setVehicleCount("");
     setMonth(reportingMonth || currentMonth());
     setAddRowError("");
   };
@@ -197,7 +207,8 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
             <tr>
               <th>Vehicle Type</th>
               <th>Fuel Type</th>
-              <th>Quantity</th>
+              <th>Activity Quantity</th>
+              <th>No. of Vehicles</th>
               <th>Month</th>
               <th></th>
             </tr>
@@ -205,7 +216,7 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
           <tbody>
             {vehicles.length === 0 && (
               <tr>
-                <td colSpan={5} className="vt-empty">
+                <td colSpan={6} className="vt-empty">
                   No entries yet. Fill the row below and click + Add.
                 </td>
               </tr>
@@ -242,6 +253,15 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
                       </div>
                     </td>
                     <td>
+                      <input
+                        type="number"
+                        value={editValues.vehicleCount}
+                        onChange={(e) => setEditValues({ ...editValues, vehicleCount: e.target.value })}
+                        className="vt-input"
+                        min="0"
+                      />
+                    </td>
+                    <td>
                       <ThemedSelect
                         value={editValues.month}
                         onChange={(nextValue) => setEditValues({ ...editValues, month: nextValue })}
@@ -269,6 +289,7 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
                     <span className="vt-qty">{qty}</span>
                     <span className="vt-unit"> {unit}</span>
                   </td>
+                  <td>{Number(v.vehicleCount || 0)}</td>
                   <td>{v.month || "—"}</td>
                   <td>
                     <button className="vt-edit" onClick={() => startEdit(v)} title="Edit">
@@ -323,6 +344,16 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
                 </div>
               </td>
               <td>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={vehicleCount}
+                  onChange={(e) => setVehicleCount(e.target.value)}
+                  className="vt-input"
+                  min="0"
+                />
+              </td>
+              <td>
                 <ThemedSelect
                   value={month}
                   onChange={setMonth}
@@ -366,7 +397,7 @@ export default function VehicleTable({ onSubmitSuccess, reportingMonth }) {
 
         .vt-table {
           width: 100%;
-          min-width: 820px;
+          min-width: 980px;
           border-collapse: collapse;
           font-size: 14px;
         }

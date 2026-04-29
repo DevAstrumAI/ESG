@@ -2,8 +2,10 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 class Location(BaseModel):
+    region: Optional[str] = None
     city: str
     country: str
+    branch: Optional[str] = None
     isPrimary: bool = False
 
 class CompanyCreate(BaseModel):
@@ -16,6 +18,7 @@ class CompanyCreate(BaseModel):
     region: Optional[str] = None
     fiscalYear: int = 2026
     locations: Optional[List[Location]] = []
+    branchEmployees: Optional[List[dict]] = []
 
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
@@ -27,3 +30,4 @@ class CompanyUpdate(BaseModel):
     region: Optional[str] = None
     fiscalYear: Optional[int] = None
     locations: Optional[List[Location]] = None
+    branchEmployees: Optional[List[dict]] = None

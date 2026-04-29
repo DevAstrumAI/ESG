@@ -143,23 +143,41 @@ def _city_doc_slug(normalized_city: str) -> str:
     return s or "unknown"
 
 
-def _scope_storage_doc_id(month: Optional[str], year: int, normalized_city: str) -> str:
+def _branch_doc_slug(branch: Optional[str]) -> str:
+    s = (branch or "").strip().lower().replace(" ", "-").replace("_", "-")
+    return s or "main"
+
+
+def _scope_storage_doc_id(month: Optional[str], year: int, normalized_city: str, branch: Optional[str] = None) -> str:
     slug = _city_doc_slug(normalized_city)
+    branch_slug = _branch_doc_slug(branch)
     if month:
-        return f"{month}__{slug}"
-    return f"{year}-annual__{slug}"
+        return f"{month}__{slug}__{branch_slug}"
+    return f"{year}-annual__{slug}__{branch_slug}"
 
 
-def _doc_location_matches(data: dict, country_filter: Optional[str], city_filter: Optional[str]) -> bool:
-    if not country_filter and not city_filter:
+def _doc_location_matches(
+    data: dict,
+    region_filter: Optional[str],
+    country_filter: Optional[str],
+    city_filter: Optional[str],
+    branch_filter: Optional[str] = None,
+) -> bool:
+    if not region_filter and not country_filter and not city_filter and not branch_filter:
         return True
+    if region_filter and str(data.get("region") or "").strip().lower() != str(region_filter).strip().lower():
+        return False
     cf = country_filter or data.get("country") or ""
     cy = city_filter or data.get("city") or ""
     _, nc, ncity = resolve_location(cf, cy)
     doc_country = data.get("country", "")
     doc_city = data.get("city", "")
     _, dnc, dncy = resolve_location(doc_country, doc_city)
-    return nc == dnc and ncity == dncy
+    if not (nc == dnc and ncity == dncy):
+        return False
+    if branch_filter:
+        return str(data.get("branch") or "").strip().lower() == str(branch_filter or "").strip().lower()
+    return True
 
 
 def _get_scope_doc(
@@ -170,10 +188,11 @@ def _get_scope_doc(
     month: Optional[str],
     country: Optional[str] = None,
     city: Optional[str] = None,
+    branch: Optional[str] = None,
 ):
     if country and city:
         _, _, ncity = resolve_location(country, city)
-        doc_id = _scope_storage_doc_id(month, year, ncity)
+        doc_id = _scope_storage_doc_id(month, year, ncity, branch)
         return db.collection("emissionData").document(company_id).collection(scope).document(doc_id)
     doc_id = str(month) if month is not None and month != "" else f"{year}-annual"
     return db.collection("emissionData").document(company_id).collection(scope).document(doc_id)
@@ -187,17 +206,25 @@ def _get_scope_doc_resolve(
     month: Optional[str],
     country: Optional[str],
     city: Optional[str],
+    branch: Optional[str] = None,
 ):
     """Prefer city-scoped document id; fall back to legacy month-only id."""
     if country and city and month:
-        ref = _get_scope_doc(db, company_id, scope, year, month, country, city)
+        ref = _get_scope_doc(db, company_id, scope, year, month, country, city, branch)
         if ref.get().exists:
             return ref
+        # Fallback: previous city-only id without branch suffix.
+        _, _, ncity = resolve_location(country, city)
+        city_only_ref = db.collection("emissionData").document(company_id).collection(scope).document(
+            _scope_storage_doc_id(month, year, ncity, None)
+        )
+        if city_only_ref.get().exists:
+            return city_only_ref
         legacy = db.collection("emissionData").document(company_id).collection(scope).document(str(month))
         if legacy.get().exists:
             return legacy
         return ref
-    return _get_scope_doc(db, company_id, scope, year, month, country, city)
+    return _get_scope_doc(db, company_id, scope, year, month, country, city, branch)
 
 
 def _normalize_doc_month(doc: dict):
@@ -295,9 +322,11 @@ async def get_city_factors(
 @router.get("/scope1")
 async def get_scope1_data(
     year: int = None,
+    region: Optional[str] = None,
     filter_month: Optional[str] = Query(None, alias="month"),
     country: Optional[str] = None,
     city: Optional[str] = None,
+    branch: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
     response: Response = None,
 ):
@@ -332,8 +361,8 @@ async def get_scope1_data(
             dm = _normalize_doc_month(data)
             if dm != filter_month:
                 continue
-        if country or city:
-            if not _doc_location_matches(data, country, city):
+        if region or country or city or branch:
+            if not _doc_location_matches(data, region, country, city, branch):
                 continue
         results = data.get("results", {})
         raw_data = data.get("rawData", {})
@@ -410,9 +439,11 @@ async def get_scope1_data(
 @router.get("/scope2")
 async def get_scope2_data(
     year: int = None,
+    region: Optional[str] = None,
     filter_month: Optional[str] = Query(None, alias="month"),
     country: Optional[str] = None,
     city: Optional[str] = None,
+    branch: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
     response: Response = None,
 ):
@@ -446,8 +477,8 @@ async def get_scope2_data(
             dm = _normalize_doc_month(data)
             if dm != filter_month:
                 continue
-        if country or city:
-            if not _doc_location_matches(data, country, city):
+        if region or country or city or branch:
+            if not _doc_location_matches(data, region, country, city, branch):
                 continue
         results = data.get("results", {})
         raw_data = data.get("rawData", {})
@@ -544,6 +575,7 @@ async def save_scope1(
         region = body.get("region", "middle-east")
         country = body.get("country", "uae")
         city = body.get("city", primary_location.get("city", "dubai").lower() if primary_location else "dubai")
+        branch = body.get("branch", primary_location.get("branch", "") if primary_location else "")
         year = body.get("year", company_data.get("basicInfo", {}).get("fiscalYear", 2026))
         month = body.get("month")
 
@@ -574,7 +606,7 @@ async def save_scope1(
         # #endregion
 
         # Save to Firestore (per normalized city so multiple facilities can use the same month)
-        doc_id = _scope_storage_doc_id(month, year, normalized_city)
+        doc_id = _scope_storage_doc_id(month, year, normalized_city, branch)
         doc_ref = db.collection("emissionData").document(company_id).collection("scope1").document(doc_id)
         doc_ref.set({
             "companyId": company_id,
@@ -583,6 +615,7 @@ async def save_scope1(
             "region": resolved_region,
             "country": normalized_country,
             "city": normalized_city,
+            "branch": branch,
             "rawData": {
                 "mobile": body.get("mobile", []),
                 "stationary": body.get("stationary", []),
@@ -598,7 +631,7 @@ async def save_scope1(
             leg = legacy_ref.get()
             if leg.exists and leg.id == str(month):
                 ld = leg.to_dict()
-                if _doc_location_matches(ld, normalized_country, normalized_city):
+                if _doc_location_matches(ld, resolved_region, normalized_country, normalized_city, branch):
                     legacy_ref.delete()
 
         return {
@@ -647,6 +680,7 @@ async def save_scope2(
         region = body.get("region", "middle-east")
         country = body.get("country", "uae")
         city = body.get("city", primary_location.get("city", "dubai").lower() if primary_location else "dubai")
+        branch = body.get("branch", primary_location.get("branch", "") if primary_location else "")
         year = body.get("year", company_data.get("basicInfo", {}).get("fiscalYear", 2026))
         month = body.get("month")
 
@@ -674,7 +708,7 @@ async def save_scope2(
         # #endregion
 
         # Save to Firestore (per normalized city so multiple facilities can use the same month)
-        doc_id = _scope_storage_doc_id(month, year, normalized_city)
+        doc_id = _scope_storage_doc_id(month, year, normalized_city, branch)
         doc_ref = db.collection("emissionData").document(company_id).collection("scope2").document(doc_id)
         doc_ref.set({
             "companyId": company_id,
@@ -683,6 +717,7 @@ async def save_scope2(
             "region": resolved_region,
             "country": normalized_country,
             "city": normalized_city,
+            "branch": branch,
             "rawData": {
                 "electricity": body.get("electricity", []),
                 "heating": body.get("heating", []),
@@ -697,7 +732,7 @@ async def save_scope2(
             leg = legacy_ref.get()
             if leg.exists and leg.id == str(month):
                 ld = leg.to_dict()
-                if _doc_location_matches(ld, normalized_country, normalized_city):
+                if _doc_location_matches(ld, resolved_region, normalized_country, normalized_city, branch):
                     legacy_ref.delete()
 
         return {
@@ -727,11 +762,12 @@ async def delete_scope1_entry(
         entry = body.get("entry") or {}
         country = body.get("country") or (primary_location.get("country") if primary_location else "uae")
         city = body.get("city") or (primary_location.get("city") if primary_location else "dubai")
+        branch = body.get("branch") or (primary_location.get("branch") if primary_location else "")
 
         if category not in ["mobile", "stationary", "refrigerants", "fugitive"]:
             raise HTTPException(status_code=400, detail="Invalid Scope 1 category")
 
-        doc_ref = _get_scope_doc_resolve(db, company_id, "scope1", year, month, country, city)
+        doc_ref = _get_scope_doc_resolve(db, company_id, "scope1", year, month, country, city, branch)
         doc = doc_ref.get()
         if not doc.exists:
             # Idempotent delete: if data is already absent, report success.
@@ -774,6 +810,7 @@ async def delete_scope1_entry(
             "region": payload.get("region"),
             "country": payload.get("country"),
             "city": payload.get("city"),
+            "branch": data.get("branch", branch),
             "rawData": raw_data,
             "results": results,
             "savedAt": datetime.utcnow().isoformat(),
@@ -806,11 +843,12 @@ async def delete_scope2_entry(
         entry = body.get("entry") or {}
         country = body.get("country") or (primary_location.get("country") if primary_location else "uae")
         city = body.get("city") or (primary_location.get("city") if primary_location else "dubai")
+        branch = body.get("branch") or (primary_location.get("branch") if primary_location else "")
 
         if category not in ["electricity", "heating", "renewables"]:
             raise HTTPException(status_code=400, detail="Invalid Scope 2 category")
 
-        doc_ref = _get_scope_doc_resolve(db, company_id, "scope2", year, month, country, city)
+        doc_ref = _get_scope_doc_resolve(db, company_id, "scope2", year, month, country, city, branch)
         doc = doc_ref.get()
         if not doc.exists:
             # Idempotent delete: if data is already absent, report success.
@@ -852,6 +890,7 @@ async def delete_scope2_entry(
             "region": payload.get("region"),
             "country": payload.get("country"),
             "city": payload.get("city"),
+            "branch": data.get("branch", branch),
             "rawData": raw_data,
             "results": results,
             "savedAt": datetime.utcnow().isoformat(),
@@ -871,8 +910,10 @@ async def delete_scope2_entry(
 @router.get("/monthly-breakdown")
 async def get_monthly_breakdown(
     year: int,
+    region: Optional[str] = None,
     country: Optional[str] = None,
     city: Optional[str] = None,
+    branch: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
     response: Response = None,
 ):
@@ -888,14 +929,14 @@ async def get_monthly_breakdown(
     # Get scope1 docs
     s1_ref = db.collection("emissionData").document(company_id).collection("scope1")
     s1_docs = [doc.to_dict() for doc in s1_ref.stream() if _is_month_in_fiscal_year(doc.to_dict().get("month"), year)]
-    if country or city:
-        s1_docs = [d for d in s1_docs if _doc_location_matches(d, country, city)]
+    if region or country or city or branch:
+        s1_docs = [d for d in s1_docs if _doc_location_matches(d, region, country, city, branch)]
 
     # Get scope2 docs
     s2_ref = db.collection("emissionData").document(company_id).collection("scope2")
     s2_docs = [doc.to_dict() for doc in s2_ref.stream() if _is_month_in_fiscal_year(doc.to_dict().get("month"), year)]
-    if country or city:
-        s2_docs = [d for d in s2_docs if _doc_location_matches(d, country, city)]
+    if region or country or city or branch:
+        s2_docs = [d for d in s2_docs if _doc_location_matches(d, region, country, city, branch)]
 
     # Create monthly data map
     monthly_data = {}
@@ -947,8 +988,10 @@ async def get_monthly_breakdown(
 async def get_monthly_category_breakdown(
     year: int,
     scope: str,  # "scope1" or "scope2"
+    region: Optional[str] = None,
     country: Optional[str] = None,
     city: Optional[str] = None,
+    branch: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
     response: Response = None,
 ):
@@ -963,8 +1006,8 @@ async def get_monthly_category_breakdown(
     # Fetch all docs for the year
     ref = db.collection("emissionData").document(company_id).collection(scope)
     docs = [doc.to_dict() for doc in ref.stream() if _is_month_in_fiscal_year(doc.to_dict().get("month"), year)]
-    if country or city:
-        docs = [d for d in docs if _doc_location_matches(d, country, city)]
+    if region or country or city or branch:
+        docs = [d for d in docs if _doc_location_matches(d, region, country, city, branch)]
     
     # Create monthly data map
     monthly_data = {}
@@ -985,6 +1028,21 @@ async def get_monthly_category_breakdown(
             monthly_data[month]["stationaryKg"] = monthly_data[month].get("stationaryKg", 0) + results.get("stationary", {}).get("totalKgCO2e", 0)
             monthly_data[month]["refrigerantsKg"] = monthly_data[month].get("refrigerantsKg", 0) + results.get("refrigerants", {}).get("totalKgCO2e", 0)
             monthly_data[month]["fugitiveKg"] = monthly_data[month].get("fugitiveKg", 0) + results.get("fugitive", {}).get("totalKgCO2e", 0)
+            mobile_entries = ((doc.get("rawData") or {}).get("mobile") or [])
+            month_vehicle_count = 0.0
+            for e in mobile_entries:
+                if not isinstance(e, dict):
+                    continue
+                explicit_count = float(e.get("vehicleCount") or 0)
+                if explicit_count > 0:
+                    month_vehicle_count += explicit_count
+                    continue
+                # Backward-compatible fallback for older records that didn't save vehicleCount:
+                # if a valid mobile activity entry exists, count at least one vehicle row.
+                activity = float(e.get("litresConsumed") or e.get("distanceKm") or 0)
+                if activity > 0:
+                    month_vehicle_count += 1.0
+            monthly_data[month]["mobileVehicleCount"] = monthly_data[month].get("mobileVehicleCount", 0) + month_vehicle_count
         else:
             monthly_data[month]["electricityLocationKg"] = monthly_data[month].get("electricityLocationKg", 0) + results.get("electricity", {}).get("locationBasedKgCO2e", 0)
             monthly_data[month]["electricityMarketKg"] = monthly_data[month].get("electricityMarketKg", 0) + results.get("electricity", {}).get("marketBasedKgCO2e", 0)
@@ -1008,8 +1066,10 @@ async def get_monthly_category_breakdown(
 
 @router.get("/sparkline-data")
 async def get_sparkline_data(
+    region: Optional[str] = None,
     country: Optional[str] = None,
     city: Optional[str] = None,
+    branch: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -1046,8 +1106,8 @@ async def get_sparkline_data(
             data = doc.to_dict()
             if _normalize_doc_month(data) != month:
                 continue
-            if country or city:
-                if not _doc_location_matches(data, country, city):
+            if region or country or city or branch:
+                if not _doc_location_matches(data, region, country, city, branch):
                     continue
             res = data.get("results", {})
             m_mobile += res.get("mobile", {}).get("totalKgCO2e", 0) or 0
@@ -1064,8 +1124,8 @@ async def get_sparkline_data(
             data = doc.to_dict()
             if _normalize_doc_month(data) != month:
                 continue
-            if country or city:
-                if not _doc_location_matches(data, country, city):
+            if region or country or city or branch:
+                if not _doc_location_matches(data, region, country, city, branch):
                     continue
             res = data.get("results", {})
             eloc += res.get("electricity", {}).get("locationBasedKgCO2e", 0) or 0
@@ -1078,8 +1138,10 @@ async def get_sparkline_data(
 @router.get("/month-status")
 async def get_month_status(
     year: int,
+    region: Optional[str] = None,
     country: Optional[str] = None,
     city: Optional[str] = None,
+    branch: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
     response: Response = None,
 ):
@@ -1102,8 +1164,8 @@ async def get_month_status(
 
     for doc in s1_docs:
         data = doc.to_dict()
-        if country or city:
-            if not _doc_location_matches(data, country, city):
+        if region or country or city or branch:
+            if not _doc_location_matches(data, region, country, city, branch):
                 continue
         month_str = data.get("month")
         if month_str in month_to_index:
@@ -1119,8 +1181,8 @@ async def get_month_status(
 
     for doc in s2_docs:
         data = doc.to_dict()
-        if country or city:
-            if not _doc_location_matches(data, country, city):
+        if region or country or city or branch:
+            if not _doc_location_matches(data, region, country, city, branch):
                 continue
         month_str = data.get("month")
         if month_str in month_to_index:
@@ -1139,8 +1201,10 @@ async def get_month_status(
 @router.get("/summary")
 async def get_summary(
     year: int = 2026,
+    region: Optional[str] = None,
     country: Optional[str] = None,
     city: Optional[str] = None,
+    branch: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
     response: Response = None,
 ):
@@ -1165,8 +1229,8 @@ async def get_summary(
         scope1_doc_logged = False
         for doc in scope1_docs:
             data = doc.to_dict()
-            if country or city:
-                if not _doc_location_matches(data, country, city):
+            if region or country or city or branch:
+                if not _doc_location_matches(data, region, country, city, branch):
                     continue
             if _is_month_in_fiscal_year(data.get("month"), year):
                 results = data.get("results", {})
@@ -1215,8 +1279,8 @@ async def get_summary(
         scope2_doc_logged = False
         for doc in scope2_docs:
             data = doc.to_dict()
-            if country or city:
-                if not _doc_location_matches(data, country, city):
+            if region or country or city or branch:
+                if not _doc_location_matches(data, region, country, city, branch):
                     continue
             if _is_month_in_fiscal_year(data.get("month"), year):
                 results = data.get("results", {})

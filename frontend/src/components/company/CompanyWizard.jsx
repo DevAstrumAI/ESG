@@ -56,6 +56,7 @@ export default function CompanyWizard() {
     country: "",
     industry: "",
     employees: "",
+    branchEmployees: [],
     revenue: "",
     locations: [],
   });
@@ -75,14 +76,16 @@ export default function CompanyWizard() {
     const region = toCleanString(data?.region);
     const normalizedLocations = (filterLocationsForRegion(region, data?.locations || []) || [])
       .map((loc) => ({
+        region: toCleanString(loc?.region || region),
         country: toCleanString(loc?.country),
         city: toCleanString(loc?.city || loc?.name),
+        branch: toCleanString(loc?.branch),
         isPrimary: Boolean(loc?.isPrimary),
       }))
-      .filter((loc) => loc.country && loc.city)
+      .filter((loc) => loc.country && loc.city && loc.branch)
       .sort((a, b) => {
-        const ka = `${a.country}|${a.city}|${a.isPrimary ? 1 : 0}`;
-        const kb = `${b.country}|${b.city}|${b.isPrimary ? 1 : 0}`;
+        const ka = `${a.region}|${a.country}|${a.city}|${a.branch}|${a.isPrimary ? 1 : 0}`;
+        const kb = `${b.region}|${b.country}|${b.city}|${b.branch}|${b.isPrimary ? 1 : 0}`;
         return ka.localeCompare(kb);
       });
     return {
@@ -155,6 +158,7 @@ export default function CompanyWizard() {
               logo: data.logo || "",
               industry: data.industry || "",
               employees: Number(data.employees) || 0,
+              branchEmployees: data.branchEmployees || [],
               revenue: Number(data.revenue) || 0,
               region: data.region || "",
               locations: data.locations || [],
@@ -232,28 +236,51 @@ export default function CompanyWizard() {
       // If company exists, use company data
       if (latestCompany && latestCompany.basicInfo?.name && !hasHydrated.current) {
         hasHydrated.current = true;
-        const region = latestCompany.basicInfo?.region || "";
-        const locations = filterLocationsForRegion(region, latestCompany.locations || []);
+        const basicInfo = latestCompany.basicInfo || {};
+        const region = basicInfo?.region || latestCompany.region || "";
+        const rawLocations = latestCompany.locations || basicInfo.locations || [];
+        const legacyBranchEmployees = latestCompany.branchEmployees || [];
+        const branchEmployees =
+          (Array.isArray(basicInfo.branchEmployees) && basicInfo.branchEmployees.length > 0)
+            ? basicInfo.branchEmployees
+            : legacyBranchEmployees;
+        const locations = filterLocationsForRegion(region, rawLocations).map((loc) => ({
+          ...loc,
+          region: loc.region || region,
+        }));
+        // Legacy records can lack branch-level rows. Seed one per known location so edit UI is always available.
+        const hydratedBranchEmployees =
+          Array.isArray(branchEmployees) && branchEmployees.length > 0
+            ? branchEmployees
+            : locations.map((loc, index) => ({
+                region: String(loc.region || region || "").trim().toLowerCase(),
+                country: String(loc.country || "").trim().toLowerCase(),
+                city: String(loc.city || "").trim(),
+                branch: String(loc.branch || "").trim(),
+                employees: index === 0 ? Number(basicInfo?.employees || 0) : 0,
+              }));
         const validFirstCountry = locations[0]?.country || "";
         setCompanyData({
-          name: latestCompany.basicInfo?.name || "",
-          description: latestCompany.basicInfo?.description || "",
-          logo: latestCompany.basicInfo?.logo || latestCompany.basicInfo?.logoUrl || "",
+          name: basicInfo?.name || "",
+          description: basicInfo?.description || "",
+          logo: basicInfo?.logo || basicInfo?.logoUrl || "",
           region,
           country: validFirstCountry,
-          industry: latestCompany.basicInfo?.industry || "",
-          employees: latestCompany.basicInfo?.employees || "",
-          revenue: latestCompany.basicInfo?.revenue || "",
+          industry: basicInfo?.industry || "",
+          employees: basicInfo?.employees || "",
+          branchEmployees: hydratedBranchEmployees,
+          revenue: basicInfo?.revenue || "",
           locations,
         });
         setSavedSnapshot(buildSnapshot({
-          name: latestCompany.basicInfo?.name || "",
-          description: latestCompany.basicInfo?.description || "",
-          logo: latestCompany.basicInfo?.logo || latestCompany.basicInfo?.logoUrl || "",
+          name: basicInfo?.name || "",
+          description: basicInfo?.description || "",
+          logo: basicInfo?.logo || basicInfo?.logoUrl || "",
           region,
-          industry: latestCompany.basicInfo?.industry || "",
-          employees: latestCompany.basicInfo?.employees || "",
-          revenue: latestCompany.basicInfo?.revenue || "",
+          industry: basicInfo?.industry || "",
+          employees: basicInfo?.employees || "",
+          branchEmployees: hydratedBranchEmployees,
+          revenue: basicInfo?.revenue || "",
           locations,
         }));
         // Clear localStorage draft since company exists
@@ -313,8 +340,8 @@ export default function CompanyWizard() {
         field: "cities",
       };
     }
-    if (locations.some((l) => !l.city || !l.country)) {
-      return { message: "Each city entry must include a country and city.", field: "cities" };
+    if (locations.some((l) => !l.city || !l.country || !l.branch)) {
+      return { message: "Each location entry must include country, city, and branch.", field: "cities" };
     }
     return { message: null, field: null };
   };
@@ -339,12 +366,15 @@ export default function CompanyWizard() {
       logo: companyData.logo,
       industry: companyData.industry,
       employees: Number(companyData.employees),
+      branchEmployees: companyData.branchEmployees || [],
       revenue: Number(companyData.revenue),
       region,
       fiscalYear: new Date().getFullYear(),
       locations: locations.map((loc) => ({
+        region: loc.region || region,
         city: loc.city || loc.name,
         country: loc.country,
+        branch: loc.branch,
         isPrimary: loc.isPrimary || false,
       })),
     };
@@ -385,12 +415,15 @@ export default function CompanyWizard() {
       logo: companyData.logo,
       industry: companyData.industry,
       employees: Number(companyData.employees),
+      branchEmployees: companyData.branchEmployees || [],
       revenue: Number(companyData.revenue),
       region,
       fiscalYear: new Date().getFullYear(),
       locations: locations.map((loc) => ({
+        region: loc.region || region,
         city: loc.city || loc.name,
         country: loc.country,
+        branch: loc.branch,
         isPrimary: loc.isPrimary || false,
       })),
     };
@@ -443,7 +476,7 @@ export default function CompanyWizard() {
         return (
           companyData.region !== "" &&
           locs.length > 0 &&
-          locs.every((l) => l.country && (l.city || l.name))
+          locs.every((l) => l.country && (l.city || l.name) && l.branch)
         );
       }
       default: return true;
@@ -467,6 +500,7 @@ export default function CompanyWizard() {
         country: "",
         industry: "",
         employees: "",
+        branchEmployees: [],
         revenue: "",
         locations: [],
       });

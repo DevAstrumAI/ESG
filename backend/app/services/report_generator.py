@@ -134,7 +134,7 @@ Format the report professionally with clear section headings. Use bullet points 
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a senior ESG sustainability expert providing professional, data-driven emissions analysis and actionable recommendations."},
                 {"role": "user", "content": prompt}

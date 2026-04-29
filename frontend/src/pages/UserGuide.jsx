@@ -23,9 +23,9 @@ export default function UserGuide() {
 
   const sections = [
     { id: "getting-started", label: "Getting Started", icon: <FiHome /> },
+    { id: "company-setup", label: "Company Setup", icon: <FiSettings /> },
     { id: "scope1", label: "Scope 1 Emissions", icon: <FiTruck /> },
     { id: "scope2", label: "Scope 2 Emissions", icon: <FiZap /> },
-    { id: "company-setup", label: "Company Setup", icon: <FiSettings /> },
     { id: "reports", label: "Reports & Analytics", icon: <FiFileText /> },
     { id: "best-practices", label: "Best Practices", icon: <BiLeaf /> },
   ];

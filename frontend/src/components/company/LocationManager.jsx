@@ -6,8 +6,10 @@ import { FiMapPin, FiTrash2, FiPlus } from "react-icons/fi";
 import { countriesByRegion, citiesByCountry, filterLocationsForRegion } from "../../utils/companyLocations";
 
 export default function LocationManager({ data, updateField }) {
+  const [selectedRegion, setSelectedRegion] = useState(data.region || "");
   const [selectedCountry, setSelectedCountry] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
+  const [branchName, setBranchName] = useState("");
 
   const getCountryDisplayName = (countryCode) => {
     const names = {
@@ -19,7 +21,8 @@ export default function LocationManager({ data, updateField }) {
     return names[countryCode] || countryCode;
   };
 
-  const availableCountries = countriesByRegion[data.region] || [];
+  const availableCountries = countriesByRegion[selectedRegion] || [];
+  const isMultiRegionMode = data.region === "multi-region";
   const availableCities = citiesByCountry[selectedCountry] || [];
   const validLocations = useMemo(
     () => filterLocationsForRegion(data.region, data.locations || []),
@@ -27,26 +30,37 @@ export default function LocationManager({ data, updateField }) {
   );
 
   useEffect(() => {
+    setSelectedRegion(data.region === "multi-region" ? "" : (data.region || ""));
     setSelectedCountry("");
     setSelectedCity("");
+    setBranchName("");
   }, [data.region]);
 
   const addLocationPair = () => {
-    if (!selectedCountry || !selectedCity) return;
+    const normalizedBranch = String(branchName || "").trim();
+    if (!selectedRegion || !selectedCountry || !selectedCity || !normalizedBranch) return;
     const cityExists = validLocations.some(
-      (loc) => loc.country === selectedCountry && loc.city === selectedCity
+      (loc) =>
+        (loc.region || data.region || "") === selectedRegion &&
+        loc.country === selectedCountry &&
+        loc.city === selectedCity &&
+        String(loc.branch || "").trim().toLowerCase() === normalizedBranch.toLowerCase()
     );
     if (cityExists) return;
     const newLocation = {
       id: Date.now(),
+      region: selectedRegion,
       country: selectedCountry,
       city: selectedCity,
+      branch: normalizedBranch,
     };
     const nextLocations = [...validLocations, newLocation];
     updateField("locations", nextLocations);
+    // Keep top-level region stable: only wizard's region selection controls this.
     updateField("country", selectedCountry);
     setSelectedCountry("");
     setSelectedCity("");
+    setBranchName("");
   };
 
   const removeLocationPair = (id) => {
@@ -88,7 +102,7 @@ export default function LocationManager({ data, updateField }) {
   return (
     <div className="location-manager">
       <div className="step-header">
-        <h3>Add City Locations</h3>
+        <h3>Add Branch Locations</h3>
         {validLocations.length > 0 && (
           <span className="step-badge">
             {validLocations.length} {validLocations.length === 1 ? 'entry' : 'entries'} added
@@ -96,10 +110,33 @@ export default function LocationManager({ data, updateField }) {
         )}
       </div>
       <p className="step-description">
-        Add each location as a country + city pair. You can include multiple countries and multiple cities.
+        Add each location as country + city + branch. Duplicate city-branch combinations are not allowed.
       </p>
 
       <div className="add-section">
+        <div className="field-group">
+          <label className="field-label">Region</label>
+          <ThemedSelect
+            className="field-select"
+            value={selectedRegion}
+            onChange={(nextRegion) => {
+              if (!isMultiRegionMode) return;
+              setSelectedRegion(nextRegion);
+              setSelectedCountry("");
+              setSelectedCity("");
+            }}
+            options={
+              isMultiRegionMode
+                ? [
+                    { value: "middle-east", label: "Middle East" },
+                    { value: "asia-pacific", label: "Asia Pacific" },
+                  ]
+                : [{ value: data.region, label: String(data.region || "").replace("-", " ") }]
+            }
+            placeholder={isMultiRegionMode ? "Select region" : "Region"}
+            disabled={!isMultiRegionMode}
+          />
+        </div>
         <div className="field-group">
           <label className="field-label">Country</label>
           <ThemedSelect
@@ -124,6 +161,15 @@ export default function LocationManager({ data, updateField }) {
             placeholder="Select city"
           />
         </div>
+        <div className="field-group">
+          <label className="field-label">Branch</label>
+          <input
+            className="field-input"
+            value={branchName}
+            onChange={(e) => setBranchName(e.target.value)}
+            placeholder="Enter branch name"
+          />
+        </div>
       </div>
 
       <div className="cities-section">
@@ -144,14 +190,19 @@ export default function LocationManager({ data, updateField }) {
             <table className="cities-table">
               <thead>
                 <tr>
+                  <th>Region</th>
                   <th>Country</th>
                   <th>City</th>
+                  <th>Branch</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {validLocations.map((loc) => (
                   <tr key={loc.id}>
+                    <td data-label="Region">
+                      <span className="country-badge">{loc.region || data.region || "—"}</span>
+                    </td>
                     <td data-label="Country">
                       <span className="country-badge">{getCountryDisplayName(loc.country)}</span>
                     </td>
@@ -160,6 +211,9 @@ export default function LocationManager({ data, updateField }) {
                         <FiMapPin />
                         <span>{loc.city}</span>
                       </div>
+                    </td>
+                    <td data-label="Branch">
+                      <span className="country-badge">{loc.branch || "Main"}</span>
                     </td>
                     <td>
                       <button onClick={() => removeLocationPair(loc.id)} className="remove-btn" title="Remove entry">
@@ -178,7 +232,7 @@ export default function LocationManager({ data, updateField }) {
         <PrimaryButton
           onClick={addLocationPair}
           className="add-btn"
-          disabled={!selectedCountry || !selectedCity}
+          disabled={!selectedRegion || !selectedCountry || !selectedCity || !String(branchName || "").trim()}
         >
           <FiPlus /> Add more
         </PrimaryButton>
@@ -187,7 +241,7 @@ export default function LocationManager({ data, updateField }) {
       {validLocations.length === 0 && (
         <div className="note-message">
           <span>ℹ️</span>
-          <span>You need to add at least one location pair to continue</span>
+          <span>You need to add at least one city + branch location to continue</span>
         </div>
       )}
 
@@ -274,6 +328,14 @@ export default function LocationManager({ data, updateField }) {
         }
 
         .field-select option {
+          background: #FFFFFF;
+          color: #111827;
+        }
+        .field-input {
+          padding: 12px 16px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          font-size: 14px;
           background: #FFFFFF;
           color: #111827;
         }
