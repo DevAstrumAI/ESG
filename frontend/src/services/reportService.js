@@ -30,6 +30,12 @@ export const reportService = {
     if (location?.country && location.country !== "all") {
       body.country = location.country;
     }
+    if (location?.region && location.region !== "all") {
+      body.region = location.region;
+    }
+    if (location?.branch && location.branch !== "all") {
+      body.branch = location.branch;
+    }
     if (periodMeta?.period) {
       body.period = periodMeta.period;
     }
@@ -77,6 +83,8 @@ export const reportService = {
     if (quarter) params.set("quarter", quarter);
     if (location?.country) params.set("country", location.country);
     if (location?.city) params.set("city", location.city);
+    if (location?.region) params.set("region", location.region);
+    if (location?.branch) params.set("branch", location.branch);
 
     const response = await fetch(`${API_URL}/api/reports/export-csv?${params.toString()}`, {
       method: "GET",

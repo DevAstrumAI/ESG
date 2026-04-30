@@ -88,14 +88,26 @@ def _norm_loc(value: str | None) -> str:
     return str(value or "").strip().lower()
 
 
-def _doc_matches_location(d: dict, country: str | None, city: str | None) -> bool:
-    if not country and not city:
+def _doc_matches_location(
+    d: dict,
+    country: str | None,
+    city: str | None,
+    region: str | None = None,
+    branch: str | None = None,
+) -> bool:
+    if not country and not city and not region and not branch:
         return True
+    doc_region = _norm_loc(d.get("region"))
     doc_country = _norm_loc(d.get("country"))
     doc_city = _norm_loc(d.get("city"))
+    doc_branch = _norm_loc(d.get("branch"))
+    if region and doc_region != _norm_loc(region):
+        return False
     if country and doc_country != _norm_loc(country):
         return False
     if city and doc_city != _norm_loc(city):
+        return False
+    if branch and doc_branch != _norm_loc(branch):
         return False
     return True
 
@@ -106,15 +118,17 @@ def fetch_scope_docs(
     year: int,
     month: str | None,
     *,
+    region: str | None = None,
     country: str | None = None,
     city: str | None = None,
+    branch: str | None = None,
 ) -> list[dict]:
     db = get_db()
     docs = db.collection("emissionData").document(company_id).collection(scope).stream()
     results = []
     for doc in docs:
         d = doc.to_dict()
-        if not _doc_matches_location(d, country, city):
+        if not _doc_matches_location(d, country, city, region, branch):
             continue
         if month:
             if d.get("month") == month:
@@ -302,8 +316,10 @@ def _fetch_scope_docs_all_months(
     company_id: str,
     scope: str,
     *,
+    region: str | None = None,
     country: str | None = None,
     city: str | None = None,
+    branch: str | None = None,
 ) -> list[dict]:
     """Fetch all docs for a scope and apply only location filter."""
     db = get_db()
@@ -311,7 +327,7 @@ def _fetch_scope_docs_all_months(
     rows: list[dict] = []
     for doc in docs:
         data = doc.to_dict() or {}
-        if not _doc_matches_location(data, country, city):
+        if not _doc_matches_location(data, country, city, region, branch):
             continue
         rows.append(data)
     return rows
@@ -1075,13 +1091,15 @@ def fetch_historical_totals(
     base_year: int,
     current_year: int,
     *,
+    region: str | None = None,
     country: str | None = None,
     city: str | None = None,
+    branch: str | None = None,
 ) -> list[dict]:
     history = []
     for yr in range(base_year, current_year + 1):
-        s1 = aggregate_scope1(fetch_scope_docs(company_id, "scope1", yr, None, country=country, city=city))
-        s2 = aggregate_scope2(fetch_scope_docs(company_id, "scope2", yr, None, country=country, city=city))
+        s1 = aggregate_scope1(fetch_scope_docs(company_id, "scope1", yr, None, region=region, country=country, city=city, branch=branch))
+        s2 = aggregate_scope2(fetch_scope_docs(company_id, "scope2", yr, None, region=region, country=country, city=city, branch=branch))
         if s1["total"] > 0 or s2["total_location"] > 0:
             history.append({
                 "year":              yr,
@@ -1674,16 +1692,20 @@ async def generate_report(
         primary   = next((l for l in locations if l.get("isPrimary")), locations[0] if locations else {})
         requested_city = str(body.get("city") or "").strip().lower()
         requested_country = str(body.get("country") or "").strip().lower()
+        requested_region = str(body.get("region") or "").strip().lower()
+        requested_branch = str(body.get("branch") or "").strip().lower()
         selected_city = requested_city if requested_city and requested_city != "all" else (primary.get("city") or "dubai").lower()
         selected_country = requested_country if requested_country and requested_country != "all" else (primary.get("country") or "").lower()
+        selected_region = requested_region if requested_region and requested_region != "all" else str(primary.get("region") or "").strip().lower()
+        selected_branch = requested_branch if requested_branch and requested_branch != "all" else str(primary.get("branch") or "").strip().lower()
         fin       = {**REGIONAL_FINANCIALS.get(selected_city, DEFAULT_FINANCIALS), "city": selected_city}
 
         # ── Fetch & aggregate ─────────────────────────────────────────────
         scope1_docs = fetch_scope_docs(
-            company_id, "scope1", year, month, country=selected_country or None, city=selected_city or None
+            company_id, "scope1", year, month, region=selected_region or None, country=selected_country or None, city=selected_city or None, branch=selected_branch or None
         )
         scope2_docs = fetch_scope_docs(
-            company_id, "scope2", year, month, country=selected_country or None, city=selected_city or None
+            company_id, "scope2", year, month, region=selected_region or None, country=selected_country or None, city=selected_city or None, branch=selected_branch or None
         )
         s1 = aggregate_scope1(scope1_docs)
         s2 = aggregate_scope2(scope2_docs)
@@ -1699,16 +1721,18 @@ async def generate_report(
             company_id,
             base_year,
             year,
+            region=selected_region or None,
             country=selected_country or None,
             city=selected_city or None,
+            branch=selected_branch or None,
         )
 
         # ── SBTi baseline ─────────────────────────────────────────────────
         base_s1       = aggregate_scope1(
-            fetch_scope_docs(company_id, "scope1", base_year, None, country=selected_country or None, city=selected_city or None)
+            fetch_scope_docs(company_id, "scope1", base_year, None, region=selected_region or None, country=selected_country or None, city=selected_city or None, branch=selected_branch or None)
         )
         base_s2       = aggregate_scope2(
-            fetch_scope_docs(company_id, "scope2", base_year, None, country=selected_country or None, city=selected_city or None)
+            fetch_scope_docs(company_id, "scope2", base_year, None, region=selected_region or None, country=selected_country or None, city=selected_city or None, branch=selected_branch or None)
         )
         base_total_kg = base_s1["total"] + base_s2["total_location"] or s1["total"] + s2["total_location"]
 
@@ -1828,6 +1852,14 @@ async def generate_report(
 
         current_total_t = report_total_kg / 1000.0
         prior_total_t = (prior_scope1_report_kg + float(prior_s2["total_location"] or 0)) / 1000.0
+        def pct(curr: float, prev: float) -> float | None:
+            if prev in (None, 0):
+                return None
+            try:
+                return round((float(curr) - float(prev)) / float(prev) * 100, 2)
+            except Exception:
+                return None
+
         basic_info = company_data.get("basicInfo") or {}
         raw_vehicle_count = (
             basic_info.get("vehicleCount")
@@ -2141,16 +2173,18 @@ async def export_report_csv(
     period: str = "yearly",
     month: str | None = None,
     quarter: str | None = None,
+    region: str | None = None,
     country: str | None = None,
     city: str | None = None,
+    branch: str | None = None,
     current_user: dict = Depends(get_current_user),
 ):
     uid = current_user.get("uid")
     company_id, _company_data = get_company_id(uid)
 
     normalized_period = str(period or "yearly").strip().lower()
-    scope1_docs = _fetch_scope_docs_all_months(company_id, "scope1", country=country, city=city)
-    scope2_docs = _fetch_scope_docs_all_months(company_id, "scope2", country=country, city=city)
+    scope1_docs = _fetch_scope_docs_all_months(company_id, "scope1", region=region, country=country, city=city, branch=branch)
+    scope2_docs = _fetch_scope_docs_all_months(company_id, "scope2", region=region, country=country, city=city, branch=branch)
 
     if normalized_period == "monthly" and month:
         scope1_docs = [d for d in scope1_docs if str(d.get("month") or "") == str(month)]
