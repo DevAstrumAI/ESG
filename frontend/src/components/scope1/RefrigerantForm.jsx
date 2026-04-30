@@ -244,7 +244,6 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           Enter <strong>refrigerant leakage</strong> from cooling equipment. Each refrigerant has a specific Global Warming Potential (GWP).
         </p>
       </div>
-      {!factorsLoaded && <div className="rf-info-note">Loading refrigerant factors from location database...</div>}
       {addRowError && <div className="rf-inline-error">⚠️ {addRowError}</div>}
 
       <div className="rf-table-wrap">
@@ -528,16 +527,6 @@ export default function RefrigerantForm({ onSubmitSuccess, reportingMonth }) {
           border-radius: 8px;
           padding: 9px 11px;
           font-size: 13px;
-          font-weight: 500;
-        }
-        .rf-info-note {
-          margin: 8px 0 10px;
-          border: 1px solid #BFDBFE;
-          background: #EFF6FF;
-          color: #1E40AF;
-          border-radius: 8px;
-          padding: 9px 11px;
-          font-size: 12px;
           font-weight: 500;
         }
                 .rf-error { font-size: 13px; color: #DC2626; }
