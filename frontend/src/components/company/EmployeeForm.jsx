@@ -146,7 +146,7 @@ export default function EmployeeForm({ data, updateField }) {
                   placeholder="0"
                 />
               </div>
-              <div className="field-group">
+              <div className="field-group apply-group">
                 <label className="field-label"> </label>
                 <button
                   type="button"
@@ -260,9 +260,15 @@ export default function EmployeeForm({ data, updateField }) {
         }
         .selector-grid {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 10px;
           margin-bottom: 18px;
+        }
+        .apply-group {
+          justify-content: flex-end;
+        }
+        .apply-group .field-label {
+          visibility: hidden;
         }
         .apply-btn {
           border: none;
@@ -272,6 +278,7 @@ export default function EmployeeForm({ data, updateField }) {
           padding: 10px 12px;
           font-weight: 600;
           cursor: pointer;
+          min-height: 44px;
         }
         .apply-btn:disabled {
           opacity: 0.5;

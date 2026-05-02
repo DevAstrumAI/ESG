@@ -16,7 +16,6 @@ export const useCompanyStore = create((set, get) => ({
   fetchCompany: async (token, { force = false } = {}) => {
     const { company, lastFetchedAt } = get();
     const STALE_MS = 5 * 60 * 1000; // 5 minutes
-    const fetchStart = Date.now();
 
     // Return cached data unless forced or stale
     if (!force && company && lastFetchedAt && Date.now() - lastFetchedAt < STALE_MS) {

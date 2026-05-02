@@ -30,6 +30,8 @@ import {
   filterLocationsForRegion,
   getValidCountryValuesForRegion,
 } from "../../utils/companyLocations";
+import { companyAPI } from "../../services/api";
+import { useAuthStore } from "../../store/authStore";
 
 export default function SetupSummary({
   data,
@@ -63,10 +65,18 @@ export default function SetupSummary({
   const [cities, setCities] = useState([]);
   const [showRegionChangeConfirm, setShowRegionChangeConfirm] = useState(false);
   const [pendingRegion, setPendingRegion] = useState("");
+  const [regionMode, setRegionMode] = useState(data.region === "multi-region" ? "multi" : "single");
+  const [singleRegionChoice, setSingleRegionChoice] = useState(
+    data.region === "multi-region" ? "middle-east" : (data.region || "middle-east")
+  );
   const [regionInlineError, setRegionInlineError] = useState("");
   const [locationsInlineError, setLocationsInlineError] = useState("");
+  const [regionTransitionError, setRegionTransitionError] = useState("");
+  const [exportingTransitionCsv, setExportingTransitionCsv] = useState(false);
+  const token = useAuthStore((s) => s.token);
 
   const regions = [
+    { label: " Multi Region", value: "multi-region" },
     { label: " Middle East", value: "middle-east" },
     { label: " Asia Pacific", value: "asia-pacific" },
   ];
@@ -106,6 +116,7 @@ export default function SetupSummary({
     if (onClearValidationFeedback) onClearValidationFeedback();
     setRegionInlineError("");
     setLocationsInlineError("");
+    setRegionTransitionError("");
     setEditData({
       name: data.name,
       description: data.description,
@@ -125,6 +136,11 @@ export default function SetupSummary({
       setSelectedCity("");
       setSelectedRegion(data.region || "");
       setCities([]);
+    }
+    if (section === "region") {
+      const currentRegion = data.region || "middle-east";
+      setRegionMode(currentRegion === "multi-region" ? "multi" : "single");
+      setSingleRegionChoice(currentRegion === "multi-region" ? "middle-east" : currentRegion);
     }
     if (section === "employees") {
       const keyFor = (loc) =>
@@ -200,21 +216,33 @@ export default function SetupSummary({
   };
 
   const applyRegionChange = (newRegion) => {
-    const regionChanged = newRegion !== data.region;
-    const nextLocations = regionChanged
-      ? []
-      : filterLocationsForRegion(newRegion, data.locations || []);
+    const previousRegion = data.region || "";
+    const regionChanged = newRegion !== previousRegion;
+    const fromMultiToSingle = previousRegion === "multi-region" && newRegion !== "multi-region";
+    const fromSingleToMulti = previousRegion !== "multi-region" && newRegion === "multi-region";
+    const singleToDifferentSingle =
+      previousRegion !== "multi-region" && newRegion !== "multi-region" && previousRegion !== newRegion;
+    let nextLocations = filterLocationsForRegion(newRegion, data.locations || []);
+    if (fromSingleToMulti) {
+      // Keep existing single-region rows while enabling multi-region mode.
+      nextLocations = (data.locations || []).map((loc) => ({
+        ...loc,
+        region: loc.region || previousRegion,
+      }));
+    }
+    if (fromMultiToSingle || singleToDifferentSingle) {
+      nextLocations = filterLocationsForRegion(newRegion, data.locations || []);
+    }
     const validCountries = new Set(getValidCountryValuesForRegion(newRegion));
-    const nextCountry = regionChanged
-      ? ""
-      : (data.country && validCountries.has(data.country) ? data.country : "");
+    const nextCountry =
+      data.country && validCountries.has(data.country) ? data.country : (nextLocations[0]?.country || "");
     applyCompanyPatch({
       region: newRegion,
       locations: nextLocations,
       country: nextCountry,
     });
-    if (regionChanged) {
-      setFacilitiesEditData({ locations: [] });
+    if (fromMultiToSingle || singleToDifferentSingle) {
+      setFacilitiesEditData({ locations: nextLocations.map((loc, index) => toEditLocation(loc, index)) });
       setSelectedCountry("");
       setSelectedCity("");
       setCities([]);
@@ -223,14 +251,37 @@ export default function SetupSummary({
     setEditingSection(null);
   };
 
+  const downloadRegionTransitionCsv = async () => {
+    if (!token) return;
+    setExportingTransitionCsv(true);
+    try {
+      const { blob, filename } = await companyAPI.exportRegionTransitionCSV(token, 5);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setExportingTransitionCsv(false);
+    }
+  };
+
   const handleRegionSave = () => {
-    const newRegion = editData.region;
+    const newRegion = regionMode === "multi" ? "multi-region" : singleRegionChoice;
     if (!newRegion) {
-      setRegionInlineError("Please select a region.");
+      setRegionInlineError("Please select a valid region mode.");
       return;
     }
     setRegionInlineError("");
-    if (newRegion !== data.region) {
+    setRegionTransitionError("");
+    const previousRegion = data.region || "";
+    const destructiveTransition =
+      (previousRegion === "multi-region" && newRegion !== "multi-region") ||
+      (previousRegion !== "multi-region" && newRegion !== "multi-region" && previousRegion !== newRegion);
+    if (newRegion !== previousRegion && destructiveTransition) {
       setPendingRegion(newRegion);
       setShowRegionChangeConfirm(true);
       return;
@@ -453,15 +504,53 @@ export default function SetupSummary({
 
           {editingSection === 'region' ? (
             <div className="edit-mode" key="region-edit">
-              <SelectDropdown
-                label="Region"
-                value={editData.region}
-                onChange={(e) => {
-                  setRegionInlineError("");
-                  setEditData({...editData, region: e.target.value});
-                }}
-                options={regions}
-              />
+              <div className="field-group">
+                <label className="field-label">Region Model</label>
+                <div className="region-mode-row">
+                  <label className="region-radio">
+                    <input
+                      type="radio"
+                      name="region-mode"
+                      checked={regionMode === "single"}
+                      onChange={() => {
+                        setRegionInlineError("");
+                        setRegionMode("single");
+                      }}
+                    />
+                    <span>One Region</span>
+                  </label>
+                  <label className="region-radio">
+                    <input
+                      type="radio"
+                      name="region-mode"
+                      checked={regionMode === "multi"}
+                      onChange={() => {
+                        setRegionInlineError("");
+                        setRegionMode("multi");
+                      }}
+                    />
+                    <span>Multi Region</span>
+                  </label>
+                </div>
+              </div>
+              {regionMode === "single" && (
+                <div className="field-group">
+                  <label className="field-label">Select Region</label>
+                  <ThemedSelect
+                    className="field-select"
+                    value={singleRegionChoice}
+                    onChange={(v) => {
+                      setRegionInlineError("");
+                      setSingleRegionChoice(v);
+                    }}
+                    options={regions
+                      .filter((r) => r.value !== "multi-region")
+                      .map((r) => ({ value: r.value, label: String(r.label || "").trim() }))}
+                    placeholder="Select region"
+                    menuDirection="down"
+                  />
+                </div>
+              )}
               {regionInlineError && <div className="inline-error">{regionInlineError}</div>}
               <div className="edit-actions">
                 <PrimaryButton onClick={handleRegionSave} className="save-btn"><FiSave /> Save</PrimaryButton>
@@ -729,7 +818,7 @@ export default function SetupSummary({
                     className="add-city-btn"
                     disabled={!selectedCountry || !selectedCity || !String(selectedBranch || "").trim()}
                   >
-                    <FiPlus /> Add more 
+                    <FiPlus /> Add
                   </button>
                 </div>
               </div>
@@ -756,7 +845,7 @@ export default function SetupSummary({
 
               {facilitiesEditData.locations.length === 0 && (
                 <div className="empty-locations">
-                  <p>No entries added yet. Select country and city, add branch, then click Add more.</p>
+                  <p>No entries added yet. Select country and city, add branch, then click Add.</p>
                 </div>
               )}
 
@@ -803,17 +892,31 @@ export default function SetupSummary({
           setShowRegionChangeConfirm(false);
           setPendingRegion("");
         }}
-        onConfirm={() => {
-          if (pendingRegion) applyRegionChange(pendingRegion);
-          setShowRegionChangeConfirm(false);
-          setPendingRegion("");
+        onConfirm={async (choice) => {
+          if (!pendingRegion) return;
+          if (choice === "export") {
+            try {
+              await downloadRegionTransitionCsv();
+            } catch (error) {
+              setRegionTransitionError(error?.message || "Could not export CSV. Please try again.");
+              return;
+            }
+          }
+          applyRegionChange(pendingRegion);
         }}
-        title="Confirm Region Change"
-        message="Changing region will clear the selected country and all added cities. You will need to re-select them before completing setup."
-        confirmText="Yes, Change Region"
-        cancelText="Keep Current Region"
+        title="Region Change Impacts Existing Data"
+        message="Changing from multi-region to one region (or switching one region to another) removes locations outside the selected region. If you want your last 5 years exported in CSV before continuing, choose Yes. Choose No to continue without export."
+        options={[
+          { label: exportingTransitionCsv ? "Exporting..." : "Yes, Export 5 Years", value: "export" },
+          { label: "No, Continue Without Export", value: "continue" },
+        ]}
         type="danger"
       />
+      {regionTransitionError && (
+        <div className="inline-error" style={{ marginTop: 12 }}>
+          {regionTransitionError}
+        </div>
+      )}
 
       <style jsx>{`
         .summary-step {
@@ -951,6 +1054,24 @@ export default function SetupSummary({
           margin-bottom: 2px;
         }
         .field-select { width: 100%; }
+        .region-mode-row {
+          display: flex;
+          gap: 16px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+        .region-radio {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: #374151;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .region-radio input[type="radio"] {
+          accent-color: #2E7D64;
+        }
         .field-input {
           width: 100%;
           min-height: 42px;

@@ -8,14 +8,14 @@ import {
 import Card from "../components/ui/Card";
 import { useCompanyStore } from "../store/companyStore";
 import { useAuthStore } from "../store/authStore";
+import { useSelectedLocationStore } from "../store/selectedLocationStore";
+import FacilityCitySelect from "../components/location/FacilityCitySelect";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer } from "recharts";
 import { reportService } from "../services/reportService";
 
 export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("yearly");
   const [selectedYear, setSelectedYear] = useState(String(new Date().getMonth() + 1 >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1));
-  const [selectedCity, setSelectedCity] = useState("all");
-  const [cities, setCities] = useState(["all"]);
   const [generatingAI, setGeneratingAI] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [aiReport, setAiReport] = useState(null);
@@ -25,6 +25,8 @@ export default function ReportsPage() {
   const reportRef = useRef(null);
   const { company, fetchCompany } = useCompanyStore();
   const token = useAuthStore((s) => s.token);
+  const syncFromCompany = useSelectedLocationStore((s) => s.syncFromCompany);
+  const getSelectedLocation = useSelectedLocationStore((s) => s.getSelectedLocation);
   const navigate = useNavigate();
 
   const [selectedMonth, setSelectedMonth] = useState("01"); // Default January
@@ -55,11 +57,8 @@ export default function ReportsPage() {
   }, [token, company, fetchCompany]);
 
   useEffect(() => {
-    if (company?.locations?.length > 0) {
-      const uniqueCities = ["all", ...new Set(company.locations.map(loc => loc.city))];
-      setCities(uniqueCities);
-    }
-  }, [company]);
+    if (company) syncFromCompany(company);
+  }, [company, syncFromCompany]);
 
   const handleGenerateAIReport = async () => {
     setGeneratingAI(true);
@@ -87,14 +86,13 @@ export default function ReportsPage() {
       }
 
       const selectedLocation = (() => {
-        if (!company?.locations?.length || selectedCity === "all") return null;
-        const match = company.locations.find(
-          (loc) => String(loc.city || "").toLowerCase() === String(selectedCity || "").toLowerCase()
-        );
-        if (!match) return { city: selectedCity };
+        const loc = getSelectedLocation(company);
+        if (!loc) return null;
         return {
-          city: String(match.city || "").toLowerCase(),
-          country: String(match.country || "").toLowerCase(),
+          region: String(loc.region || "").toLowerCase(),
+          country: String(loc.country || "").toLowerCase(),
+          city: String(loc.city || "").toLowerCase(),
+          branch: String(loc.branch || "").toLowerCase(),
         };
       })();
       
@@ -224,14 +222,13 @@ export default function ReportsPage() {
     setReportError(null);
     try {
       const selectedLocation = (() => {
-        if (!company?.locations?.length || selectedCity === "all") return null;
-        const match = company.locations.find(
-          (loc) => String(loc.city || "").toLowerCase() === String(selectedCity || "").toLowerCase()
-        );
-        if (!match) return { city: selectedCity };
+        const loc = getSelectedLocation(company);
+        if (!loc) return null;
         return {
-          city: String(match.city || "").toLowerCase(),
-          country: String(match.country || "").toLowerCase(),
+          region: String(loc.region || "").toLowerCase(),
+          country: String(loc.country || "").toLowerCase(),
+          city: String(loc.city || "").toLowerCase(),
+          branch: String(loc.branch || "").toLowerCase(),
         };
       })();
 
@@ -1148,12 +1145,14 @@ export default function ReportsPage() {
       {/* ── Filters Bar ── */}
       <Card className="filters-card">
         <div className="filters-grid">
-          <div className="filter-group">
-            <label><FiMapPin className="filter-icon" /> City</label>
-            <select value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} className="filter-select">
-              {cities.map(city => <option key={city} value={city}>{city === "all" ? "All Cities" : city}</option>)}
-            </select>
-          </div>
+          {company?.locations?.length > 0 && (
+            <div className="filter-group location-filter-group">
+              <label><FiMapPin className="filter-icon" /> Report Location</label>
+              <div className="report-location-wrap">
+                <FacilityCitySelect company={company} menuDirection="down" layout="dashboard" />
+              </div>
+            </div>
+          )}
           <div className="filter-group">
             <label><FiCalendar className="filter-icon" /> Report Period</label>
             <select value={selectedPeriod} onChange={(e) => setSelectedPeriod(e.target.value)} className="filter-select">
@@ -1213,6 +1212,15 @@ export default function ReportsPage() {
 
       <style jsx>{`
         .reports-page { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        .location-filter-group {
+          grid-column: 1 / -1;
+        }
+        .report-location-wrap {
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          padding: 10px;
+          background: #fff;
+        }
         .reports-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
         .header-left { display: flex; align-items: center; gap: 16px; }
         .header-icon { width: 48px; height: 48px; background: #F8FAF8; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #2E7D64; border: 1px solid #E5E7EB; }

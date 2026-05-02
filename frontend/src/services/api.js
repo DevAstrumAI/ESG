@@ -113,6 +113,30 @@ export const companyAPI = {
   getTargets: async (token) => {
     return request('/api/companies/targets', { token });
   },
+
+  exportRegionTransitionCSV: async (token, years = 5) => {
+    const response = await fetch(`${API_URL}/api/companies/region-transition-export?years=${encodeURIComponent(years)}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      let detail = `CSV export failed: ${response.status}`;
+      try {
+        const payload = await response.json();
+        detail = payload?.detail || detail;
+      } catch (_err) {
+        // no-op
+      }
+      throw new Error(detail);
+    }
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get("content-disposition") || "";
+    const matched = contentDisposition.match(/filename="([^"]+)"/i);
+    const filename = matched?.[1] || `region_transition_export_${years}y.csv`;
+    return { blob, filename };
+  },
 };
 
 // Emissions API

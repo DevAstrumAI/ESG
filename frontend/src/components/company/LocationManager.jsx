@@ -234,7 +234,7 @@ export default function LocationManager({ data, updateField }) {
           className="add-btn"
           disabled={!selectedRegion || !selectedCountry || !selectedCity || !String(branchName || "").trim()}
         >
-          <FiPlus /> Add more
+          <FiPlus /> Add
         </PrimaryButton>
       </div>
 
