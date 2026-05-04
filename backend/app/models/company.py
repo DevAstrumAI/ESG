@@ -19,6 +19,8 @@ class CompanyCreate(BaseModel):
     fiscalYear: int = 2026
     locations: Optional[List[Location]] = []
     branchEmployees: Optional[List[dict]] = []
+    branchRevenue: Optional[List[dict]] = []
+    revenueCurrency: Optional[str] = "USD"
 
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
@@ -31,3 +33,5 @@ class CompanyUpdate(BaseModel):
     fiscalYear: Optional[int] = None
     locations: Optional[List[Location]] = None
     branchEmployees: Optional[List[dict]] = None
+    branchRevenue: Optional[List[dict]] = None
+    revenueCurrency: Optional[str] = None

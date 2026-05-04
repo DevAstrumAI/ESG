@@ -57,7 +57,9 @@ export default function CompanyWizard() {
     industry: "",
     employees: "",
     branchEmployees: [],
+    branchRevenue: [],
     revenue: "",
+    revenueCurrency: "USD",
     locations: [],
   });
 
@@ -88,6 +90,20 @@ export default function CompanyWizard() {
         const kb = `${b.region}|${b.country}|${b.city}|${b.branch}|${b.isPrimary ? 1 : 0}`;
         return ka.localeCompare(kb);
       });
+    const normBranchRev = (rows) =>
+      [...(rows || [])]
+        .map((r) => ({
+          region: toCleanString(r?.region),
+          country: toCleanString(r?.country),
+          city: toCleanString(r?.city),
+          branch: toCleanString(r?.branch),
+          revenue: toNumberOrNull(r?.revenue) ?? 0,
+        }))
+        .sort((a, b) => {
+          const ka = `${a.region}|${a.country}|${a.city}|${a.branch}`;
+          const kb = `${b.region}|${b.country}|${b.city}|${b.branch}`;
+          return ka.localeCompare(kb);
+        });
     return {
       name: toCleanString(data?.name),
       description: toCleanString(data?.description),
@@ -96,6 +112,8 @@ export default function CompanyWizard() {
       industry: toCleanString(data?.industry),
       employees: toNumberOrNull(data?.employees),
       revenue: toNumberOrNull(data?.revenue),
+      branchRevenue: normBranchRev(data?.branchRevenue),
+      revenueCurrency: toCleanString(data?.revenueCurrency || "USD") || "USD",
       locations: normalizedLocations,
     };
   }, []);
@@ -159,6 +177,8 @@ export default function CompanyWizard() {
               industry: data.industry || "",
               employees: Number(data.employees) || 0,
               branchEmployees: data.branchEmployees || [],
+              branchRevenue: data.branchRevenue || [],
+              revenueCurrency: data.revenueCurrency || "USD",
               revenue: Number(data.revenue) || 0,
               region: data.region || "",
               locations: data.locations || [],
@@ -188,9 +208,27 @@ export default function CompanyWizard() {
 
   const mergeCompanyData = useCallback((partial) => {
     setCompanyData((prev) => {
-      const newData = { ...prev, ...partial };
+      let newData = { ...prev, ...partial };
       if (Object.prototype.hasOwnProperty.call(partial, "locations")) {
         setRegionChangeNeedsCities(!(partial.locations || []).length);
+        const region = toCleanString(newData.region);
+        const locList = filterLocationsForRegion(region, newData.locations || []) || [];
+        const locKey = (loc) =>
+          `${toCleanString(loc?.region || region).toLowerCase()}|${toCleanString(loc?.country).toLowerCase()}|${toCleanString(loc?.city || loc?.name).toLowerCase()}|${toCleanString(loc?.branch).toLowerCase()}`;
+        const keys = new Set(locList.map(locKey));
+        if (Array.isArray(newData.branchRevenue) && keys.size > 0) {
+          const pruned = newData.branchRevenue.filter((r) =>
+            keys.has(
+              `${toCleanString(r?.region || region).toLowerCase()}|${toCleanString(r?.country).toLowerCase()}|${toCleanString(r?.city).toLowerCase()}|${toCleanString(r?.branch).toLowerCase()}`
+            )
+          );
+          const totalRev = pruned.reduce((s, b) => s + (Number(b.revenue) || 0), 0);
+          newData = {
+            ...newData,
+            branchRevenue: pruned,
+            revenue: totalRev > 0 ? String(totalRev) : "",
+          };
+        }
       }
       setTimeout(() => autoSave(newData), 0);
       return newData;
@@ -259,6 +297,28 @@ export default function CompanyWizard() {
                 branch: String(loc.branch || "").trim(),
                 employees: index === 0 ? Number(basicInfo?.employees || 0) : 0,
               }));
+        const branchRevenueFromDoc =
+          Array.isArray(basicInfo.branchRevenue) && basicInfo.branchRevenue.length > 0
+            ? basicInfo.branchRevenue
+            : Array.isArray(latestCompany.branchRevenue) && latestCompany.branchRevenue.length > 0
+              ? latestCompany.branchRevenue
+              : [];
+        const hydratedBranchRevenue =
+          branchRevenueFromDoc.length > 0
+            ? branchRevenueFromDoc
+            : locations.map((loc, index) => ({
+                region: String(loc.region || region || "").trim().toLowerCase(),
+                country: String(loc.country || "").trim().toLowerCase(),
+                city: String(loc.city || "").trim(),
+                branch: String(loc.branch || "").trim(),
+                revenue: index === 0 ? Number(basicInfo?.revenue || 0) : 0,
+              }));
+        const revenueSum = hydratedBranchRevenue.reduce((s, b) => s + (Number(b.revenue) || 0), 0);
+        const revenueDisplay =
+          revenueSum > 0 ? String(revenueSum) : basicInfo?.revenue !== undefined && basicInfo?.revenue !== null
+            ? String(basicInfo.revenue)
+            : "";
+        const revenueCurrency = basicInfo?.revenueCurrency || "USD";
         const validFirstCountry = locations[0]?.country || "";
         setCompanyData({
           name: basicInfo?.name || "",
@@ -269,7 +329,9 @@ export default function CompanyWizard() {
           industry: basicInfo?.industry || "",
           employees: basicInfo?.employees || "",
           branchEmployees: hydratedBranchEmployees,
-          revenue: basicInfo?.revenue || "",
+          branchRevenue: hydratedBranchRevenue,
+          revenue: revenueDisplay,
+          revenueCurrency,
           locations,
         });
         setSavedSnapshot(buildSnapshot({
@@ -280,7 +342,9 @@ export default function CompanyWizard() {
           industry: basicInfo?.industry || "",
           employees: basicInfo?.employees || "",
           branchEmployees: hydratedBranchEmployees,
-          revenue: basicInfo?.revenue || "",
+          branchRevenue: hydratedBranchRevenue,
+          revenue: revenueDisplay,
+          revenueCurrency,
           locations,
         }));
         // Clear localStorage draft since company exists
@@ -367,6 +431,8 @@ export default function CompanyWizard() {
       industry: companyData.industry,
       employees: Number(companyData.employees),
       branchEmployees: companyData.branchEmployees || [],
+      branchRevenue: companyData.branchRevenue || [],
+      revenueCurrency: companyData.revenueCurrency || "USD",
       revenue: Number(companyData.revenue),
       region,
       fiscalYear: new Date().getFullYear(),
@@ -416,6 +482,8 @@ export default function CompanyWizard() {
       industry: companyData.industry,
       employees: Number(companyData.employees),
       branchEmployees: companyData.branchEmployees || [],
+      branchRevenue: companyData.branchRevenue || [],
+      revenueCurrency: companyData.revenueCurrency || "USD",
       revenue: Number(companyData.revenue),
       region,
       fiscalYear: new Date().getFullYear(),
@@ -469,7 +537,7 @@ export default function CompanyWizard() {
       case 3: return filterLocationsForRegion(companyData.region, companyData.locations).length > 0;
       case 4: return companyData.industry !== "";
       case 5: return companyData.employees !== "";
-      case 6: return companyData.revenue !== "";
+      case 6: return Number(companyData.revenue) > 0;
       case 7: return companyData.locations.length > 0;
       case 8: {
         const locs = filterLocationsForRegion(companyData.region, companyData.locations);
@@ -501,7 +569,9 @@ export default function CompanyWizard() {
         industry: "",
         employees: "",
         branchEmployees: [],
+        branchRevenue: [],
         revenue: "",
+        revenueCurrency: "USD",
         locations: [],
       });
       setStep(1);

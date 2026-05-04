@@ -1,5 +1,5 @@
 // src/components/company/SetupSummary.jsx
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { FiCheckCircle, FiMapPin, FiUsers, FiGlobe, FiBriefcase, FiEdit2, FiSave, FiX, FiPlus, FiTrash2 } from "react-icons/fi";
 import { BiBuilding } from "react-icons/bi";
 import InputField from "../ui/InputField";
@@ -33,6 +33,26 @@ import {
 import { companyAPI } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
 
+function normCountry(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+}
+
+/** Match branch row to a location ignoring stored row.region (legacy / transition). */
+function rowMatchesLocation(row, loc) {
+  return (
+    normCountry(row?.country) === normCountry(loc?.country) &&
+    String(row?.city || "")
+      .trim()
+      .toLowerCase() === String(loc?.city || loc?.name || "")
+      .trim()
+      .toLowerCase() &&
+    String(row?.branch || "").trim().toLowerCase() === String(loc?.branch || "").trim().toLowerCase()
+  );
+}
+
 export default function SetupSummary({
   data,
   updateField,
@@ -44,6 +64,7 @@ export default function SetupSummary({
 }) {
   const [editingSection, setEditingSection] = useState(null);
   const [editBranchEmployees, setEditBranchEmployees] = useState([]);
+  const [editBranchRevenue, setEditBranchRevenue] = useState([]);
   const [editData, setEditData] = useState({
     name: data.name,
     description: data.description,
@@ -52,6 +73,7 @@ export default function SetupSummary({
     industry: data.industry,
     employees: data.employees,
     revenue: data.revenue,
+    revenueCurrency: data.revenueCurrency || "USD",
   });
   
   // Facilities editing state
@@ -74,6 +96,25 @@ export default function SetupSummary({
   const [regionTransitionError, setRegionTransitionError] = useState("");
   const [exportingTransitionCsv, setExportingTransitionCsv] = useState(false);
   const token = useAuthStore((s) => s.token);
+
+  const activeLocations = useMemo(
+    () => filterLocationsForRegion(data.region, data.locations || []),
+    [data.region, data.locations]
+  );
+
+  const isMultiRegionCompany = data.region === "multi-region";
+
+  const visibleBranchEmployees = useMemo(() => {
+    const rows = data.branchEmployees || [];
+    if (!rows.length || !activeLocations.length) return [];
+    return rows.filter((row) => activeLocations.some((loc) => rowMatchesLocation(row, loc)));
+  }, [data.branchEmployees, activeLocations]);
+
+  const visibleBranchRevenue = useMemo(() => {
+    const rows = data.branchRevenue || [];
+    if (!rows.length || !activeLocations.length) return [];
+    return rows.filter((row) => activeLocations.some((loc) => rowMatchesLocation(row, loc)));
+  }, [data.branchRevenue, activeLocations]);
 
   const regions = [
     { label: " Multi Region", value: "multi-region" },
@@ -125,6 +166,7 @@ export default function SetupSummary({
       industry: data.industry,
       employees: data.employees,
       revenue: data.revenue,
+      revenueCurrency: data.revenueCurrency || "USD",
     });
     
     if (section === 'facilities') {
@@ -134,7 +176,9 @@ export default function SetupSummary({
       });
       setSelectedCountry("");
       setSelectedCity("");
-      setSelectedRegion(data.region || "");
+      setSelectedRegion(
+        data.region === "multi-region" ? "middle-east" : data.region || ""
+      );
       setCities([]);
     }
     if (section === "region") {
@@ -146,8 +190,11 @@ export default function SetupSummary({
       const keyFor = (loc) =>
         `${String(loc?.region || "").trim().toLowerCase()}|${String(loc?.country || "").trim().toLowerCase()}|${String(loc?.city || "").trim().toLowerCase()}|${String(loc?.branch || "").trim().toLowerCase()}`;
       const existingRows = Array.isArray(data.branchEmployees) ? data.branchEmployees : [];
-      const locationRows = (data.locations || []).map((loc) => {
-        const match = existingRows.find((row) => keyFor(row) === keyFor(loc));
+      const locsForEdit = filterLocationsForRegion(data.region, data.locations || []);
+      const locationRows = locsForEdit.map((loc) => {
+        const match =
+          existingRows.find((row) => keyFor(row) === keyFor(loc)) ||
+          existingRows.find((row) => rowMatchesLocation(row, loc));
         return {
           region: loc.region || data.region || "",
           country: loc.country || "",
@@ -156,13 +203,18 @@ export default function SetupSummary({
           employees: Number(match?.employees || 0),
         };
       });
-      const mergedRows = locationRows.length > 0 ? locationRows : existingRows.map((row) => ({
-        region: row.region || data.region || "",
-        country: row.country || "",
-        city: row.city || "",
-        branch: row.branch || "",
-        employees: Number(row.employees || 0),
-      }));
+      const mergedRows =
+        locationRows.length > 0
+          ? locationRows
+          : existingRows
+              .filter((row) => locsForEdit.some((loc) => rowMatchesLocation(row, loc)))
+              .map((row) => ({
+                region: row.region || data.region || "",
+                country: row.country || "",
+                city: row.city || "",
+                branch: row.branch || "",
+                employees: Number(row.employees || 0),
+              }));
       const legacyFallbackRows =
         mergedRows.length > 0
           ? mergedRows
@@ -177,22 +229,110 @@ export default function SetupSummary({
             ];
       setEditBranchEmployees(legacyFallbackRows);
     }
-    
+    if (section === "revenue") {
+      const keyFor = (loc) =>
+        `${String(loc?.region || "").trim().toLowerCase()}|${String(loc?.country || "").trim().toLowerCase()}|${String(loc?.city || "").trim().toLowerCase()}|${String(loc?.branch || "").trim().toLowerCase()}`;
+      const existingRev = Array.isArray(data.branchRevenue) ? data.branchRevenue : [];
+      const locsForEdit = filterLocationsForRegion(data.region, data.locations || []);
+      const locationRows = locsForEdit.map((loc) => {
+        const match =
+          existingRev.find((row) => keyFor(row) === keyFor(loc)) ||
+          existingRev.find((row) => rowMatchesLocation(row, loc));
+        return {
+          region: loc.region || data.region || "",
+          country: loc.country || "",
+          city: loc.city || "",
+          branch: loc.branch || "",
+          revenue: Number(match?.revenue ?? match?.amount ?? 0),
+        };
+      });
+      const mergedRows =
+        locationRows.length > 0
+          ? locationRows
+          : existingRev
+              .filter((row) => locsForEdit.some((loc) => rowMatchesLocation(row, loc)))
+              .map((row) => ({
+                region: row.region || data.region || "",
+                country: row.country || "",
+                city: row.city || "",
+                branch: row.branch || "",
+                revenue: Number(row.revenue ?? row.amount ?? 0),
+              }));
+      const legacyFallbackRev =
+        mergedRows.length > 0
+          ? mergedRows
+          : [
+              {
+                region: data.region || "",
+                country: data.country || "",
+                city: data.city || "",
+                branch: data.branch || "Main",
+                revenue: Number(data.revenue || 0),
+              },
+            ];
+      setEditBranchRevenue(legacyFallbackRev);
+    }
+
     setEditingSection(section);
   };
 
   const handleSave = () => {
     if (editingSection === "employees") {
-      const normalizedRows = (editBranchEmployees || []).map((row) => ({
-        region: String(row.region || data.region || "").trim().toLowerCase(),
-        country: String(row.country || "").trim().toLowerCase(),
-        city: String(row.city || "").trim(),
-        branch: String(row.branch || "").trim(),
-        employees: Math.max(0, Number(row.employees || 0)),
-      }));
+      const locsForSave = filterLocationsForRegion(data.region, data.locations || []);
+      const keyOf = (r) =>
+        `${String(r.region || "").trim().toLowerCase()}|${String(r.country || "").trim().toLowerCase()}|${String(r.city || "").trim().toLowerCase()}|${String(r.branch || "").trim().toLowerCase()}`;
+      const locKeys = new Set(
+        locsForSave.map((loc) =>
+          keyOf({
+            region: loc.region || data.region,
+            country: loc.country,
+            city: loc.city,
+            branch: loc.branch,
+          })
+        )
+      );
+      const normalizedRows = (editBranchEmployees || [])
+        .map((row) => ({
+          region: String(row.region || data.region || "").trim().toLowerCase(),
+          country: String(row.country || "").trim().toLowerCase(),
+          city: String(row.city || "").trim(),
+          branch: String(row.branch || "").trim(),
+          employees: Math.max(0, Number(row.employees || 0)),
+        }))
+        .filter((row) => locKeys.has(keyOf(row)));
       const totalEmployees = normalizedRows.reduce((sum, row) => sum + (Number(row.employees) || 0), 0);
       updateField("branchEmployees", normalizedRows);
       updateField("employees", totalEmployees);
+      setEditingSection(null);
+      return;
+    }
+    if (editingSection === "revenue") {
+      const locsForSave = filterLocationsForRegion(data.region, data.locations || []);
+      const keyOf = (r) =>
+        `${String(r.region || "").trim().toLowerCase()}|${String(r.country || "").trim().toLowerCase()}|${String(r.city || "").trim().toLowerCase()}|${String(r.branch || "").trim().toLowerCase()}`;
+      const locKeys = new Set(
+        locsForSave.map((loc) =>
+          keyOf({
+            region: loc.region || data.region,
+            country: loc.country,
+            city: loc.city,
+            branch: loc.branch,
+          })
+        )
+      );
+      const normalizedRows = (editBranchRevenue || [])
+        .map((row) => ({
+          region: String(row.region || data.region || "").trim().toLowerCase(),
+          country: String(row.country || "").trim().toLowerCase(),
+          city: String(row.city || "").trim(),
+          branch: String(row.branch || "").trim(),
+          revenue: Math.max(0, Number(row.revenue ?? row.amount ?? 0)),
+        }))
+        .filter((row) => locKeys.has(keyOf(row)));
+      const totalRevenue = normalizedRows.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0);
+      updateField("branchRevenue", normalizedRows);
+      updateField("revenue", totalRevenue > 0 ? String(totalRevenue) : "");
+      updateField("revenueCurrency", editData.revenueCurrency || "USD");
       setEditingSection(null);
       return;
     }
@@ -300,7 +440,10 @@ export default function SetupSummary({
     const cleaned = facilitiesEditData.locations
       .map((loc) => ({
         ...loc,
-        region: String(loc?.region || data.region || "").trim().toLowerCase(),
+        region:
+          data.region === "multi-region"
+            ? String(loc?.region || "").trim().toLowerCase()
+            : String(data.region || "").trim().toLowerCase(),
         country: normalizeCountry(loc?.country),
       }))
       .filter((loc) => loc?.region && loc?.country && validCountries.has(loc.country) && (loc?.city || loc?.name) && loc?.branch);
@@ -327,13 +470,14 @@ export default function SetupSummary({
   };
 
   const handleAddLocationPair = () => {
-    if (!selectedRegion || !selectedCountry || !selectedCity || !String(selectedBranch || "").trim()) {
+    const regionForRow = data.region === "multi-region" ? selectedRegion : data.region;
+    if (!regionForRow || !selectedCountry || !selectedCity || !String(selectedBranch || "").trim()) {
       setLocationsInlineError("Please select region, country, city, and enter branch before adding.");
       return;
     }
     const cityExists = facilitiesEditData.locations.some(
       (loc) =>
-        loc.region === selectedRegion &&
+        String(loc.region || "").toLowerCase() === String(regionForRow || "").toLowerCase() &&
         loc.country === selectedCountry &&
         loc.city === selectedCity &&
         String(loc.branch || "").trim().toLowerCase() === String(selectedBranch || "").trim().toLowerCase()
@@ -342,10 +486,9 @@ export default function SetupSummary({
       setLocationsInlineError("This city-branch combination is already added.");
       return;
     }
-    
     const newLocation = {
       id: Date.now(),
-      region: selectedRegion,
+      region: regionForRow,
       country: selectedCountry,
       city: selectedCity,
       branch: String(selectedBranch || "").trim(),
@@ -359,7 +502,7 @@ export default function SetupSummary({
     setSelectedCountry("");
     setSelectedCity("");
     setSelectedBranch("");
-    setSelectedRegion(data.region || "");
+    setSelectedRegion(data.region === "multi-region" ? "middle-east" : data.region || "");
     setCities([]);
   };
 
@@ -382,14 +525,16 @@ export default function SetupSummary({
     return "Enterprise";
   };
 
-  const formatRevenue = (value) => {
-    if (!value) return "—";
-    return new Intl.NumberFormat('en-US', { 
-      style: 'currency', 
-      currency: 'USD',
+  const formatRevenue = (value, currency = data.revenueCurrency || "USD") => {
+    if (!value && value !== 0) return "—";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency || "USD",
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
+      maximumFractionDigits: 0,
+    }).format(n);
   };
 
   const getCountryLabel = (country) => {
@@ -667,14 +812,14 @@ export default function SetupSummary({
             </div>
           ) : (
             <div className="summary-content">
-              {Array.isArray(data.branchEmployees) && data.branchEmployees.length > 0 ? (
+              {visibleBranchEmployees.length > 0 ? (
                 <>
                   <div className="summary-row" key="employees-value">
                     <span className="row-label">Branch-wise Employees:</span>
                     <span className="row-value">Configured</span>
                   </div>
                   <div className="locations-list">
-                    {(data.branchEmployees || []).map((row, idx) => (
+                    {visibleBranchEmployees.map((row, idx) => (
                       <div key={`branch-emp-${idx}`} className="location-item">
                         <FiMapPin className="location-icon" />
                         <span>
@@ -685,6 +830,13 @@ export default function SetupSummary({
                     ))}
                   </div>
                 </>
+              ) : Array.isArray(data.branchEmployees) && data.branchEmployees.length > 0 && activeLocations.length > 0 ? (
+                <div className="summary-row" key="employees-no-region">
+                  <span className="row-label">Branch-wise Employees:</span>
+                  <span className="row-value" style={{ color: "#6B7280", fontSize: 13 }}>
+                    No branch rows for the current region. Edit to assign employees to visible branches.
+                  </span>
+                </div>
               ) : (
                 <div className="summary-row" key="employees-value">
                   <span className="row-label">Employees:</span>
@@ -718,24 +870,122 @@ export default function SetupSummary({
 
           {editingSection === 'revenue' ? (
             <div className="edit-mode" key="revenue-edit">
-              <InputField
-                label="Annual Revenue (USD)"
-                type="number"
-                value={editData.revenue}
-                onChange={(e) => setEditData({...editData, revenue: e.target.value})}
-                placeholder="e.g., 5000000"
-              />
+              <div className="field-group" style={{ marginBottom: 12 }}>
+                <label className="field-label">Currency</label>
+                <ThemedSelect
+                  value={editData.revenueCurrency || "USD"}
+                  onChange={(v) => setEditData({ ...editData, revenueCurrency: v || "USD" })}
+                  options={[
+                    { value: "USD", label: "USD ($)" },
+                    { value: "EUR", label: "EUR (€)" },
+                    { value: "GBP", label: "GBP (£)" },
+                    { value: "AED", label: "AED (د.إ)" },
+                  ]}
+                  placeholder="Currency"
+                />
+              </div>
+              <p className="step-description" style={{ marginBottom: 12, fontSize: 13, color: "#6B7280" }}>
+                Enter annual revenue per branch. Total updates automatically.
+              </p>
+              <div className="branch-revenue-edit-grid">
+                {(editBranchRevenue || []).map((row, idx) => (
+                  <div key={`br-${idx}`} className="branch-revenue-row">
+                    <span className="branch-revenue-label">
+                      {`${row.city || "City"}, ${getCountryLabel(row.country || "")} — ${row.branch || "Main"}`}
+                    </span>
+                    <input
+                      type="number"
+                      className="field-input"
+                      min={0}
+                      value={row.revenue === 0 || row.revenue ? String(row.revenue) : ""}
+                      onChange={(e) => {
+                        const next = [...editBranchRevenue];
+                        next[idx] = { ...next[idx], revenue: e.target.value };
+                        setEditBranchRevenue(next);
+                      }}
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="summary-row" style={{ marginTop: 12 }}>
+                <span className="row-label">Total</span>
+                <span className="row-value">
+                  {formatRevenue(
+                    (editBranchRevenue || []).reduce((s, r) => s + (Number(r.revenue) || 0), 0),
+                    editData.revenueCurrency
+                  )}
+                </span>
+              </div>
               <div className="edit-actions">
                 <PrimaryButton onClick={handleSave} className="save-btn"><FiSave /> Save</PrimaryButton>
                 <SecondaryButton onClick={handleCancel} className="cancel-btn"><FiX /> Cancel</SecondaryButton>
               </div>
+              <style jsx>{`
+                .branch-revenue-edit-grid {
+                  display: flex;
+                  flex-direction: column;
+                  gap: 10px;
+                }
+                .branch-revenue-row {
+                  display: grid;
+                  grid-template-columns: minmax(160px, 1fr) 140px;
+                  gap: 10px;
+                  align-items: center;
+                }
+                .branch-revenue-label {
+                  font-size: 13px;
+                  color: #374151;
+                  font-weight: 500;
+                }
+                .field-input {
+                  padding: 10px 12px;
+                  border: 1px solid #e5e7eb;
+                  border-radius: 8px;
+                  font-size: 14px;
+                }
+                @media (max-width: 640px) {
+                  .branch-revenue-row {
+                    grid-template-columns: 1fr;
+                  }
+                }
+              `}</style>
             </div>
           ) : (
             <div className="summary-content">
-              <div className="summary-row" key="revenue-value">
-                <span className="row-label">Annual Revenue:</span>
-                <span className="row-value">{formatRevenue(data.revenue)}</span>
-              </div>
+              {visibleBranchRevenue.length > 0 ? (
+                <>
+                  <div className="summary-row" key="revenue-branch-header">
+                    <span className="row-label">Branch-wise revenue:</span>
+                    <span className="row-value">{formatRevenue(data.revenue, data.revenueCurrency)}</span>
+                  </div>
+                  <div className="locations-list">
+                    {visibleBranchRevenue.map((row, idx) => (
+                      <div key={`brv-${idx}`} className="location-item">
+                        <FiMapPin className="location-icon" />
+                        <span>
+                          {`${row.city || "City"}, ${getCountryLabel(row.country || "")} - ${row.branch || "Main"}`}
+                        </span>
+                        <span className="country-badge">
+                          {formatRevenue(Number(row.revenue ?? row.amount ?? 0), data.revenueCurrency)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : Array.isArray(data.branchRevenue) && data.branchRevenue.length > 0 && activeLocations.length > 0 ? (
+                <div className="summary-row" key="revenue-no-region">
+                  <span className="row-label">Branch-wise revenue:</span>
+                  <span className="row-value" style={{ color: "#6B7280", fontSize: 13 }}>
+                    No revenue rows for the current region. Edit to assign revenue to visible branches.
+                  </span>
+                </div>
+              ) : (
+                <div className="summary-row" key="revenue-value">
+                  <span className="row-label">Annual Revenue:</span>
+                  <span className="row-value">{formatRevenue(data.revenue, data.revenueCurrency)}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -748,7 +998,7 @@ export default function SetupSummary({
           <div className="card-header">
             <div className="card-title">
               <BiBuilding className="title-icon" />
-              <h4>Locations ({data.locations?.length || 0})</h4>
+              <h4>Locations ({activeLocations.length || 0})</h4>
             </div>
             {editingSection !== 'facilities' && (
               <button type="button" onClick={() => handleEdit('facilities')} className="edit-section-btn">
@@ -762,22 +1012,31 @@ export default function SetupSummary({
               <div className="pair-grid">
                 <div className="field-group">
                   <label className="field-label">Region</label>
-                  <ThemedSelect
-                    className="field-select"
-                    value={selectedRegion}
-                    onChange={(nextRegion) => {
-                      setSelectedRegion(nextRegion);
-                      setSelectedCountry("");
-                      setSelectedCity("");
-                      setSelectedBranch("");
-                      setCities([]);
-                    }}
-                    options={[
-                      { value: "middle-east", label: "Middle East" },
-                      { value: "asia-pacific", label: "Asia Pacific" },
-                    ]}
-                    placeholder="Select Region"
-                  />
+                  {isMultiRegionCompany ? (
+                    <ThemedSelect
+                      className="field-select"
+                      value={selectedRegion}
+                      onChange={(nextRegion) => {
+                        setSelectedRegion(nextRegion);
+                        setSelectedCountry("");
+                        setSelectedCity("");
+                        setSelectedBranch("");
+                        setCities([]);
+                      }}
+                      options={[
+                        { value: "middle-east", label: "Middle East" },
+                        { value: "asia-pacific", label: "Asia Pacific" },
+                      ]}
+                      placeholder="Select Region"
+                    />
+                  ) : (
+                    <input
+                      className="field-input"
+                      readOnly
+                      value={getRegionLabel(data.region)}
+                      title="Region is set in the Region section above"
+                    />
+                  )}
                 </div>
                 <div className="field-group">
                   <label className="field-label">Country</label>
@@ -785,8 +1044,8 @@ export default function SetupSummary({
                     className="field-select"
                     value={selectedCountry}
                     onChange={(nextCountry) => handleCountryChange(nextCountry)}
-                    disabled={!selectedRegion}
-                    options={countriesByRegion[selectedRegion] || []}
+                    disabled={!data.region || (isMultiRegionCompany && !selectedRegion)}
+                    options={countriesByRegion[isMultiRegionCompany ? selectedRegion : data.region] || []}
                     placeholder="Select Country"
                   />
                 </div>
@@ -866,11 +1125,11 @@ export default function SetupSummary({
                   ⚠️ {validationMessage}
                 </div>
               )}
-              {!data.locations || data.locations.length === 0 ? (
+              {!activeLocations || activeLocations.length === 0 ? (
                 <p className="empty-facilities">No locations added</p>
               ) : (
-                data.locations.map((loc) => (
-                  <div key={loc.id} className="facility-item">
+                activeLocations.map((loc, idx) => (
+                  <div key={loc.id ?? `loc-${idx}`} className="facility-item">
                     <FiMapPin className="location-icon" />
                     <span>{getLocationDisplay(loc)}</span>
                   </div>

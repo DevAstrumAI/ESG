@@ -97,6 +97,8 @@ async def create_company(
                 "industry": company_data.industry,
                 "employees": company_data.employees,
                 "branchEmployees": company_data.branchEmployees or [],
+                "branchRevenue": company_data.branchRevenue or [],
+                "revenueCurrency": company_data.revenueCurrency or "USD",
                 "revenue": company_data.revenue,
                 "region": company_data.region,
                 "fiscalYear": company_data.fiscalYear,
@@ -212,6 +214,10 @@ async def update_my_company(
             update_data["basicInfo.employees"] = company_data.employees
         if company_data.branchEmployees is not None:
             update_data["basicInfo.branchEmployees"] = company_data.branchEmployees
+        if company_data.branchRevenue is not None:
+            update_data["basicInfo.branchRevenue"] = company_data.branchRevenue
+        if company_data.revenueCurrency is not None:
+            update_data["basicInfo.revenueCurrency"] = company_data.revenueCurrency
         if company_data.revenue is not None:
             update_data["basicInfo.revenue"] = company_data.revenue
         if company_data.region is not None:

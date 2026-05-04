@@ -1047,14 +1047,32 @@ export default function DashboardPage() {
   ];
 
   const hasData = totalKg > 0;
-  const renderTargetEmptyState = (title, description) => (
+  const renderTargetEmptyState = (
+    title,
+    description,
+    {
+      showAction = true,
+      actionLabel = "Configure company targets",
+      actionHint,
+    } = {}
+  ) => (
     <div className="rich-empty-state">
       <div className="rich-empty-icon"><FiTarget /></div>
       <div className="rich-empty-content">
         <h4>{title}</h4>
         <p>{description}</p>
+        {actionHint ? <p className="rich-empty-hint">{actionHint}</p> : null}
       </div>
-      <button onClick={() => navigate('/target-settings')} className="set-target-btn-inline">Set Target</button>
+      {showAction ? (
+        <button
+          type="button"
+          onClick={() => navigate("/target-settings")}
+          className="set-target-btn-inline"
+          title="Company-wide fiscal reduction goals — not per branch or region"
+        >
+          {actionLabel}
+        </button>
+      ) : null}
     </div>
   );
   
@@ -1265,11 +1283,13 @@ export default function DashboardPage() {
             {hasConfiguredTarget ? (
               targetT ? `of ${targetT.toFixed(1)} t target` : "Target configured"
             ) : (
-              <button 
-                onClick={() => navigate('/target-settings')}
+              <button
+                type="button"
+                onClick={() => navigate("/target-settings")}
                 className="set-target-btn"
+                title="Company-wide fiscal targets — not per branch"
               >
-                Set Target
+                Company targets
               </button>
             )}
           </div>
@@ -1364,7 +1384,11 @@ export default function DashboardPage() {
         {!annualBudgetT ? (
           renderTargetEmptyState(
             "No target configured yet",
-            "Set an annual target to unlock quarterly and monthly milestone tracking."
+            "Set a company-wide fiscal-year reduction target to unlock quarterly and monthly milestone tracking.",
+            {
+              actionHint:
+                "Targets are configured for the whole company (not for the branch selected in the header).",
+            }
           )
         ) : expandedSections.targetPeriod ? (
           <>
@@ -1417,7 +1441,11 @@ export default function DashboardPage() {
         {!annualBudgetT ? (
           renderTargetEmptyState(
             "Track progress against your annual target",
-            "This view compares actual YTD emissions with required trajectory and highlights risk early."
+            "This view compares actual YTD emissions with required trajectory and highlights risk early.",
+            {
+              actionHint:
+                "Progress here uses emissions for your current header filters, compared to the company-wide target.",
+            }
           )
         ) : expandedSections.progressTarget ? (
           <>
@@ -1478,7 +1506,11 @@ export default function DashboardPage() {
         {!annualBudgetT ? (
           renderTargetEmptyState(
             "Set an annual target first",
-            "Rate comparison and acceleration analysis appears after target trajectory is available."
+            "Rate comparison and acceleration analysis appears after target trajectory is available.",
+            {
+              actionHint:
+                "Configure the company-wide reduction target first; it is not set per branch in Target settings.",
+            }
           )
         ) : (
           <>
@@ -1536,7 +1568,11 @@ export default function DashboardPage() {
         {!hasPathwayData ? (
           renderTargetEmptyState(
             "Build your net zero pathway",
-            "Set a target to visualize required trajectory, actual emissions, and projection to target year."
+            "Set a company-wide target to visualize required trajectory, actual emissions, and projection to target year.",
+            {
+              actionHint:
+                "The pathway uses your company target settings, independent of the branch filter.",
+            }
           )
         ) : expandedSections.pathway ? (
           <div className="pathway-chart-wrap">
@@ -2163,7 +2199,8 @@ export default function DashboardPage() {
       <div className="section-title">Trends</div>
       {renderTargetEmptyState(
         "Multi-year trends locked",
-        "Multi-year trend analysis is available after 2 full fiscal years of data. Keep submitting monthly data to unlock this view."
+        "Multi-year trend analysis is available after 2 full fiscal years of data. Keep submitting monthly data to unlock this view.",
+        { showAction: false }
       )}
       </>
       )}
@@ -2512,6 +2549,12 @@ export default function DashboardPage() {
           margin: 0;
           font-size: 12px;
           color: #6B7280;
+        }
+        .rich-empty-hint {
+          margin: 8px 0 0 !important;
+          font-size: 11px !important;
+          color: #64748b !important;
+          line-height: 1.45;
         }
 
         .kpi-card {

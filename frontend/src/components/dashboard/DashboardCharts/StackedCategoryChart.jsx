@@ -13,7 +13,6 @@ import {
   LabelList,
 } from "recharts";
 import { useAuthStore } from "../../../store/authStore";
-import { useEmissionStore } from "../../../store/emissionStore";
 import { FiLayers, FiBarChart2, FiRefreshCw } from "react-icons/fi";
 import { appendLocationQuery } from "../../../utils/locationQuery";
 
@@ -75,7 +74,7 @@ export default function StackedCategoryChart({ year, country, city, branch, regi
 
       if (!response.ok) {
         if (response.status === 404) {
-          await fetchFallbackData();
+          createEmptyChartData();
           return;
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -86,71 +85,12 @@ export default function StackedCategoryChart({ year, country, city, branch, regi
       
     } catch (err) {
       console.error("Error fetching monthly data:", err);
-      setError(err.message);
-      await fetchFallbackData();
+      setError(null);
+      createEmptyChartData();
     } finally {
       setLoading(false);
     }
   };
-
-// In StackedCategoryChart.jsx, update the fetchFallbackData function:
-
-const fetchFallbackData = async () => {
-  try {
-    // Try to get data from store
-    const scope1Results = useEmissionStore.getState().scope1Results;
-    const scope2Results = useEmissionStore.getState().scope2Results;
-    
-    const hasData = (scope1Results?.total?.kgCO2e > 0) || (scope2Results?.total?.kgCO2e > 0);
-    
-    if (!hasData) {
-      createEmptyChartData();
-      return;
-    }
-    
-    // Get current fiscal month index for selected fiscal year
-    const now = new Date();
-    const nowMonthNum = now.getMonth() + 1;
-    const nowFiscalStartYear = nowMonthNum >= 6 ? now.getFullYear() : now.getFullYear() - 1;
-    const currentMonthIndex =
-      year === nowFiscalStartYear
-        ? fiscalMonths.findIndex((m) => m.monthKey === `${now.getFullYear()}-${String(nowMonthNum).padStart(2, "0")}`)
-        : -1;
-    
-    const transformedData = fiscalMonths.map((m, index) => {
-      const isCurrentMonth = index === currentMonthIndex;
-      
-      if (scope === "scope1") {
-        return {
-          name: m.label,
-          month: m.monthKey,
-          monthYear: `${m.label} ${m.yearNum}`,
-          mobile: isCurrentMonth ? (scope1Results?.mobile?.kgCO2e || 0) / KG_TO_TONNES : 0,
-          stationary: isCurrentMonth ? (scope1Results?.stationary?.kgCO2e || 0) / KG_TO_TONNES : 0,
-          refrigerants: isCurrentMonth ? (scope1Results?.refrigerants?.kgCO2e || 0) / KG_TO_TONNES : 0,
-          fugitive: isCurrentMonth ? (scope1Results?.fugitive?.kgCO2e || 0) / KG_TO_TONNES : 0,
-          hasData: isCurrentMonth && hasData,
-        };
-      } else {
-        return {
-          name: m.label,
-          month: m.monthKey,
-          monthYear: `${m.label} ${m.yearNum}`,
-          electricityLocation: isCurrentMonth ? (scope2Results?.electricity?.locationBasedKgCO2e || 0) / KG_TO_TONNES : 0,
-          electricityMarket: isCurrentMonth ? (scope2Results?.electricity?.marketBasedKgCO2e || 0) / KG_TO_TONNES : 0,
-          heating: isCurrentMonth ? (scope2Results?.heating?.kgCO2e || 0) / KG_TO_TONNES : 0,
-          hasData: isCurrentMonth && hasData,
-        };
-      }
-    });
-    
-    setChartData(applyMissingPlaceholders(transformedData));
-    
-  } catch (err) {
-    console.error("Fallback error:", err);
-    createEmptyChartData();
-  }
-};
 
 const createEmptyChartData = () => {
   const emptyData = fiscalMonths.map((m) => {
@@ -205,7 +145,14 @@ const createEmptyChartData = () => {
         : (row.electricityLocation || 0) + (row.electricityMarket || 0) + (row.heating || 0);
       return Math.max(max, total);
     }, 0);
-    const placeholder = maxKnownTotal > 0 ? Math.max(maxKnownTotal * 0.08, 0.05) : 0.05;
+    if (maxKnownTotal <= 0) {
+      return rows.map((row) => ({
+        ...row,
+        missingPlaceholder: 0,
+        noDataLabel: "",
+      }));
+    }
+    const placeholder = Math.max(maxKnownTotal * 0.08, 0.05);
     return rows.map((row) => ({
       ...row,
       missingPlaceholder: row.hasData ? 0 : placeholder,
@@ -214,6 +161,8 @@ const createEmptyChartData = () => {
   };
 
   useEffect(() => {
+    setChartData([]);
+    setError(null);
     fetchMonthlyBreakdown();
   }, [token, year, scope, retryCount, country, city, branch, region]);
 
@@ -397,14 +346,16 @@ const createEmptyChartData = () => {
             align="center"
             formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
           />
-          <Bar dataKey="missingPlaceholder" stackId="placeholder" fill="#E5E7EB" legendType="none">
-            <LabelList
-              dataKey="noDataLabel"
-              position="top"
-              fill="#9CA3AF"
-              fontSize={10}
-            />
-          </Bar>
+          {chartData.some((row) => (row.missingPlaceholder || 0) > 0) && (
+            <Bar dataKey="missingPlaceholder" stackId="placeholder" fill="#E5E7EB" legendType="none">
+              <LabelList
+                dataKey="noDataLabel"
+                position="top"
+                fill="#9CA3AF"
+                fontSize={10}
+              />
+            </Bar>
+          )}
           {getBars()}
         </BarChart>
       </ResponsiveContainer>
@@ -412,7 +363,16 @@ const createEmptyChartData = () => {
       <div className="chart-note">
         {!totalHasData ? (
           <span className="no-data-note">
-            No emission data submitted for FY {year}-{year + 1}. Submit data to see the chart.
+            No emission data for this selection for FY {year}–{year + 1}
+            {country && city ? (
+              <>
+                {" "}
+                ({[country, city, branch].filter(Boolean).join(" · ")}).
+              </>
+            ) : (
+              <>.</>
+            )}{" "}
+            Submit scope data for this branch to populate the chart.
           </span>
         ) : (
           <span className="missing-note">

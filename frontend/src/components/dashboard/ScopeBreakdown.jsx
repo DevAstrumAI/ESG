@@ -1,27 +1,55 @@
 // src/components/dashboard/ScopeBreakdown.jsx
-import React from "react";
+import React, { useMemo } from "react";
 import { useCompanyStore } from "../../store/companyStore";
+import { useSelectedLocationStore } from "../../store/selectedLocationStore";
+
+function branchKey(loc) {
+  if (!loc) return "";
+  return `${String(loc.region || "").trim().toLowerCase()}|${String(loc.country || "").trim().toLowerCase()}|${String(loc.city || loc.name || "").trim().toLowerCase()}|${String(loc.branch || "").trim().toLowerCase()}`;
+}
+
+function revenueForSelectedBranch(company, selectedLoc) {
+  const basic = company?.basicInfo || {};
+  const rows = basic.branchRevenue || [];
+  if (selectedLoc && Array.isArray(rows) && rows.length > 0) {
+    const wanted = branchKey(selectedLoc);
+    const hit = rows.find((r) => branchKey(r) === wanted);
+    const v = Number(hit?.revenue ?? hit?.amount ?? 0);
+    if (Number.isFinite(v) && v > 0) return v;
+  }
+  return Number(basic.revenue || 0) || 0;
+}
 
 export default function ScopeBreakdown({ title, items, totalEmissions }) {
   const { company } = useCompanyStore();
-  const hasData = items.some(item => item.value > 0);
+  const locationKey = useSelectedLocationStore((s) => s.locationKey);
+  const getSelectedLocation = useSelectedLocationStore((s) => s.getSelectedLocation);
 
-  // Calculate emissions intensity (tCO₂e per thousand currency)
-  const revenue = company?.basicInfo?.revenue || 0;
+  const hasData = items.some((item) => item.value > 0);
+
+  const revenue = useMemo(
+    () => revenueForSelectedBranch(company, getSelectedLocation(company)),
+    [company, locationKey, getSelectedLocation]
+  );
+
   const totalEmissionsTonnes = totalEmissions || 0;
-  
-  // Intensity = total emissions (tonnes) / revenue (in thousands)
-  const revenueInThousands = revenue / 1000;
-  const intensity = revenueInThousands > 0 
-    ? (totalEmissionsTonnes / revenueInThousands).toFixed(2) 
-    : 0;
 
-  // Get currency symbol
-  const currency = company?.basicInfo?.currency || "USD";
-  const currencySymbol = currency === "USD" ? "$" : 
-                         currency === "EUR" ? "€" : 
-                         currency === "GBP" ? "£" : 
-                         currency === "AED" ? "د.إ" : "$";
+  const revenueInThousands = revenue / 1000;
+  const intensity =
+    revenueInThousands > 0 ? (totalEmissionsTonnes / revenueInThousands).toFixed(2) : 0;
+
+  const currency =
+    company?.basicInfo?.revenueCurrency || company?.basicInfo?.currency || "USD";
+  const currencySymbol =
+    currency === "USD"
+      ? "$"
+      : currency === "EUR"
+        ? "€"
+        : currency === "GBP"
+          ? "£"
+          : currency === "AED"
+            ? "د.إ"
+            : "$";
 
   return (
     <div className="scope-breakdown">
@@ -44,8 +72,8 @@ export default function ScopeBreakdown({ title, items, totalEmissions }) {
                   <span className="breakdown-percentage">{item.value}%</span>
                 </div>
                 <div className="breakdown-bar">
-                  <div 
-                    className="breakdown-fill" 
+                  <div
+                    className="breakdown-fill"
                     style={{ width: `${item.value}%`, backgroundColor: item.color }}
                   />
                 </div>
@@ -55,8 +83,7 @@ export default function ScopeBreakdown({ title, items, totalEmissions }) {
               </div>
             ))}
           </div>
-          
-          {/* Intensity Footer */}
+
           <div className="intensity-footer">
             <div className="intensity-item">
               <span className="intensity-label">TOTAL</span>
@@ -65,31 +92,33 @@ export default function ScopeBreakdown({ title, items, totalEmissions }) {
             <div className="intensity-divider"></div>
             <div className="intensity-item">
               <span className="intensity-label">INTENSITY</span>
-              <span className="intensity-value">{intensity} t/{currencySymbol}k</span>
+              <span className="intensity-value">
+                {intensity} t/{currencySymbol}k
+              </span>
             </div>
           </div>
         </>
       )}
-      
+
       <style jsx>{`
         .scope-breakdown {
           background: white;
           border-radius: 12px;
           padding: 20px;
-          border: 1px solid #E5E7EB;
+          border: 1px solid #e5e7eb;
         }
 
         .scope-breakdown h3 {
           font-size: 16px;
           font-weight: 600;
-          color: #1B4D3E;
+          color: #1b4d3e;
           margin: 0 0 16px;
         }
 
         .empty-breakdown {
           text-align: center;
           padding: 32px 20px;
-          color: #9CA3AF;
+          color: #9ca3af;
         }
 
         .empty-breakdown p {
@@ -131,18 +160,18 @@ export default function ScopeBreakdown({ title, items, totalEmissions }) {
         .breakdown-icon {
           display: inline-flex;
           align-items: center;
-          color: #2E7D64;
+          color: #2e7d64;
         }
 
         .breakdown-percentage {
           font-size: 12px;
           font-weight: 600;
-          color: #6B7280;
+          color: #6b7280;
         }
 
         .breakdown-bar {
           height: 6px;
-          background: #E5E7EB;
+          background: #e5e7eb;
           border-radius: 3px;
           overflow: hidden;
           margin-bottom: 6px;
@@ -157,7 +186,7 @@ export default function ScopeBreakdown({ title, items, totalEmissions }) {
         .breakdown-value {
           font-size: 12px;
           font-weight: 600;
-          color: #1B4D3E;
+          color: #1b4d3e;
           text-align: right;
         }
 
@@ -168,7 +197,7 @@ export default function ScopeBreakdown({ title, items, totalEmissions }) {
           gap: 24px;
           padding-top: 16px;
           margin-top: 8px;
-          border-top: 1px solid #E5E7EB;
+          border-top: 1px solid #e5e7eb;
         }
 
         .intensity-item {
@@ -179,7 +208,7 @@ export default function ScopeBreakdown({ title, items, totalEmissions }) {
           display: block;
           font-size: 11px;
           font-weight: 600;
-          color: #6B7280;
+          color: #6b7280;
           text-transform: uppercase;
           letter-spacing: 0.5px;
           margin-bottom: 4px;
@@ -189,13 +218,13 @@ export default function ScopeBreakdown({ title, items, totalEmissions }) {
           display: block;
           font-size: 18px;
           font-weight: 700;
-          color: #1B4D3E;
+          color: #1b4d3e;
         }
 
         .intensity-divider {
           width: 1px;
           height: 30px;
-          background: #E5E7EB;
+          background: #e5e7eb;
         }
       `}</style>
     </div>
